@@ -363,7 +363,10 @@ Individual tasks may declare a strict equality condition on a successful earlier
 
 Use a signal task to wait for one explicitly delivered JSON result. It yields workers,
 attempts and execution grants; an immutable authenticated receipt atomically wakes only
-the exact activated task. Names do not route broadcasts, and early delivery is rejected.
+the exact activated task. Optional `signal.accept_before_activation: true` opens
+one input slot atomically with submission. Early receipt never changes readiness or
+bypasses dependencies, conditions, deadlines or owner stops. Expiry still starts at
+activation. Names do not route broadcasts; delivery before submission is rejected.
 See [external signal operation, bounds and recovery](WORKFLOW_SIGNALS.md).
 
 ### Absolute-time durable timer (`kind:"timer"`)

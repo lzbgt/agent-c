@@ -17,13 +17,14 @@ std::string text(sqlite3_stmt* s, int column) {
   const auto* value = sqlite3_column_text(s, column);
   return value ? std::string(reinterpret_cast<const char*>(value), sqlite3_column_bytes(s, column)) : std::string();
 }
-const char* columns = "signal_id,workflow_id,task_id,request_hash,spec_json,state,created_unix_ms,expires_unix_ms,resolved_unix_ms,payload_json,payload_hash,delivery_id";
+const char* columns = "signal_id,workflow_id,task_id,request_hash,spec_json,state,created_unix_ms,expires_unix_ms,resolved_unix_ms,payload_json,payload_hash,delivery_id,activated_unix_ms";
 void read_row(sqlite3_stmt* s, AgentDb::WorkflowSignalRow* out) {
   out->signal_id = text(s, 0); out->workflow_id = text(s, 1); out->task_id = text(s, 2);
   out->request_hash = text(s, 3); out->spec_json = text(s, 4); out->state = text(s, 5);
   out->created_unix_ms = sqlite3_column_int64(s, 6); out->expires_unix_ms = sqlite3_column_int64(s, 7);
   out->resolved_unix_ms = sqlite3_column_int64(s, 8);
   out->payload_json = text(s, 9); out->payload_hash = text(s, 10); out->delivery_id = text(s, 11);
+  out->activated_unix_ms = sqlite3_column_int64(s, 12);
 }
 int read(sqlite3* db, const std::string& workflow, const std::string& task, AgentDb::WorkflowSignalRow* out) {
   auto s = query(db, std::string("SELECT ") + columns + " FROM workflow_signals WHERE workflow_id=? AND task_id=?");
@@ -43,6 +44,24 @@ bool stopped(sqlite3_stmt* s, int64_t now) {
 }
 }
 #endif
+
+bool AgentDb::seed_workflow_signal_locked(const WorkflowSignalRow& def, int64_t created, std::string* error) {
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)def; (void)created; (void)error; return false;
+#else
+  if (def.signal_id.empty() || def.request_hash.empty() || def.spec_json.empty() || def.spec_json.size() > 16384) {
+    if (error) *error = "invalid signal mailbox definition"; return false;
+  }
+  auto s = query(db_, "INSERT INTO workflow_signals(signal_id,workflow_id,task_id,request_hash,spec_json,state,created_unix_ms) VALUES(?,?,?,?,?,'waiting',?)");
+  if (!s || !agent_db_bind_text(s.get(), 1, def.signal_id) || !agent_db_bind_text(s.get(), 2, def.workflow_id) ||
+      !agent_db_bind_text(s.get(), 3, def.task_id) || !agent_db_bind_text(s.get(), 4, def.request_hash) ||
+      !agent_db_bind_text(s.get(), 5, def.spec_json) || !agent_db_bind_i64(s.get(), 6, created) ||
+      !agent_db_step_done(s.get())) {
+    if (error) *error = "cannot create signal mailbox"; return false;
+  }
+  return true;
+#endif
+}
 
 bool AgentDb::prepare_workflow_signal(const WorkflowTaskRow& expected, const WorkflowSignalRow& def,
     int64_t timeout_ms, WorkflowSignalRow* out, bool* yielded, std::string* error) {
@@ -69,15 +88,25 @@ bool AgentDb::prepare_workflow_signal(const WorkflowTaskRow& expected, const Wor
     }
   }
   {
-    auto s = query(db_, "INSERT INTO workflow_signals(signal_id,workflow_id,task_id,request_hash,spec_json,state,created_unix_ms,expires_unix_ms) VALUES(?,?,?,?,?,'waiting',?,?) ON CONFLICT(workflow_id,task_id) DO NOTHING");
+    auto s = query(db_, "INSERT INTO workflow_signals(signal_id,workflow_id,task_id,request_hash,spec_json,state,created_unix_ms,expires_unix_ms,activated_unix_ms) VALUES(?,?,?,?,?,'waiting',?,?,?) ON CONFLICT(workflow_id,task_id) DO NOTHING");
     const auto expires = timeout_ms > 0 ? now + timeout_ms : 0;
     if (!s || !agent_db_bind_text(s.get(), 1, def.signal_id) || !agent_db_bind_text(s.get(), 2, def.workflow_id) ||
         !agent_db_bind_text(s.get(), 3, def.task_id) || !agent_db_bind_text(s.get(), 4, def.request_hash) ||
         !agent_db_bind_text(s.get(), 5, def.spec_json) || !agent_db_bind_i64(s.get(), 6, now) ||
-        !agent_db_bind_i64(s.get(), 7, expires) || !agent_db_step_done(s.get())) return fail("cannot persist signal");
+        !agent_db_bind_i64(s.get(), 7, expires) || !agent_db_bind_i64(s.get(), 8, now) || !agent_db_step_done(s.get())) return fail("cannot persist signal");
   }
   if (read(db_, def.workflow_id, def.task_id, out) != SQLITE_ROW ||
       out->signal_id != def.signal_id || out->request_hash != def.request_hash || out->spec_json != def.spec_json) return fail("signal identity changed");
+  if (!out->activated_unix_ms) {
+    // Activation follows dependency/condition checks. An already buffered input
+    // needs no expiry timer; otherwise start it here, never at submission.
+    const auto expires = out->state == "waiting" && timeout_ms > 0 ? now + timeout_ms : 0;
+    auto s = query(db_, "UPDATE workflow_signals SET activated_unix_ms=?,expires_unix_ms=? WHERE signal_id=? AND activated_unix_ms=0");
+    if (!s || !agent_db_bind_i64(s.get(), 1, now) || !agent_db_bind_i64(s.get(), 2, expires) ||
+        !agent_db_bind_text(s.get(), 3, out->signal_id) || !agent_db_step_done(s.get()) || sqlite3_changes(db_) != 1)
+      return fail("cannot activate signal");
+    out->activated_unix_ms = now; out->expires_unix_ms = expires;
+  }
   if (out->state == "waiting" && out->expires_unix_ms > 0 && out->expires_unix_ms <= now) {
     auto s = query(db_, "UPDATE workflow_signals SET state='expired',resolved_unix_ms=? WHERE signal_id=? AND state='waiting'");
     if (!s || !agent_db_bind_i64(s.get(), 1, now) || !agent_db_bind_text(s.get(), 2, out->signal_id) ||
@@ -168,7 +197,10 @@ AgentDb::WorkflowSignalResolution AgentDb::resolve_workflow_signal(const Workflo
     auto s = query(db_, "SELECT w.cancel_requested,COALESCE(w.deadline_unix_ms,0),w.status,t.status FROM workflows w JOIN workflow_tasks t ON t.workflow_id=w.workflow_id WHERE t.workflow_id=? AND t.task_id=?");
     if (!s || !agent_db_bind_text(s.get(), 1, out->workflow_id) || !agent_db_bind_text(s.get(), 2, out->task_id) ||
         sqlite3_step(s.get()) != SQLITE_ROW) return stop(Result::NotFound, "signal task not found");
-    if (stopped(s.get(), now) || text(s.get(), 3) != "queued") return stop(Result::Stopped, "signal is not accepting input");
+    const auto task_state = text(s.get(), 3);
+    if (stopped(s.get(), now) || (task_state != "queued" &&
+        !(out->activated_unix_ms == 0 && task_state == "running")))
+      return stop(Result::Stopped, "signal is not accepting input");
   }
   if (out->expires_unix_ms > 0 && out->expires_unix_ms <= now) {
     auto s = query(db_, "UPDATE workflow_signals SET state='expired',resolved_unix_ms=? WHERE signal_id=? AND state='waiting'");
@@ -184,7 +216,9 @@ AgentDb::WorkflowSignalResolution AgentDb::resolve_workflow_signal(const Workflo
         !agent_db_bind_text(s.get(), 5, out->signal_id) ||
         !agent_db_step_done(s.get()) || sqlite3_changes(db_) != 1) return stop(Result::StorageError, "cannot record signal");
   }
-  {
+  // Before activation, only persist input. Never advance a dependency, schedule,
+  // attempt or condition; the scheduler remains the sole activation authority.
+  if (out->activated_unix_ms > 0) {
     auto s = query(db_, "UPDATE workflow_tasks SET ready_unix_ms=?,updated_unix_ms=? WHERE workflow_id=? AND task_id=? AND status='queued'");
     if (!s || !agent_db_bind_i64(s.get(), 1, now) || !agent_db_bind_i64(s.get(), 2, now) ||
         !agent_db_bind_text(s.get(), 3, out->workflow_id) || !agent_db_bind_text(s.get(), 4, out->task_id) ||

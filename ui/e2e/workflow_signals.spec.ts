@@ -26,11 +26,15 @@ test("guided signal authoring runs exact pinned native SOP without implicit effe
   await page.getByLabel("Signal name",{exact:true}).fill("inspection.finished");
   await page.getByLabel("Signal label",{exact:true}).fill("Inspection ready");
   await page.getByLabel("Signal expiry (milliseconds)",{exact:true}).fill("10000");
+  const early=page.getByRole("checkbox",{name:"Accept input before this action is ready",exact:true});
+  await expect(early).not.toBeChecked();
+  await early.check(); await early.uncheck(); await early.check();
   await page.getByText("Advanced process configuration",{exact:true}).click();
   const raw=page.getByTestId("workflow-composer-json");
   const draft=JSON.parse(await raw.inputValue());
   const signal=draft.sop.stages.flatMap((s:any)=>s.actions).find((a:any)=>a.kind==="signal");
   signal.max_attempts=2;
+  draft.sop.stages.unshift({id:"prepare",actions:[{task_id:"prepare",kind:"delay",delay_ms:500}]});
   await raw.fill(JSON.stringify(draft));
   await page.getByLabel("Signal label",{exact:true}).fill("Inspection ready");
   expect(JSON.parse(await raw.inputValue()).sop.stages.flatMap((s:any)=>s.actions).find((a:any)=>a.kind==="signal").max_attempts).toBe(2);
@@ -40,6 +44,7 @@ test("guided signal authoring runs exact pinned native SOP without implicit effe
   await page.getByRole("button",{name:"Submit workflow",exact:true}).click();
   await expect.poll(()=>!!submitted).toBe(true);
   expect(writes).toBe(1);
+  expect(submitted.sop.stages.flatMap((s:any)=>s.actions).find((a:any)=>a.kind==="signal").signal.accept_before_activation).toBe(true);
   const output=execFileSync("python3",["../tests/workflow_authored_signal_smoke.py",process.env.AGENT_SIGNAL_TEST_BINARY || "../build-snapshot/agentd"],{
     input:JSON.stringify(submitted),encoding:"utf8",timeout:45000,
   });
@@ -60,8 +65,8 @@ test("signal progress is read-only, bounded and keeps delivery identities collap
     if(path==="/api/v1/workflows")return route.fulfill({json:{ok:true,workflows:[workflow]}});
     if(path==="/api/v1/workflow")return route.fulfill({json:{ok:true,workflow,tasks:[],signals:[{
       workflow_id:"signal-progress",task_id:"external-result",signal_id:"ws_exact-identity",request_hash:"sha256:source",
-      name:"inspection.finished",title:"Inspection result",state:phase,available:phase==="waiting",created_unix_ms:1000,
-      ...(phase==="resolved"?{payload_hash:"sha256:accepted"}:{}),
+      name:"inspection.finished",title:"Inspection result",state:phase,available:phase==="waiting"||phase==="pending",created_unix_ms:1000,
+      ...(["resolved","buffered","unused"].includes(phase)?{payload_hash:"sha256:accepted"}:{}),
     }]}});
     return route.fulfill({json:{ok:true,features:{},sessions:[],tools:[],messages:[],runs:[],events:[],workflows:[],schedules:[],prefs:{}}});
   });
@@ -72,7 +77,7 @@ test("signal progress is read-only, bounded and keeps delivery identities collap
   await expect(card.getByText("ws_exact-identity",{exact:true})).not.toBeVisible();
   await card.getByText("Delivery details",{exact:true}).click();
   await expect(card.getByText("ws_exact-identity",{exact:true})).toBeVisible();
-  for(const [state,label] of [["resolved","Input received"],["expired","Expired without input"],["stopped","Stopped"]]){
+  for(const [state,label] of [["pending","Accepting early input"],["buffered","Input saved; waiting for earlier steps"],["unused","Action did not run"],["resolved","Input received"],["expired","Expired without input"],["stopped","Stopped"]]){
     phase=state;await page.getByTestId("workflow-detail-panel").getByRole("button",{name:"Reload",exact:true}).click();
     await expect(card).toContainText(label);
   }

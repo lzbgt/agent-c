@@ -2322,14 +2322,16 @@
 /api/v1/workflow/signal:
   post:
     tags: [workflows]
-    summary: Deliver one immutable JSON input to an activated signal wait
+    summary: Deliver one immutable JSON input to an activated wait or opt-in early slot
     description: |
       Authenticated daemon boundary. Maximum 32 KiB body and 16 KiB compact JSON
       payload. Exact workflow/task/signal identity is required; names alone do not
       route events. Identical delivery key and payload returns the saved receipt,
       including after a stop, without waking or clearing cancellation. Conflicting
-      deliveries, expired/stopped waits and pre-activation delivery are rejected.
-      No publisher-specific permission, broadcast, secret storage or external
+      deliveries and expired/stopped waits are rejected. Only explicitly opted-in
+      signal actions accept input before activation; early receipt does not advance
+      readiness, bypass dependencies/conditions or start expiry. No input before
+      workflow submission, publisher-specific permission, broadcast, secret storage or external
       exactly-once guarantee is implied.
     requestBody:
       required: true
@@ -2344,7 +2346,7 @@
             schema: { $ref: "#/components/schemas/WorkflowSignalResponse" }
       "400": { description: Invalid identity, payload or size bound }
       "401": { description: Authentication required }
-      "404": { description: Signal not found or not yet activated }
+      "404": { description: Signal not found or not activated without early-delivery opt-in }
       "409": { description: Conflicting delivery, identity mismatch, expiry or stopped workflow }
       "500": { description: Storage or integrity failure }
       "503": { description: Database unavailable }

@@ -190,7 +190,7 @@ with tempfile.TemporaryDirectory(prefix="sop-registry-") as temp:
         call("/api/v1/workflow/submit", {"sop_ref": {"id": "inspection", "version": "invalid-action"}}, expected=400)
         stop()
         with sqlite3.connect(database) as db:
-            assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "42"
+            assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "43"
             assert db.execute("SELECT count(*) FROM workflow_sop_definitions WHERE sop_json LIKE '%fixture-do-not-store%'").fetchone()[0] == 0
             db.execute("UPDATE workflow_sop_definitions SET sop_json='{}' WHERE version='1'")
         start()

@@ -430,11 +430,13 @@ bool AgentDb::recover_inflight_workflows(int64_t now_unix_ms, std::string* out_e
 #endif
 }
 
-bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks, std::string* out_error) {
+bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks,
+    std::string* out_error, const std::vector<WorkflowSignalRow>& signals) {
   if (out_error) out_error->clear();
 #if !defined(AGENT_HAVE_SQLITE3)
   (void)wf;
   (void)tasks;
+  (void)signals;
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
@@ -449,6 +451,14 @@ bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowT
   if (tasks.empty()) {
     if (out_error) *out_error = "create_workflow: tasks empty";
     return false;
+  }
+
+  for (const auto& signal : signals) {
+    if (signal.workflow_id != wf.workflow_id || !std::any_of(tasks.begin(), tasks.end(),
+        [&](const WorkflowTaskRow& task) { return task.task_id == signal.task_id; })) {
+      if (out_error) *out_error = "create_workflow: signal does not identify a submitted task";
+      return false;
+    }
   }
 
   const int64_t now = wf.updated_unix_ms > 0 ? wf.updated_unix_ms : agent_db_unix_ms_now();
@@ -558,6 +568,13 @@ bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowT
     }
   }
 
+  // Mailboxes and tasks become visible together. A failed slot insert rolls back
+  // the entire submission, so clients never observe a partially initialized run.
+  if (ok) {
+    for (const auto& signal : signals) {
+      if (!seed_workflow_signal_locked(signal, created, out_error)) { ok = false; break; }
+    }
+  }
   if (ok) {
     ok = exec_locked("COMMIT;", out_error);
   } else {

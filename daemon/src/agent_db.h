@@ -556,7 +556,15 @@ class AgentDb {
   };
 
   // Inserts a workflow and its tasks in a single transaction.
-  bool create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks, std::string* out_error);
+  struct WorkflowSignalRow {
+    std::string signal_id, workflow_id, task_id, request_hash, spec_json, state;
+    int64_t created_unix_ms = 0, expires_unix_ms = 0, resolved_unix_ms = 0, activated_unix_ms = 0;
+    std::string payload_json, payload_hash, delivery_id;
+  };
+  // Service supplies validated early-signal definitions. Slots commit with tasks;
+  // keeping JSON validation above this layer preserves the standalone DB boundary.
+  bool create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks,
+    std::string* out_error, const std::vector<WorkflowSignalRow>& signals = {});
   bool get_workflow(const std::string& workflow_id, WorkflowRow* out_row, std::string* out_error);
   bool get_workflow_by_idempotency_key(
     const std::string& session_id_or_empty,
@@ -1106,12 +1114,7 @@ class AgentDb {
     const std::string& choice_id, const std::string& outcome, const std::string& note,
     const std::string& delivery_id, WorkflowDecisionRow* out, std::string* error);
 
-  struct WorkflowSignalRow {
-    std::string signal_id, workflow_id, task_id, request_hash, spec_json, state;
-    int64_t created_unix_ms = 0, expires_unix_ms = 0, resolved_unix_ms = 0;
-    std::string payload_json, payload_hash, delivery_id;
-  };
-  // Atomically arm/yield without a worker or grant; immutable delivery wakes only this task.
+  // Atomically activate/arm/yield without a worker or grant. Early input never advances readiness.
   bool prepare_workflow_signal(const WorkflowTaskRow&, const WorkflowSignalRow&,
     int64_t timeout_ms, WorkflowSignalRow*, bool* yielded, std::string* error);
   bool get_workflow_signal(const std::string& workflow_id, const std::string& task_id,
@@ -1124,6 +1127,8 @@ class AgentDb {
     WorkflowSignalRow*, std::string* error);
 
  private:
+  // Called only inside the workflow creation transaction; never changes task readiness.
+  bool seed_workflow_signal_locked(const WorkflowSignalRow&, int64_t created, std::string* error);
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);
   bool upsert_session_locked(const std::string& session_id, int64_t now_unix_ms, std::string* out_error);

@@ -1960,7 +1960,21 @@ void workflow_submit_handle(
   }
 
   std::string db_err;
-  if (!db_or_null->create_workflow(wf, rows, &db_err)) {
+  std::vector<AgentDb::WorkflowSignalRow> signal_slots;
+  for (const auto& task : rows) {
+    Json::Value request;
+    if (!json_parse_object(task.request_json, &request, &db_err)) {
+      resp->status = 500; resp->body = json_error_body("cannot read validated task"); return;
+    }
+    if (request.get("kind", "").asString() != "signal" ||
+        !request["signal"].get("accept_before_activation", false).asBool()) continue;
+    AgentDb::WorkflowSignalRow slot;
+    if (!workflow_signal_definition(wf.workflow_id, task.task_id, request["signal"], &slot, &db_err)) {
+      resp->status = 500; resp->body = json_error_body("cannot prepare signal mailbox"); return;
+    }
+    signal_slots.push_back(std::move(slot));
+  }
+  if (!db_or_null->create_workflow(wf, rows, &db_err, signal_slots)) {
     if (!idempotency_key.empty()) {
       const std::string session_scope = allow_sessions ? session_id : "";
       AgentDb::WorkflowRow existing;

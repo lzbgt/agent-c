@@ -3833,13 +3833,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Deliver one immutable JSON input to an activated signal wait
+         * Deliver one immutable JSON input to an activated wait or opt-in early slot
          * @description Authenticated daemon boundary. Maximum 32 KiB body and 16 KiB compact JSON
          *     payload. Exact workflow/task/signal identity is required; names alone do not
          *     route events. Identical delivery key and payload returns the saved receipt,
          *     including after a stop, without waking or clearing cancellation. Conflicting
-         *     deliveries, expired/stopped waits and pre-activation delivery are rejected.
-         *     No publisher-specific permission, broadcast, secret storage or external
+         *     deliveries and expired/stopped waits are rejected. Only explicitly opted-in
+         *     signal actions accept input before activation; early receipt does not advance
+         *     readiness, bypass dependencies/conditions or start expiry. No input before
+         *     workflow submission, publisher-specific permission, broadcast, secret storage or external
          *     exactly-once guarantee is implied.
          */
         post: {
@@ -3878,7 +3880,7 @@ export interface paths {
                     };
                     content?: never;
                 };
-                /** @description Signal not found or not yet activated */
+                /** @description Signal not found or not activated without early-delivery opt-in */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -10924,8 +10926,9 @@ export interface components {
         /**
          * @description Single-use external input after dependencies complete. Waiting occupies no worker,
          *     attempt or execution budget. Delivery is authenticated at the daemon boundary,
-         *     not per-publisher authorization or a tool permission. No pre-activation mailbox,
-         *     broadcast or implicit event matching. allow_error=true is rejected.
+         *     not per-publisher authorization or a tool permission. Opt-in early delivery
+         *     retains one input from submission without bypassing dependencies or conditions.
+         *     No broadcast or implicit event matching. allow_error=true is rejected.
          */
         WorkflowTaskSignalSpec: {
             task_id: string;
@@ -10944,6 +10947,11 @@ export interface components {
                 /** @description At most 256 UTF-8 bytes; no NUL. */
                 title?: string;
                 /**
+                 * @description Open one immutable input slot atomically with submission. Early input never advances readiness or bypasses dependencies, conditions, owner stops or deadlines.
+                 * @default false
+                 */
+                accept_before_activation: boolean;
+                /**
                  * Format: int64
                  * @description Starts on first activation after dependencies; zero is indefinite. Cancellation and workflow deadline remain effective.
                  * @default 0
@@ -10959,9 +10967,15 @@ export interface components {
             name: string;
             title?: string;
             /** @enum {string} */
-            state: "waiting" | "resolved" | "expired" | "stopped";
+            state: "pending" | "buffered" | "unused" | "waiting" | "resolved" | "expired" | "stopped";
             /** @description Advisory projection; delivery transaction checks live task state, expiry and cancellation. */
             available: boolean;
+            accept_before_activation?: boolean;
+            /**
+             * Format: int64
+             * @description First scheduler activation after dependencies and condition pass; absent before activation.
+             */
+            activated_unix_ms?: number;
             /** Format: int64 */
             created_unix_ms: number;
             /** Format: int64 */

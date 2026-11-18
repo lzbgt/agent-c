@@ -3,7 +3,7 @@ import json,os,socket,sqlite3,subprocess,sys,tempfile,time,urllib.request
 from pathlib import Path
 source=json.load(sys.stdin);binary=str(Path(sys.argv[1]).resolve())
 action=next(a for s in source["sop"]["stages"] for a in s["actions"] if a["kind"]=="signal")
-assert action["signal"]=={"name":"inspection.finished","title":"Inspection ready","timeout_ms":10000}
+assert action["signal"]=={"name":"inspection.finished","title":"Inspection ready","timeout_ms":10000,"accept_before_activation":True}
 assert action["max_attempts"]==2
 opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
 with socket.socket() as s:s.bind(("127.0.0.1",0));port=s.getsockname()[1]
@@ -30,11 +30,12 @@ with tempfile.TemporaryDirectory(prefix="authored-signal-") as root:
     ready=next((s for s in detail["signals"] if s["available"]),None)
     if ready:break
     time.sleep(.025)
-   assert ready and ready["name"]=="inspection.finished" and ready["title"]=="Inspection ready",detail
+   assert ready and ready["state"]=="pending" and ready["name"]=="inspection.finished" and ready["title"]=="Inspection ready",detail
    assert next(t for t in detail["tasks"] if t["task_id"]==action["task_id"])["attempt"]==0
    payload={k:ready[k] for k in ("workflow_id","task_id","signal_id")}
    payload.update(idempotency_key="browser-authored-result",payload={"result":"accepted","measurements":[1,2,3]})
-   assert call("/api/v1/workflow/signal",payload)["replayed"] is False
+   receipt=call("/api/v1/workflow/signal",payload)
+   assert receipt["replayed"] is False and receipt["signal"]["state"]=="buffered"
    for _ in range(300):
     detail=call("/api/v1/workflow?workflow_id="+wid+"&include_tasks=1&include_results=1")
     if detail["workflow"]["status"] in ("done","error","cancelled"):break

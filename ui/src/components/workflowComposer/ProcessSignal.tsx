@@ -12,6 +12,10 @@ export default function ProcessSignal({ spec, onChange }: { spec: Spec; onChange
     <label className="block">Signal expiry (milliseconds)<input className={field} type="number" min="0" max="2592000000" step="1" value={spec.timeout_ms ?? 0} onChange={e => {
       if (e.target.value !== "") onChange({ ...spec, timeout_ms: Number(e.target.value) });
     }} /></label>
+    <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={spec.accept_before_activation === true} onChange={e => {
+      const next = { ...spec }; if (e.target.checked) next.accept_before_activation = true; else delete next.accept_before_activation; onChange(next);
+    }} />Accept input before this action is ready</label>
+    {spec.accept_before_activation === true ? <p className="text-xs text-white/60">After submission, keep one early input for this exact action. Earlier steps and this action's condition still decide whether it runs. An unused input does not release the process.</p> : null}
     {!validName ? <p role="alert">Choose a signal name using 1–128 letters, digits, dots, colons, underscores or hyphens.</p> : null}
     <p className="text-xs text-white/60">Expiry starts when this action becomes ready; zero waits indefinitely. An authenticated connected system must deliver one JSON result to the run's exact signal identity. Names alone do not route events. Editing does not send input or run the process.</p>
   </div>;

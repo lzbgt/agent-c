@@ -110,8 +110,9 @@ WorkflowTaskSignalSpec:
   description: |
     Single-use external input after dependencies complete. Waiting occupies no worker,
     attempt or execution budget. Delivery is authenticated at the daemon boundary,
-    not per-publisher authorization or a tool permission. No pre-activation mailbox,
-    broadcast or implicit event matching. allow_error=true is rejected.
+    not per-publisher authorization or a tool permission. Opt-in early delivery
+    retains one input from submission without bypassing dependencies or conditions.
+    No broadcast or implicit event matching. allow_error=true is rejected.
   properties:
     task_id: { type: string }
     kind: { type: string, enum: [signal] }
@@ -127,6 +128,10 @@ WorkflowTaskSignalSpec:
       properties:
         name: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_.:-]+$" }
         title: { type: string, minLength: 1, maxLength: 256, description: "At most 256 UTF-8 bytes; no NUL." }
+        accept_before_activation:
+          type: boolean
+          default: false
+          description: Open one immutable input slot atomically with submission. Early input never advances readiness or bypasses dependencies, conditions, owner stops or deadlines.
         timeout_ms:
           type: integer
           format: int64
@@ -145,8 +150,10 @@ WorkflowSignal:
     request_hash: { type: string }
     name: { type: string }
     title: { type: string }
-    state: { type: string, enum: [waiting, resolved, expired, stopped] }
+    state: { type: string, enum: [pending, buffered, unused, waiting, resolved, expired, stopped] }
     available: { type: boolean, description: "Advisory projection; delivery transaction checks live task state, expiry and cancellation." }
+    accept_before_activation: { type: boolean }
+    activated_unix_ms: { type: integer, format: int64, description: "First scheduler activation after dependencies and condition pass; absent before activation." }
     created_unix_ms: { type: integer, format: int64 }
     expires_unix_ms: { type: integer, format: int64 }
     resolved_unix_ms: { type: integer, format: int64 }

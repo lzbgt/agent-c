@@ -14,7 +14,7 @@ When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canon
 - durable scene snapshots (`scene_states`)
 - durable async job metadata (`jobs`)
 - durable workflows (`workflows`, `workflow_tasks`, `workflow_events`)
-- durable activated external-signal waits (`workflow_signals`, schema v42), with a single immutable authenticated delivery receipt and atomic task wakeup. Payloads are durable application data, not credentials storage. See [WORKFLOW_SIGNALS.md](WORKFLOW_SIGNALS.md).
+- durable external-signal waits and opt-in submit-time input slots (`workflow_signals`, schema v43), with a single immutable authenticated delivery receipt and atomic task wakeup. Payloads are durable application data, not credentials storage. See [WORKFLOW_SIGNALS.md](WORKFLOW_SIGNALS.md).
 - worker-free delay timers (`workflow_delay_timers`, schema v40) and task/turn-scoped guarded effect receipts (`workflow_effects.effect_slot`, schema v41). See [WORKFLOWS.md](WORKFLOWS.md) and [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md).
 - durable process decisions (`workflow_decisions`, schema v38), unique by workflow/task, with worker-free waits, one immutable configured answer and atomic task wakeup. Notes are durable application data, not secrets. See [WORKFLOW_DECISIONS.md](WORKFLOW_DECISIONS.md).
 - immutable saved SOP versions (`workflow_sop_definitions`, schema v37), unique by `(definition_id, version)` with canonical source hash and keyset-paged metadata. Exact versions are copied into submitted workflow snapshots. Definitions are not credentials storage; known inline credential fields are rejected. See [SOP_WORKFLOWS.md](SOP_WORKFLOWS.md).
@@ -106,7 +106,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v42)
+## Schema (v43)
 
 ### `edge_task_receipts`
 
@@ -474,12 +474,12 @@ First wait creation and worker/attempt release are one transaction. First answer
 
 - `signal_id TEXT PRIMARY KEY`; stable identity binds workflow, task and canonical signal definition hash.
 - `workflow_id TEXT NOT NULL`, `task_id TEXT NOT NULL`; unique pair and cascading foreign key to `workflow_tasks`.
-- `request_hash TEXT NOT NULL`, `spec_json TEXT NOT NULL`; integrity-checked normalized signal name/title/timeout.
+- `request_hash TEXT NOT NULL`, `spec_json TEXT NOT NULL`; integrity-checked normalized signal name/title/timeout and optional early-delivery flag.
 - `state TEXT NOT NULL`: `waiting|resolved|expired`. `stopped` is a read projection from authoritative workflow/task state.
 - `created_unix_ms INTEGER NOT NULL`, `expires_unix_ms INTEGER NOT NULL DEFAULT 0`, `resolved_unix_ms INTEGER NOT NULL DEFAULT 0`.
 - `payload_json TEXT NOT NULL DEFAULT ''`, `payload_hash TEXT NOT NULL DEFAULT ''`, `delivery_id TEXT NOT NULL DEFAULT ''`.
 
-Activation and worker/attempt release are one transaction. First delivery commits the payload, hash, idempotency identity and queued-task wakeup atomically. Identical historical receipt replays never mutate workflow cancellation or task readiness. The read projection omits payload content; a completed task result contains the accepted payload. These are bounded single-use waits, not preactivation queues or broadcast mailboxes. See [signal contract](WORKFLOW_SIGNALS.md).
+Schema 43 adds `activated_unix_ms`, initially zero for opt-in submit-time slots. Existing schema 42 rows retain their original activation, identity and receipt. Slot creation commits with workflow/tasks; activation and worker/attempt release are one transaction. Early delivery commits one payload/hash/key without touching task readiness. Once activated, first delivery also wakes its queued task atomically. Identical historical receipt replays never mutate cancellation or readiness. Read projections distinguish pending, buffered and unused slots without exposing payload content; only an executed task result contains the input. These are bounded per-action slots after submission, not a general inbox or broadcast bus. See [signal contract](WORKFLOW_SIGNALS.md).
 
 ### `workflow_delay_timers`
 

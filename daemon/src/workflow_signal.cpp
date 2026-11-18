@@ -57,6 +57,8 @@ bool verified(const AgentDb::WorkflowSignalRow& row, Json::Value* spec) {
   if (!json_parse_object(row.spec_json, spec, &error) || !workflow_signal_validate(*spec, &error)) return false;
   const auto expected = definition(row.workflow_id, row.task_id, *spec);
   if (expected.request_hash.empty() || row.request_hash != expected.request_hash || row.signal_id != expected.signal_id) return false;
+  if (row.activated_unix_ms < 0 || (!row.activated_unix_ms &&
+      (!spec->get("accept_before_activation", false).asBool() || row.expires_unix_ms || row.state == "expired"))) return false;
   if (row.state == "resolved") {
     Json::Value payload;
     return row.payload_json.size() <= 16384 && json_parse_object(row.payload_json, &payload, &error) &&
@@ -69,6 +71,9 @@ Json::Value metadata(const AgentDb::WorkflowSignalRow& row, const Json::Value& s
   out["workflow_id"] = row.workflow_id; out["task_id"] = row.task_id;
   out["signal_id"] = row.signal_id; out["request_hash"] = row.request_hash;
   out["name"] = spec["name"]; out["state"] = row.state;
+  out["accept_before_activation"] = spec.get("accept_before_activation", false);
+  if (row.activated_unix_ms > 0) out["activated_unix_ms"] = Json::Int64(row.activated_unix_ms);
+  else out["state"] = row.state == "resolved" ? "buffered" : "pending";
   if (spec.isMember("title")) out["title"] = spec["title"];
   out["available"] = false;
   out["created_unix_ms"] = Json::Int64(row.created_unix_ms);
@@ -94,13 +99,22 @@ Json::Value failure(const std::string& message) {
 bool workflow_signal_validate(const Json::Value& spec, std::string* error) {
   if (error) error->clear();
   const auto fail = [&](const std::string& message) { if (error) *error = "invalid signal: " + message; return false; };
-  if (!spec.isObject() || !fields(spec, {"name", "title", "timeout_ms"}))
-    return fail("expected name, optional title and timeout_ms");
+  if (!spec.isObject() || !fields(spec, {"name", "title", "timeout_ms", "accept_before_activation"}))
+    return fail("expected name, optional title, timeout_ms and accept_before_activation");
+  if (spec.isMember("accept_before_activation") && !spec["accept_before_activation"].isBool())
+    return fail("accept_before_activation must be a Boolean");
   if (!safe_id(spec["name"], 128)) return fail("name must be an id-safe string of 1..128 bytes");
   if (spec.isMember("title") && !bounded_text(spec["title"], 1, 256)) return fail("title must be 1..256 bytes without NUL");
   if (spec.isMember("timeout_ms") && (!spec["timeout_ms"].isInt64() || spec["timeout_ms"].asInt64() < 0 ||
       spec["timeout_ms"].asInt64() > 2592000000LL)) return fail("timeout_ms must be an integer from 0 to 2592000000");
   return true;
+}
+
+bool workflow_signal_definition(const std::string& workflow, const std::string& task,
+    const Json::Value& spec, AgentDb::WorkflowSignalRow* out, std::string* error) {
+  if (!out || !workflow_signal_validate(spec, error)) return false;
+  *out = definition(workflow, task, spec);
+  return !out->request_hash.empty() && !out->signal_id.empty();
 }
 
 Json::Value workflow_signal_step(AgentDb* db, const AgentDb::WorkflowTaskRow& task,
@@ -144,9 +158,12 @@ bool workflow_signals_projection(AgentDb* db, const AgentDb::WorkflowRow& workfl
     Json::Value spec;
     if (!verified(row, &spec)) { if (error) *error = "stored signal integrity check failed"; return false; }
     auto value = metadata(row, spec);
-    if (row.state == "waiting") {
-      std::string status;
-      for (const auto& task : tasks) if (task.task_id == row.task_id) status = task.status;
+    std::string status;
+    for (const auto& task : tasks) if (task.task_id == row.task_id) status = task.status;
+    if (!row.activated_unix_ms) {
+      if (!active || (status != "queued" && status != "running")) value["state"] = "unused";
+      else value["available"] = row.state == "waiting";
+    } else if (row.state == "waiting") {
       if (!active || (status != "queued" && status != "running")) value["state"] = "stopped";
       else if (row.expires_unix_ms > 0 && row.expires_unix_ms <= now) value["state"] = "expired";
       else value["available"] = status == "queued";

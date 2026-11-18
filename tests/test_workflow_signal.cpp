@@ -59,6 +59,8 @@ int main() {
   }
   auto bad = spec(); bad["timeout_ms"] = Json::Int64(2592000001LL);
   check(!workflow_signal_validate(bad, &error), "oversized expiry admitted");
+  bad = spec(); bad["accept_before_activation"]="true";
+  check(!workflow_signal_validate(bad,&error),"nonboolean mailbox admitted");
   bad = spec(); bad["actor"] = "owner"; check(!workflow_signal_validate(bad, &error), "caller identity admitted");
   bad = spec(); bad["title"] = std::string("bad\0title", 9);
   check(!workflow_signal_validate(bad, &error), "NUL title admitted");
@@ -81,6 +83,74 @@ int main() {
   sql(path,"UPDATE workflow_tasks SET status='running',attempt=1 WHERE task_id='input';");
   output = workflow_signal_step(&db,task(db,"input"),spec(),&yielded);
   check(!yielded && output["ok"] == true && output["payload"]["count"] == 3 && output["elapsed_ms"] == 0,"receipt did not resume exactly");
+
+  // Upgrade a real v42 signal row without changing its identity, expiry or receipt.
+  db.close(); sql(path, "ALTER TABLE workflow_signals DROP COLUMN activated_unix_ms; UPDATE meta SET value='42' WHERE key='schema_version';");
+  check(db.open(path,&error),error);
+  check(db.get_workflow_signal("signals","input",&saved,&error) && saved.signal_id==identity &&
+    saved.payload_json==payload && saved.payload_hash==hash && saved.activated_unix_ms==saved.created_unix_ms,
+    "v42 migration altered original receipt");
+  check(db.resolve_workflow_signal(saved,payload,hash,"delivery-1",&row,&error)==Result::Replayed,error);
+
+  // Submission and its opt-in slot are atomic. A failed insert leaves no run/task.
+  AgentDb::WorkflowRow early_wf=wf;early_wf.workflow_id="mailbox-atomic";
+  AgentDb::WorkflowTaskRow early_task;
+  early_task.workflow_id=early_wf.workflow_id;early_task.task_id="input";early_task.status="queued";
+  early_task.depends_on_json="[]";early_task.ready_unix_ms=9876543210000LL;
+  auto early_spec=spec();early_spec["accept_before_activation"]=true;early_spec["timeout_ms"]=1000;
+  Json::Value early_request;early_request["kind"]="signal";early_request["signal"]=early_spec;
+  early_task.request_json=Json::writeString(Json::StreamWriterBuilder(),early_request);
+  AgentDb::WorkflowSignalRow early_definition;
+  check(workflow_signal_definition(early_wf.workflow_id,early_task.task_id,early_spec,&early_definition,&error),error);
+  sql(path,"CREATE TRIGGER fail_signal_slot BEFORE INSERT ON workflow_signals WHEN NEW.workflow_id='mailbox-atomic' BEGIN SELECT RAISE(ABORT,'injected mailbox insert failure'); END;");
+  check(!db.create_workflow(early_wf,{early_task},&error,{early_definition}),"partial mailbox submit accepted");
+  AgentDb::WorkflowRow absent;
+  check(!db.get_workflow(early_wf.workflow_id,&absent,&error),"failed mailbox submit persisted run");
+  std::vector<AgentDb::WorkflowTaskRow> early_tasks;
+  check(db.list_workflow_tasks(early_wf.workflow_id,&early_tasks,&error)&&early_tasks.empty(),"failed mailbox submit persisted task");
+  sql(path,"DROP TRIGGER fail_signal_slot;");
+  check(db.create_workflow(early_wf,{early_task},&error,{early_definition}),error);
+  check(db.get_workflow_signal(early_wf.workflow_id,"input",&row,&error) &&
+    row.activated_unix_ms==0 && row.expires_unix_ms==0,error);
+  Json::Value projection;
+  check(workflow_signals_projection(&db,early_wf,&projection,&error)&&projection.size()==1&&
+    projection[0]["state"]=="pending"&&projection[0]["available"]==true,"missing early slot projection");
+  // A receipt write fault cannot partially publish a payload or alter readiness.
+  sql(path,"CREATE TRIGGER fail_signal_receipt BEFORE UPDATE OF payload_json ON workflow_signals WHEN NEW.workflow_id='mailbox-atomic' BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
+  check(db.resolve_workflow_signal(row,payload,hash,"early-delivery",&saved,&error)==Result::StorageError,"receipt fault not surfaced");
+  check(db.get_workflow_signal(early_wf.workflow_id,"input",&saved,&error)&&saved.state=="waiting"&&saved.payload_json.empty(),"partial early receipt persisted");
+  sql(path,"DROP TRIGGER fail_signal_receipt;");
+  check(db.resolve_workflow_signal(row,payload,hash,"early-delivery",&saved,&error)==Result::Recorded,error);
+  check(db.list_workflow_tasks(early_wf.workflow_id,&early_tasks,&error)&&early_tasks.size()==1&&
+    early_tasks[0].ready_unix_ms==9876543210000LL&&early_tasks[0].attempt==0&&early_tasks[0].status=="queued",
+    "early delivery advanced task");
+  check(workflow_signals_projection(&db,early_wf,&projection,&error)&&projection[0]["state"]=="buffered"&&
+    projection[0]["available"]==false&&!projection[0].isMember("payload"),"buffered projection leaked payload or accepted another input");
+
+  // A delivery racing the scheduler's first claim must see either the unactivated
+  // running slot or the atomically yielded wait, never a lost input window.
+  {
+    AgentDb peer;check(peer.open(path,&error),error);
+    for (int iteration=0;iteration<8;++iteration) {
+      auto racing_wf=early_wf;racing_wf.workflow_id="activation-race-"+std::to_string(iteration);
+      auto claimed=early_task;claimed.workflow_id=racing_wf.workflow_id;claimed.status="running";claimed.attempt=1;
+      AgentDb::WorkflowSignalRow racing_definition;
+      check(workflow_signal_definition(racing_wf.workflow_id,claimed.task_id,early_spec,&racing_definition,&error),error);
+      check(db.create_workflow(racing_wf,{claimed},&error,{racing_definition}),error);
+      AgentDb::WorkflowSignalRow pending,delivered;
+      check(db.get_workflow_signal(racing_wf.workflow_id,"input",&pending,&error),error);
+      Json::Value action;bool did_yield=false;Result delivery=Result::StorageError;std::string delivery_error;
+      std::thread activation([&]{action=workflow_signal_step(&db,claimed,early_spec,&did_yield);});
+      std::thread arrival([&]{delivery=peer.resolve_workflow_signal(pending,payload,hash,"activation-race",&delivered,&delivery_error);});
+      activation.join();arrival.join();
+      check(delivery==Result::Recorded,delivery_error);
+      check(did_yield || (action["ok"]==true && action["payload"]["count"]==3),"activation race lost buffered result");
+      check(db.get_workflow_signal(racing_wf.workflow_id,"input",&saved,&error)&&
+        saved.state=="resolved"&&saved.activated_unix_ms>0&&saved.payload_json==payload,"activation race lost receipt");
+      check(peer.resolve_workflow_signal(pending,payload,hash,"activation-race",&delivered,&delivery_error)==Result::Replayed,
+        "activation race changed immutable identity");
+    }
+  }
 
   auto timed=spec(); timed["timeout_ms"]=1000;
   workflow_signal_step(&db,task(db,"timeout"),timed,&yielded); check(yielded,"expiry wait");

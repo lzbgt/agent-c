@@ -451,7 +451,7 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
               UPDATE meta SET value='40' WHERE key='schema_version';
             """)
         start()
-        assert sql("SELECT value FROM meta WHERE key='schema_version'")[0][0] == "42"
+        assert sql("SELECT value FROM meta WHERE key='schema_version'")[0][0] == "43"
         assert sql("SELECT request_hash,receipt_json,effect_slot FROM workflow_effects WHERE effect_id='legacy-fixture'") == [("original-hash","original-receipt","")]
         print("PASS delegated distinct child journals, crash replay, transient retry, stop-on-uncertainty, bounded fresh usage and v40 migration")
     except BaseException:

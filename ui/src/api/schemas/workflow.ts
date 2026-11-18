@@ -79,7 +79,8 @@ export type WorkflowDecision = z.infer<typeof WorkflowDecisionSchema>;
 export const WorkflowSignalSchema = z.object({
   workflow_id: z.string(), task_id: z.string(), signal_id: z.string(), request_hash: z.string(),
   name: z.string(), title: z.string().optional(),
-  state: z.enum(["waiting", "resolved", "expired", "stopped"]), available: z.boolean(),
+  state: z.enum(["pending", "buffered", "unused", "waiting", "resolved", "expired", "stopped"]), available: z.boolean(),
+  accept_before_activation: z.boolean().optional(), activated_unix_ms: z.number().optional(),
   created_unix_ms: z.number(), expires_unix_ms: z.number().optional(),
   resolved_unix_ms: z.number().optional(), payload_hash: z.string().optional(),
 });

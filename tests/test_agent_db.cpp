@@ -481,9 +481,12 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_decisions';");
   const int64_t workflow_signals_tbl =
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_signals';");
+  const int64_t workflow_signal_activation_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_signals') WHERE name='activated_unix_ms';");
   sqlite3_close(raw2);
-  assert(ver == 42);
+  assert(ver == 43);
   assert(workflow_signals_tbl == 1);
+  assert(workflow_signal_activation_cols == 1);
   assert(workflow_decisions_tbl == 1);
   assert(sop_definitions_tbl == 1);
   assert(device_receipts_tbl == 1);

@@ -107,7 +107,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 42;
+  const int kSchemaVersion = 43;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -1097,6 +1097,22 @@ CREATE TABLE IF NOT EXISTS workflow_signals(
 )SQL";
     if (!exec_locked(schema_v42, out_error)) return false;
     cur_ver = 42;
+  }
+
+  if (cur_ver < 43) {
+    // Existing v42 signals were created only at activation. Preserve their identity,
+    // expiry and delivery; new opt-in slots use zero until the scheduler activates.
+    if (!column_exists("workflow_signals", "activated_unix_ms")) {
+      const char* schema_v43 = R"SQL(
+BEGIN IMMEDIATE;
+ALTER TABLE workflow_signals ADD COLUMN activated_unix_ms INTEGER NOT NULL DEFAULT 0;
+UPDATE workflow_signals SET activated_unix_ms=created_unix_ms;
+INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','43');
+COMMIT;
+)SQL";
+      if (!exec_locked(schema_v43, out_error)) { exec_locked("ROLLBACK", nullptr); return false; }
+    }
+    cur_ver = 43;
   }
 
   // Record schema version.

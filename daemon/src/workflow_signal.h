@@ -4,6 +4,9 @@
 namespace agentd {
 // Explicit authenticated process input, not publisher authentication or a tool permission.
 bool workflow_signal_validate(const Json::Value& spec, std::string* error);
+// Validates and derives the exact normalized identity shared by submit and activation.
+bool workflow_signal_definition(const std::string& workflow, const std::string& task,
+  const Json::Value& spec, AgentDb::WorkflowSignalRow* out, std::string* error);
 Json::Value workflow_signal_step(AgentDb* db, const AgentDb::WorkflowTaskRow& task,
   const Json::Value& spec, bool* yielded);
 bool workflow_signals_projection(AgentDb* db, const AgentDb::WorkflowRow& workflow,
