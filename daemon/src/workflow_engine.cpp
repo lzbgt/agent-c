@@ -469,6 +469,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   // A complete, verified receipt prefix can finish without any new execution.
   // Pin those values before admission; the replay-only path never calls a provider.
   bool delegate_replay_only = false;
+  bool delegate_checkpoint = false;
   std::vector<Json::Value> delegate_receipts;
   if (out.isNull() && kind == "delegate" && rr["delegate"]["attempts"].isArray() &&
       !rr["delegate"]["attempts"].empty()) {
@@ -482,6 +483,9 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       auto receipt = saved.preflight();
       if (!receipt.isObject() || receipt["ok"] != true ||
           receipt["effect"]["state"] != "completed" || receipt["effect"]["replayed"] != true) {
+        // Only a validated frontier after a verified completed prefix may
+        // traverse cached work without fresh tool/provider-step capacity.
+        delegate_checkpoint = receipt.isNull() && saved.has_checkpoint();
         complete = false; break;
       }
       delegate_receipts.push_back(receipt);
@@ -506,7 +510,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     for (int i=0;i<4;i++) minimum[i]=demand[i]>0 ? 1:0;
     // A verified transcript may finish by replay alone or need only a provider
     // response. Zero new-call grants are enforced at the adapter frontier.
-    if (model_effect.has_checkpoint()) { minimum[0]=0; minimum[1]=0; }
+    if (model_effect.has_checkpoint() || delegate_checkpoint) { minimum[0]=0; minimum[1]=0; }
     std::string error;
     if (!db_->reserve_workflow_budget(wf_latest,task,configured_limits,demand,minimum,&budget_grant,&error)) {
       // No grant means no provider/tool execution and no authority to settle
@@ -672,14 +676,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       }
     }
   } else if (kind == "delegate") {
-    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
-      workflow_budget_exceeded_cancel("max_tool_calls_total");
-      return;
-    }
-    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
-      workflow_budget_exceeded_cancel("max_steps_total");
-      return;
-    }
+    // Child preflight below distinguishes saved work from fresh execution.
+    // Elapsed and token admission remain mandatory for partial continuation.
     if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
       workflow_budget_exceeded_cancel("max_elapsed_ms_total");
       return;
@@ -741,31 +739,6 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	            break;
 	          }
 
-	          if (wf_limits.max_tool_calls_total > 0 && remaining_local <= 0) {
-	            out["ok"] = false;
-	            out["assistant_text"] = "";
-	            out["error"] = "workflow budget exceeded: max_tool_calls_total";
-	            break;
-	          }
-	          if (wf_limits.max_steps_total > 0 && remaining_steps_local <= 0) {
-	            out["ok"] = false;
-	            out["assistant_text"] = "";
-	            out["error"] = "workflow budget exceeded: max_steps_total";
-	            break;
-	          }
-	          if (wf_limits.max_elapsed_ms_total > 0 && remaining_elapsed_ms_local <= 0) {
-	            out["ok"] = false;
-	            out["assistant_text"] = "";
-	            out["error"] = "workflow budget exceeded: max_elapsed_ms_total";
-	            break;
-	          }
-	          if (wf_limits.max_total_tokens > 0 && remaining_tokens_local <= 0) {
-	            out["ok"] = false;
-	            out["assistant_text"] = "";
-	            out["error"] = "workflow budget exceeded: max_total_tokens";
-	            break;
-	          }
-
 	          const Json::Value a = attempts[i];
 	          if (!a.isObject()) continue;
 
@@ -807,24 +780,36 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	            clamp_key("max_tool_calls_per_tool");
 	          }
 
-	          WorkflowRunBudgetClampInput attempt_clamp;
-	          attempt_clamp.limits = wf_limits;
-	          attempt_clamp.tool_calls_remaining = remaining_local;
-	          attempt_clamp.steps_remaining = remaining_steps_local;
-	          attempt_clamp.elapsed_ms_remaining = remaining_elapsed_ms_local;
-	          attempt_clamp.total_tokens_remaining = remaining_tokens_local;
-	          (void)workflow_apply_run_budget_clamps(&areq2, attempt_clamp, nullptr);
-	          const std::string attempt_body = json_stringify_compact(areq2);
           // Stable index is internal; duplicate caller labels cannot alias receipts.
           WorkflowModelEffect child_effect(model_context, task.request_json,
                                            "delegate.v1:" + std::to_string(i));
-          child_effect.set_fresh_budget(wf_limits.max_tool_calls_total > 0, remaining_local,
-                                       wf_limits.max_steps_total > 0, remaining_steps_local,
-                                       wf_limits.max_total_tokens > 0, remaining_tokens_local);
           Json::Value r = delegate_replay_only ? delegate_receipts.at(i) : child_effect.preflight();
           if (!delegate_replay_only && r.isNull()) {
+            // Recheck the exact child after admission. Relax only core traversal
+            // for a valid checkpoint; the adapter still receives its real zero
+            // fresh-call grant and refuses new I/O at the saved frontier.
+            child_effect.set_fresh_budget(wf_limits.max_tool_calls_total > 0, remaining_local,
+                                         wf_limits.max_steps_total > 0, remaining_steps_local,
+                                         wf_limits.max_total_tokens > 0, remaining_tokens_local);
+            WorkflowRunBudgetClampInput attempt_clamp;
+            attempt_clamp.limits = wf_limits;
+            if (child_effect.has_checkpoint()) {
+              if (remaining_local <= 0) attempt_clamp.limits.max_tool_calls_total = 0;
+              if (remaining_steps_local <= 0) attempt_clamp.limits.max_steps_total = 0;
+            }
+            attempt_clamp.tool_calls_remaining = remaining_local;
+            attempt_clamp.steps_remaining = remaining_steps_local;
+            attempt_clamp.elapsed_ms_remaining = remaining_elapsed_ms_local;
+            attempt_clamp.total_tokens_remaining = remaining_tokens_local;
+            std::string exceeded;
+            if (!workflow_apply_run_budget_clamps(&areq2, attempt_clamp, &exceeded)) {
+              out["error"] = "workflow budget exceeded: " + exceeded;
+              out["retryable"] = false;
+              child_stopped = true; // Earlier success cannot hide unfinished children.
+              break;
+            }
             r = run_request_to_json_internal_cancellable(
-              cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, attempt_body,
+              cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, json_stringify_compact(areq2),
               nullptr, workflow_run_should_cancel, &cancel_ctx, &child_effect);
             r = child_effect.finish(std::move(r));
           }

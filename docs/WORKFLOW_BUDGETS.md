@@ -24,6 +24,8 @@ On daemon recovery, open grants become `lost`; their full reserved amounts remai
 
 A lost charge is an upper-bound accounting decision, not a claim that the provider or device consumed exactly that amount. The system does not silently refund uncertain work based on a model assertion. Native execution continues to have single-daemon DB ownership and at-least-once task recovery; reservations do not make arbitrary host-tool effects exactly once.
 
+Verified host-model checkpoints can traverse cached provider/tool records with zero new tool/step grants; sequential delegated children now use the same guarded frontier after their completed prefix. Fresh calls still require their actual grants, and incomplete continuation still requires remaining configured elapsed/token capacity. A fully completed delegated receipt prefix may instead settle with zero grants in every dimension. Unknown checkpoints and owner stops never gain this exemption. See [delegated recovery](DELEGATED_CONTINUATION_DESIGN.md#partial-checkpoints-with-exhausted-call-grants).
+
 ## Observed usage versus enforceable limits
 
 Admission capacity is atomic. Core step/tool caps, deterministic HTTP call caps and new device-assignment dispatch counts enforce their covered operation counts. Observing an existing device assignment costs no new tool/step grant; physical adapter internals remain separate. Elapsed-time cancellation has scheduler/network overhead, and provider-reported total tokens can exceed a reservation because prompt usage, internal retries, compaction and provider behavior are not certified by an output-token cap. Remote delegated work and other uninstrumented adapter internals do not acquire a strict resource guarantee from a local reservation.

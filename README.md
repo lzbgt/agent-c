@@ -93,7 +93,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-The current lane covers **38 native/CLI/API checks**, Go broker/gateway tests, **81 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
+The current lane covers **42 native/CLI/API checks**, Go broker/gateway tests, **81 browser checks**, generated OpenAPI types and the production UI build. Browser cases include greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings, authorized browser effects and responsive workflow tools.
 
 For the embedded-safe build:
 

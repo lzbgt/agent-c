@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
                 for m in messages if m.get("role") == "assistant" and m.get("tool_calls"))
             missing_vision = vision and not prefetch and case != "vision_fallback" and (
                 "description:" + case + ":1" not in json.dumps(messages))
-            if after_tool and ((case in ("crash_receipted", "session_crash", "session_changed") and number == 2) or
+            if after_tool and (((case in ("crash_receipted", "session_crash", "session_changed") or case.startswith("grant_")) and number == 2) or
                                (case in ("vision_crash", "vision_session_changed") and number == 3)):
                 provider_waiting.set()
                 release_provider.wait(12)
@@ -89,7 +89,7 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
                 message = {"role": "assistant", "content": ("description:" + case + ":" + str(prefetch_counts[case])) if prefetch else "completed:" + case}
                 if prefetch and case == "vision_oversized":
                     message["content"] = "x" * (2 * 1024 * 1024 + 1)
-                if not prefetch and case != "vision_direct" and (not after_tool or (case == "frontier_budget" and number == 3)):
+                if not prefetch and case != "vision_direct" and (not after_tool or (case in ("frontier_budget", "grant_denied") and number == 3)):
                     pause = 1.5 if case in ("lost", "vision_lost", "cancel", "deadline", "elapsed") else 1 if case == "timeout" else 0
                     arguments = {"argv": [sys.executable, str(helper), str(root / (case + ".count")), str(pause)],
                                  "timeout_ms": 100 if case == "timeout" else 5000}
@@ -224,8 +224,113 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
         assert next(t for t in value["tasks"] if t["task_id"] == "write")["attempt"] == 1, value
 
 
+    def checkpoint_grant_cases():
+        # A real crash leaves a receipted active child but conservatively loses
+        # its parent grant. Completed children must remain free while that exact
+        # active frontier either finishes or refuses fresh work without fallback.
+        for mode in ("tools", "denied", "steps", "later", "missing", "corrupt", "stopped", "session_changed", "elapsed", "tokens"):
+            case = "grant_" + mode
+            first, last = "prefix_" + mode, "later_" + mode
+            provider_waiting.clear(); release_provider.clear()
+            sid = seed_session(case)[0] if mode == "session_changed" else None
+            names = [first, case] + ([last] if mode != "tools" else [])
+            limits = {"max_tool_calls_total": 2}
+            if mode == "steps": limits["max_steps_total"] = 4
+            if mode == "elapsed": limits["max_elapsed_ms_total"] = 10000
+            if mode == "tokens": limits["max_total_tokens"] = 1000
+            wid = submit(case, children=names, budget=limits, session=sid)
+            wait_for(provider_waiting.is_set, "active delegated child did not reach saved frontier: " + mode)
+            assert count(first) == count(case) == 1 and count(last) == 0
+            before = {name: counts.get(name, 0) for name in names}
+            old_grant = sql("SELECT tools,steps FROM workflow_budget_reservations WHERE workflow_id=? AND task_id='write' ORDER BY attempt DESC LIMIT 1", (wid,))[0]
+            assert old_grant[0] == 2
+            if mode == "session_changed":
+                call("/api/v1/session/ui_event", {"session_id": sid, "type": "newer_context",
+                    "ts_unix_ms": 1700000002000, "data": {"text": "owner edit with no fresh tool grant"},
+                    "append_to_session": True})
+                newer = session_rows(sid)
+            stop(kill=True); release_provider.set()
+            with sqlite3.connect(database) as db:
+                if mode == "missing":
+                    db.execute("DELETE FROM workflow_effects WHERE workflow_id=? AND effect_slot='delegate.v1:1'", (wid,))
+                if mode == "corrupt":
+                    db.execute("UPDATE workflow_effects SET receipt_json='{}' WHERE workflow_id=? AND effect_slot='delegate.v1:1'", (wid,))
+                if mode == "stopped":
+                    db.execute("UPDATE workflows SET cancel_requested=1 WHERE workflow_id=?", (wid,))
+            start()
+            value = terminal(wid)
+            assert count(first) == count(case) == 1 and count(last) == 0, (mode, value, counts)
+            assert counts[first] == before[first] and counts.get(last, 0) == 0, (mode, value, counts)
+            if mode in ("tools", "denied", "later"):
+                assert counts[case] == before[case] + 1, (mode, value, counts)
+                grants = sql("SELECT tools,steps FROM workflow_budget_reservations WHERE workflow_id=? AND task_id='write' ORDER BY attempt DESC LIMIT 1", (wid,))[0]
+                assert grants[0] == 0, (mode, grants)
+            else:
+                assert counts[case] == before[case], (mode, value, counts)
+            if mode == "tools":
+                assert value["workflow"]["status"] == "done", value
+                out = result(value)
+                assert out["tool_calls_total"] == 0 and out["steps_executed"] == 1, out
+                assert out["delegate"]["attempts"][0]["effect"]["replayed"] is True, out
+                assert out["delegate"]["attempts"][1]["effect"]["replayed_tool_calls"] == 1, out
+                cumulative = sql("SELECT tool_calls_total_cum,steps_executed_cum FROM workflow_tasks WHERE workflow_id=? AND task_id='write'", (wid,))
+                assert cumulative == [(0, 1)], (cumulative, old_grant, out)
+                # Observed usage and conservative crash charges are deliberately
+                # separate. The lost tool reservation must not be refunded.
+                accounting = value["budget_accounting"]
+                assert accounting["charged"]["max_tool_calls_total"] == old_grant[0], accounting
+                assert accounting["uncertain"]["max_tool_calls_total"] == old_grant[0], accounting
+                assert accounting["active_attempts"] == 0, accounting
+            else:
+                assert value["workflow"]["status"] != "done", (mode, value)
+            if mode in ("denied", "steps"):
+                assert result(value)["retryable"] is False and result(value)["effect"]["resume_available"], value
+                assert not value["workflow"]["cancel_requested"], value
+            if mode == "steps":
+                assert sql("SELECT tools,steps FROM workflow_budget_reservations WHERE workflow_id=? AND task_id='write' ORDER BY attempt DESC LIMIT 1", (wid,)) == [(0, 0)]
+            if mode == "later":
+                assert result(value)["delegate"]["attempts_run"] == 2 and "budget exceeded" in result(value)["error"], value
+            if mode == "session_changed":
+                assert result(value)["blocker"]["kind"] == "model_session_changed" and session_rows(sid) == newer, value
+            if mode == "stopped":
+                assert value["workflow"]["cancel_requested"], value
+
+        # Fault the final child receipt transaction after the actual final
+        # provider response has been checkpointed. Removing the injected fault
+        # and simulating the parent crash tail must finish from cached records
+        # with no remaining provider steps or tool grants and no new I/O.
+        case, names = "cached_tail", ["tail_prefix", "tail_active"]
+        with sqlite3.connect(database) as db:
+            db.execute("""CREATE TRIGGER stop_final_child_receipt BEFORE UPDATE ON workflow_effects
+              WHEN NEW.workflow_id='model_cached_tail' AND NEW.effect_slot='delegate.v1:1' AND NEW.state='completed'
+              BEGIN SELECT RAISE(ABORT, 'synthetic final receipt fault'); END""")
+        wid = submit(case, children=names, others=False,
+                     budget={"max_tool_calls_total": 2, "max_steps_total": 4})
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "error" and all(count(name) == 1 for name in names), value
+        stored = sql("SELECT state,receipt_json FROM workflow_effects WHERE workflow_id=? AND effect_slot='delegate.v1:1'", (wid,))[0]
+        checkpoint = json.loads(stored[1])
+        assert stored[0] == "dispatching" and checkpoint["schema"] == "agentd.model_run.checkpoint.v1"
+        assert [record["kind"] for record in checkpoint["records"]] == ["provider", "tool", "provider"]
+        before = {name: counts[name] for name in names}
+        stop()
+        with sqlite3.connect(database) as db:
+            db.execute("DROP TRIGGER stop_final_child_receipt")
+            db.execute("UPDATE workflow_tasks SET status='running',result_json=NULL,finished_unix_ms=NULL WHERE workflow_id=? AND task_id='write'", (wid,))
+            db.execute("UPDATE workflows SET status='running',result_json=NULL WHERE workflow_id=?", (wid,))
+        start()
+        value = terminal(wid)
+        assert value["workflow"]["status"] == "done", value
+        assert all(counts[name] == before[name] and count(name) == 1 for name in names), (value, counts)
+        assert result(value)["tool_calls_total"] == result(value)["steps_executed"] == 0, value
+        assert sql("SELECT tools,steps FROM workflow_budget_reservations WHERE workflow_id=? AND task_id='write' ORDER BY attempt DESC LIMIT 1", (wid,)) == [(0, 0)]
+        assert sql("SELECT tool_calls_total_cum,steps_executed_cum FROM workflow_tasks WHERE workflow_id=? AND task_id='write'", (wid,)) == [(2, 4)]
+        print("PASS delegated partial checkpoint grants, cached terminal frontier and fail-closed boundaries")
+
     try:
         start()
+        checkpoint_grant_cases()
+        provider_waiting.clear(); release_provider.clear()
         wid = submit("chain", children=["first_child", "crash_receipted", "last_child"])
         wait_for(provider_waiting.is_set, "second child did not reach post-tool provider")
         assert count("first_child") == count("crash_receipted") == 1
@@ -346,7 +451,7 @@ with tempfile.TemporaryDirectory(prefix="model-effect-recovery-") as tmp:
               UPDATE meta SET value='40' WHERE key='schema_version';
             """)
         start()
-        assert sql("SELECT value FROM meta WHERE key='schema_version'")[0][0] == "41"
+        assert sql("SELECT value FROM meta WHERE key='schema_version'")[0][0] == "42"
         assert sql("SELECT request_hash,receipt_json,effect_slot FROM workflow_effects WHERE effect_id='legacy-fixture'") == [("original-hash","original-receipt","")]
         print("PASS delegated distinct child journals, crash replay, transient retry, stop-on-uncertainty, bounded fresh usage and v40 migration")
     except BaseException:
