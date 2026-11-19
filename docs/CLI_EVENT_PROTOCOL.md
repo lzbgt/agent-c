@@ -42,6 +42,8 @@ Failed execution, false completion and failed publication leave the existing des
 
 `run.completed.data.last_message_file` reports the absolute published path. Publication failure produces exit 1 and `error.code: output_write_failed`, even if an `assistant.completed` event was already emitted. Normal text mode still prints the assistant response while optionally publishing the file.
 
+A provider's SSE reply needs a `[DONE]` marker or an explicit finish reason. If the stream closes before either, any text shown in deltas is a preview: the CLI fails the run, does not publish an assistant completion, and leaves an existing final-message file unchanged. Providers that return a normal JSON completion instead of SSE can still succeed.
+
 ## Verification
 
 `cli_machine_output_smoke` runs the real CLI against a local HTTP/SSE service. It checks sequence/lifecycle, Unicode/newline escaping, resume metadata, tool output, streamed/no-tool/multimodal paths, argument and provider failures, last-message preflight/replacement/cleanup, a 608,000-character coalesced stream beyond the audit event cap and large messages that exhaust the separate byte cap. `cli_harness_smoke` also verifies that premature completion cannot publish a successful event or replace a verified artifact.

@@ -663,6 +663,11 @@ static agent_status_t openai_tool_provider_generate(
       provider_emit_event(ctx, "llm_usage", d);
     }
 
+    if (parsed_is_stream && !openai_stream_has_completion(acc.core, sr.saw_done)) {
+      openai_stream_core_free(&acc.core);
+      (void)set_error(out_resp, kOpenAIIncompleteStreamError);
+      return AGENT_ERR_INTERNAL;
+    }
     openai_stream_core_free(&acc.core);
   } else {
     const auto raw_fn = ctx->chat_raw_fn ? ctx->chat_raw_fn : openai_chat_completions_raw;

@@ -89,6 +89,18 @@ static OpenAIStreamResult fake_stream_tool_call(
   return r;
 }
 
+static OpenAIStreamResult fake_stream_unfinished_tool_call(
+  const OpenAIClientConfig& cfg,
+  const std::string& request_body_json,
+  OpenAIStreamChunkCallback on_chunk,
+  void* on_chunk_ctx,
+  size_t max_capture_bytes
+) {
+  auto response = fake_stream_tool_call(cfg, request_body_json, on_chunk, on_chunk_ctx, max_capture_bytes);
+  response.saw_done = false;
+  return response;
+}
+
 static OpenAIStreamResult fake_stream_assistant_text(
   const OpenAIClientConfig& /*cfg*/,
   const std::string& /*request_body_json*/,
@@ -353,8 +365,28 @@ static void test_leading_system_wire_context() {
   agent_tool_registry_destroy(tools);
 }
 
+static void test_unfinished_stream_does_not_return_tool_calls() {
+  auto* tools = make_minimal_registry();
+  OpenAIToolProviderCtx ctx;
+  ctx.cfg.base_url = "http://stub";
+  ctx.cfg.model = "stub";
+  ctx.stream_assistant = true;
+  ctx.chat_stream_fn = fake_stream_unfinished_tool_call;
+  auto provider = openai_make_tool_provider(&ctx);
+  auto req = make_req(tools);
+
+  agent_tool_provider_response_t resp{};
+  expect_true(provider.generate(provider.ctx, &req, &resp) != AGENT_OK, "unfinished provider stream fails");
+  expect_eq(resp.tool_call_count, 0u, "no calls returned from an unfinished stream");
+  expect_eq(resp.assistant_content.len, 0u, "no final answer from an unfinished stream");
+
+  agent_tool_provider_response_free(&resp);
+  agent_tool_registry_destroy(tools);
+}
+
 int main() {
   test_leading_system_wire_context();
+  test_unfinished_stream_does_not_return_tool_calls();
   {
     // Streaming tool_call reconstruction (delta.tool_calls) without assistant text.
     agent_tool_registry_t* tools = make_minimal_registry();

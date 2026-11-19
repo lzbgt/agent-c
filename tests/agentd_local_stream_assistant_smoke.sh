@@ -52,7 +52,8 @@ class H(BaseHTTPRequestHandler):
     except Exception:
       req = {}
 
-    if not req.get("stream"):
+    prompt = next((m.get("content") for m in reversed(req.get("messages", [])) if m.get("role") == "user"), "")
+    if not req.get("stream") or prompt == "JSON_FALLBACK_STREAM":
       body = {
         "id": "cmpl_stub_nonstream",
         "object": "chat.completion",
@@ -86,7 +87,14 @@ class H(BaseHTTPRequestHandler):
       self.wfile.write(line.encode("utf-8"))
       self.wfile.flush()
       time.sleep(0.05)
-    self.wfile.write(b"data: [DONE]\n\n")
+    if prompt == "INCOMPLETE_STREAM":
+      return
+    if prompt in ("LENGTH_STREAM", "FINISH_ONLY_STREAM"):
+      reason = "length" if prompt == "LENGTH_STREAM" else "stop"
+      finish = {"choices": [{"delta": {}, "finish_reason": reason}]}
+      self.wfile.write(("data: " + json.dumps(finish) + "\n\n").encode("utf-8"))
+    if prompt != "FINISH_ONLY_STREAM":
+      self.wfile.write(b"data: [DONE]\n\n")
     self.wfile.flush()
 
 HTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
@@ -187,6 +195,41 @@ if not isinstance(last, dict) or last.get("role") != "assistant":
 if (last.get("content") or "").strip() != "Hello world END":
   print("expected last assistant content persisted", last, file=sys.stderr)
   raise SystemExit(1)
+PY
+
+# The daemon must not commit an assistant message from a partial preview.
+python3 - "${DAEMON_URL}" "${STUB_BASE}" "${SESSION_ID}" <<'PY'
+import json, sys, urllib.error, urllib.request, urllib.parse
+daemon, stub, sid = sys.argv[1:]
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+def call(path, request=None):
+    options = {}
+    if request is not None:
+        options = {"data": json.dumps(request).encode(), "headers": {"Content-Type": "application/json"}}
+    target = urllib.request.Request(daemon + path, **options)
+    try:
+        response = opener.open(target, timeout=10)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        return json.load(response)
+
+for prompt, should_complete in (("INCOMPLETE_STREAM", False), ("LENGTH_STREAM", False),
+                                ("FINISH_ONLY_STREAM", True), ("JSON_FALLBACK_STREAM", True)):
+    session = sid + "_" + prompt.lower()
+    result = call("/api/v1/run", {"prompt": prompt, "session_id": session,
+                  "tools": "none", "stream_assistant": True, "base_url": stub,
+                  "api_key": "dummy", "model": "stub", "trace": False, "verbose": False})
+    assert result.get("ok") is should_complete, (prompt, result)
+    if should_complete:
+        assert result.get("assistant_text") == "Hello world END", (prompt, result)
+    else:
+        assert not result.get("assistant_text"), (prompt, result)
+        if prompt == "INCOMPLETE_STREAM":
+            assert "completion marker" in json.dumps(result.get("error")), result
+        stored = call("/api/v1/session?" + urllib.parse.urlencode({"session_id": session}))
+        assert not any(m.get("role") == "assistant" for m in stored.get("messages", [])), stored
 PY
 
 # Cleanup session artifacts.

@@ -1318,6 +1318,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
           }
 
           // Provider may have ignored streaming; fall back to extracting assistant content from a normal JSON completion.
+          bool got_json_completion = false;
           assistant_text = (sctx.core.assistant.data && sctx.core.assistant.len)
             ? std::string(sctx.core.assistant.data, sctx.core.assistant.len)
             : std::string();
@@ -1338,8 +1339,20 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
                   const auto& text = choices[0]["text"];
                   if (text.isString()) assistant_text = text.asString();
                 }
+                got_json_completion = !assistant_text.empty();
               }
             }
+          }
+
+          if (!got_json_completion && !openai_stream_has_completion(sctx.core, sr.saw_done)) {
+            ok = false;
+            err = kOpenAIIncompleteStreamError;
+            output->set_error(err);
+            // The partial wire body is already represented by assistant deltas.
+            http_body.clear();
+            assistant_text.clear();
+            openai_stream_core_free(&sctx.core);
+            break;
           }
 
           if (assistant_text.empty()) {

@@ -27,7 +27,7 @@ class Model(BaseHTTPRequestHandler):
         if "FAIL" == last:
             self.send_response(400)
             body = b'{"error":{"message":"deterministic failure"}}'
-        elif req.get("stream"):
+        elif req.get("stream") and last != "JSON_FALLBACK_STREAM":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
@@ -35,7 +35,12 @@ class Model(BaseHTTPRequestHandler):
             for offset in range(0, len(text), 64):
                 chunk = {"choices": [{"index": 0, "delta": {"content": text[offset:offset+64]}}]}
                 self.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
-            self.wfile.write(b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+            if last != "INCOMPLETE_STREAM":
+                reason = " " if last == "BLANK_FINISH_STREAM" else "stop"
+                finish = {"choices": [{"index": 0, "delta": {}, "finish_reason": reason}]}
+                self.wfile.write(("data: " + json.dumps(finish) + "\n\n").encode())
+            if last not in {"INCOMPLETE_STREAM", "BLANK_FINISH_STREAM", "FINISH_ONLY_STREAM"}:
+                self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
             return
         else:
@@ -89,8 +94,21 @@ try:
         assert any(r["type"] == "loop.tool_result" for r in rows)
         assert rows[-1]["data"]["usage"]["tool_calls_executed"] == 1
         for tools in ("none", "basic"):
-            rows = events(run("exec", "STREAM", "--json", "--stream-assistant", "--tools", tools, "--no-session"))
-            assert "".join(r["data"]["delta"] for r in rows if r["type"] == "assistant.delta") == rows[-2]["data"]["text"]
+            opts = ("--json", "--stream-assistant", "--tools", tools, "--no-session")
+            for prompt in ("STREAM", "FINISH_ONLY_STREAM"):
+                rows = events(run("exec", prompt, *opts))
+                assert "".join(r["data"]["delta"] for r in rows if r["type"] == "assistant.delta") == rows[-2]["data"]["text"]
+            rows = events(run("exec", "JSON_FALLBACK_STREAM", *opts))
+            assert rows[-2]["data"]["text"].startswith("verified:")
+
+            previous = target.read_text()
+            for prompt in ("INCOMPLETE_STREAM", "BLANK_FINISH_STREAM"):
+                count = len(requests)
+                rows = events(run("exec", prompt, *opts, "-o", str(target), expected=1), False)
+                assert any(r["type"] == "assistant.delta" for r in rows)
+                assert "completion marker" in rows[-1]["data"]["error"]["message"], (tools, prompt, rows[-1])
+                assert target.read_text() == previous
+                assert len(requests) == count + 1, "partial streamed requests must not be replayed"
 
         # More than 4,000 live events must not be silenced by the bounded audit
         # capture. The accepted final result still follows all streamed deltas.

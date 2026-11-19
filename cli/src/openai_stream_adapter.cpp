@@ -284,6 +284,22 @@ static void openai_stream_core_event(void* vctx, const char* type, const char* d
     return;
   }
 
+  if (strcmp(type, "end") == 0) {
+#if defined(AGENT_HAVE_JSONCPP)
+    Json::CharReaderBuilder rb;
+    std::string errs;
+    std::istringstream iss(std::string(data_json ? data_json : ""));
+    Json::Value root;
+    if (Json::parseFromStream(rb, iss, &root, &errs) && root.isObject()) {
+      const auto& reason = root["finish_reason"];
+      if (reason.isString() && reason.asString().find_first_not_of(" \t\r\n") != std::string::npos) {
+        adapter->saw_finish = 1;
+      }
+    }
+#endif
+    return;
+  }
+
   if (strcmp(type, "llm_usage") == 0) {
 #if defined(AGENT_HAVE_JSONCPP)
     Json::CharReaderBuilder rb;
@@ -412,6 +428,7 @@ void openai_stream_core_reset(OpenAIStreamCoreAdapter* adapter) {
   agent_string_free(&adapter->pending_delta);
   agent_string_free(&adapter->error_message);
   adapter->saw_delta = 0;
+  adapter->saw_finish = 0;
   adapter->saw_error = 0;
   adapter->has_usage = 0;
   adapter->prompt_tokens = 0;

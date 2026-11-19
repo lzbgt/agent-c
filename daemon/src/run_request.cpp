@@ -1419,16 +1419,26 @@ static Json::Value run_request_to_json_impl(
         if (sr.http_status < 200 || sr.http_status >= 300) {
           ok = false;
           err = !sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body);
+        } else if (sctx.core.saw_error || openai_response_hit_output_limit(sr.response_body)) {
+          ok = false;
+          err = sctx.core.error_message.data
+            ? std::string(sctx.core.error_message.data, sctx.core.error_message.len)
+            : std::string(kOpenAIOutputLimitError);
         } else {
-          const std::string final_text = (!sctx.core.assistant.data || sctx.core.assistant.len == 0)
-            ? json_try_extract_assistant_content_from_completion([&]() -> Json::Value {
+          const bool has_stream_text = sctx.core.assistant.data && sctx.core.assistant.len > 0;
+          const std::string final_text = has_stream_text
+            ? std::string(sctx.core.assistant.data, sctx.core.assistant.len)
+            : json_try_extract_assistant_content_from_completion([&]() -> Json::Value {
                 Json::Value v;
                 std::string pe;
                 if (!json_parse_any(sr.response_body, &v, &pe)) return Json::Value(Json::nullValue);
                 return v;
-              }())
-            : std::string(sctx.core.assistant.data, sctx.core.assistant.len);
-          if (final_text.empty()) {
+              }());
+          const bool got_json_completion = !has_stream_text && !final_text.empty();
+          if (!got_json_completion && !openai_stream_has_completion(sctx.core, sr.saw_done)) {
+            ok = false;
+            err = kOpenAIIncompleteStreamError;
+          } else if (final_text.empty()) {
             ok = false;
             err = "streamed completion returned no assistant content";
           } else {

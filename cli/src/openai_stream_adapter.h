@@ -31,6 +31,7 @@ typedef struct OpenAIStreamCoreAdapter {
   void* delta_ctx;
 
   uint8_t saw_delta;
+  uint8_t saw_finish;
   uint8_t saw_error;
   uint8_t has_usage;
 
@@ -42,6 +43,13 @@ typedef struct OpenAIStreamCoreAdapter {
   agent_string_t pending_delta;
   agent_string_t error_message;
 } OpenAIStreamCoreAdapter;
+
+inline constexpr char kOpenAIIncompleteStreamError[] =
+  "Provider stream ended without a completion marker; the reply is incomplete.";
+
+inline bool openai_stream_has_completion(const OpenAIStreamCoreAdapter& adapter, bool saw_done) {
+  return saw_done || adapter.saw_finish;
+}
 
 void openai_stream_core_init(
   OpenAIStreamCoreAdapter* adapter,
