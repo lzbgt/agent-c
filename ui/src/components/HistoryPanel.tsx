@@ -115,16 +115,33 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     const data = safeObject(normalizeEventData(event.data));
     const summary = safeObject(data.summary);
     const toolName = String(data.tool_name || summary.tool || "tool");
+    const fromOriginalEvent = typeof data.content === "string";
     const content = typeof data.content === "string" ? data.content
       : typeof summary.output === "string"
-        ? JSON.stringify({ ok: summary.ok ?? true, data: { ...summary, tool: toolName } })
+        ? JSON.stringify({
+            ...(typeof summary.ok === "boolean" ? { ok: summary.ok } : {}),
+            data: { ...summary, tool: toolName },
+          })
         : null;
     if (content === null) return [];
+
+    // Copy/download can still offer captured text, but an event summary or
+    // excerpt is not the original terminal tool receipt.
+    const captureFlag = data.content_truncated;
+    let evidenceNote: string | null = null;
+    if (!fromOriginalEvent) {
+      evidenceNote = "Unverified: this event contains a summary, not the original tool output.";
+    } else if (captureFlag === 1 || captureFlag === true) {
+      evidenceNote = "Unverified: this event contains only a truncated copy of the tool output.";
+    } else if (captureFlag !== 0 && captureFlag !== false) {
+      evidenceNote = "Unverified: this event does not record whether the tool output is complete.";
+    }
     return [{
       key: index,
       toolName,
       toolCallId: typeof data.tool_call_id === "string" ? data.tool_call_id : "",
       content,
+      evidenceNote,
     }];
   }), [entries]);
 
@@ -192,6 +209,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
         <div className="mt-3 grid gap-3">
           {latestToolResults.map((result) => <section key={result.key} className="rounded-lg border border-white/10 bg-white/5 p-3">
             <h3 className="mb-2 text-sm font-semibold">{result.toolName}</h3>
+            {result.evidenceNote ? <p className="mb-2 text-xs text-amber-200" role="status">{result.evidenceNote}</p> : null}
             <ToolResultView
               baseUrl={props.effectiveBase}
               yolo={props.yolo}

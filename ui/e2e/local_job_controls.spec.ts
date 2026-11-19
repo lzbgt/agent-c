@@ -13,7 +13,11 @@ const events = [
   } } },
 ];
 
-async function mockActiveLocalJob(page: Page, eventsForJob = events, seedActiveJob = true) {
+async function mockActiveLocalJob(
+  page: Page,
+  eventsForJob: Array<{ type: string; data: Record<string, unknown> }> = events,
+  seedActiveJob = true,
+) {
   const state = {
     status: "running",
     rejectCancel: false,
@@ -250,6 +254,37 @@ test("completed runs keep opened tool outputs through audit handover and reload"
   await command.getByTestId("tool-output-download").click();
   const download = await downloadPromise;
   expect(await fs.readFile((await download.path())!, "utf8")).toBe(literalOutput);
+});
+
+test("tool output distinguishes original event evidence from summaries and excerpts", async ({ page, context }) => {
+  test.setTimeout(25_000);
+  const result = (tool_name: string, fields: Record<string, unknown>) => ({
+    type: "tool_result", data: { tool_name, tool_call_id: tool_name, ...fields },
+  });
+  await mockActiveLocalJob(page, [
+    result("original-output", { content: "original payload\n", content_truncated: 0 }),
+    result("event-excerpt", { content: "preview\n", content_truncated: 1 }),
+    result("legacy-output", { content: "legacy payload\n" }),
+    // The daemon emitted data but did not report an outcome or original bytes.
+    result("summary-output", { summary: { output: "summary payload\n" } }),
+    result("missing-output", { status: 0 }),
+  ]);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  const outputs = page.getByTestId("chat-tool-outputs");
+  await expect(outputs).toBeVisible();
+  await outputs.locator(":scope > summary").click();
+  const card = (name: string) => outputs.locator("section").filter({
+    has: page.getByRole("heading", { name, exact: true }),
+  });
+  await expect(card("original-output").getByText(/^Unverified:/)).toHaveCount(0);
+  await expect(card("original-output").getByTestId("tool-output-copy")).toBeVisible();
+  await expect(card("event-excerpt").getByText("Unverified: this event contains only a truncated copy of the tool output.")).toBeVisible();
+  await expect(card("legacy-output").getByText("Unverified: this event does not record whether the tool output is complete.")).toBeVisible();
+  await expect(card("summary-output").getByText("Unverified: this event contains a summary, not the original tool output.")).toBeVisible();
+  await expect(card("missing-output")).toHaveCount(0);
+  await card("summary-output").getByTestId("tool-output-copy").click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("summary payload\n");
 });
 
 test("display clipping is distinct from complete native capture", async ({ page, context }) => {
