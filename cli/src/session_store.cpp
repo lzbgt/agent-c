@@ -15,6 +15,7 @@
 #include <sstream>
 #include <algorithm>
 #include <unordered_set>
+#include <utility>
 
 static bool is_portable_tool_transcript_marker(agent_role_t role, const std::string& content) {
   // Older versions stored tool calls/results as assistant text markers in the session message list:
@@ -139,36 +140,57 @@ static agent_status_t read_jsonl_tail_file(const std::filesystem::path& p, size_
   return AGENT_OK;
 }
 
-static agent_status_t write_file_atomic(const std::filesystem::path& p, const char* data, size_t len) {
-  const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-  std::filesystem::path tmp;
-  FILE* out = nullptr;
-  for (int attempt = 0; attempt < 32 && !out; ++attempt) {
-    tmp = p;
-    tmp += ".agent-save-tmp-" + std::to_string(stamp) + "-" + std::to_string(attempt);
-    // Each writer owns only its newly created, same-directory staging file.
-#if defined(_WIN32)
-    out = ::_wfopen(tmp.c_str(), L"wbx");
-#else
-    out = std::fopen(tmp.c_str(), "wbx");
-#endif
-    if (!out && errno != EEXIST) return AGENT_ERR_INTERNAL;
-  }
-  if (!out) return AGENT_ERR_INTERNAL;
+class StagedSessionSnapshot {
+ public:
+  explicit StagedSessionSnapshot(std::filesystem::path destination) : destination_(std::move(destination)) {}
+  StagedSessionSnapshot(const StagedSessionSnapshot&) = delete;
+  StagedSessionSnapshot& operator=(const StagedSessionSnapshot&) = delete;
 
-  const bool written = len == 0 || std::fwrite(data, 1, len, out) == len;
-  const bool closed = std::fclose(out) == 0;
-  if (written && closed) {
+  ~StagedSessionSnapshot() {
+    if (!temporary_.empty()) {
+      std::error_code ignored;
+      std::filesystem::remove(temporary_, ignored);
+    }
+  }
+
+  agent_status_t prepare(const char* data, size_t len) {
     std::error_code ec;
-    std::filesystem::rename(tmp, p, ec);
-    if (!ec) return AGENT_OK;
+    const auto target = std::filesystem::symlink_status(destination_, ec);
+    if (std::filesystem::is_directory(target) ||
+        (ec && ec != std::errc::no_such_file_or_directory)) return AGENT_ERR_INTERNAL;
+
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    FILE* out = nullptr;
+    for (int attempt = 0; attempt < 32 && !out; ++attempt) {
+      auto candidate = destination_;
+      candidate += ".agent-save-tmp-" + std::to_string(stamp) + "-" + std::to_string(attempt);
+      // Claim an exclusive same-directory staging file. Never remove a competing candidate.
+#if defined(_WIN32)
+      out = ::_wfopen(candidate.c_str(), L"wbx");
+#else
+      out = std::fopen(candidate.c_str(), "wbx");
+#endif
+      if (out) temporary_ = std::move(candidate);
+      else if (errno != EEXIST) return AGENT_ERR_INTERNAL;
+    }
+    if (!out) return AGENT_ERR_INTERNAL;
+    const bool written = len == 0 || std::fwrite(data, 1, len, out) == len;
+    const bool closed = std::fclose(out) == 0;
+    return written && closed ? AGENT_OK : AGENT_ERR_INTERNAL;
   }
 
-  // Never delete a destination to make rename succeed.
-  std::error_code ignored;
-  std::filesystem::remove(tmp, ignored);
-  return AGENT_ERR_INTERNAL;
-}
+  agent_status_t publish() {
+    if (temporary_.empty()) return AGENT_ERR_INTERNAL;
+    std::error_code ec;
+    std::filesystem::rename(temporary_, destination_, ec);
+    if (ec) return AGENT_ERR_INTERNAL; // never delete the destination to force replacement
+    temporary_.clear();
+    return AGENT_OK;
+  }
+
+ private:
+  std::filesystem::path destination_, temporary_;
+};
 
 static agent_status_t load_sess_file_filtered(const std::filesystem::path& p, agent_session_t** out_session) {
   if (!out_session) {
@@ -274,26 +296,19 @@ agent_status_t session_store_load(const SessionStoreConfig& cfg, const std::stri
   return agent_session_create(out_session); // both snapshot paths are absent
 }
 
-agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::string& session_id, const agent_session_t* session) {
+agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::string& session_id,
+                                  const agent_session_t* session, bool* portable_published) {
+  if (portable_published) *portable_published = false;
   agent_status_t st = ensure_dir(cfg.root_dir);
-  if (st != AGENT_OK) {
-    return st;
-  }
+  if (st != AGENT_OK) return st;
 
-  // Always write the portable JSON-free session codec.
-  {
-    agent_string_t encoded{};
-    st = agent_session_codec_encode_v1(session, &encoded);
-    if (st != AGENT_OK) {
-      return st;
-    }
-    const auto sess_path = session_path_sess(cfg, session_id);
-    st = write_file_atomic(sess_path, encoded.data ? encoded.data : "", encoded.len);
-    agent_string_free(&encoded);
-    if (st != AGENT_OK) {
-      return st;
-    }
-  }
+  StagedSessionSnapshot portable(session_path_sess(cfg, session_id));
+  agent_string_t encoded{};
+  st = agent_session_codec_encode_v1(session, &encoded);
+  if (st != AGENT_OK) return st;
+  st = portable.prepare(encoded.data ? encoded.data : "", encoded.len);
+  agent_string_free(&encoded);
+  if (st != AGENT_OK) return st;
 
 #if defined(AGENT_HAVE_JSONCPP)
   // Also write an OpenAI-ish JSON shape for debugging and interoperability.
@@ -315,18 +330,23 @@ agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::stri
     messages.append(msg);
   }
   root["messages"] = messages;
-
   Json::StreamWriterBuilder wb;
   wb["indentation"] = "  ";
   const std::string json = Json::writeString(wb, root);
-  const auto json_path = session_path_json(cfg, session_id);
-  st = write_file_atomic(json_path, json.data(), json.size());
-  if (st != AGENT_OK) {
-    return st;
-  }
+  StagedSessionSnapshot legacy(session_path_json(cfg, session_id));
+  st = legacy.prepare(json.data(), json.size());
+  if (st != AGENT_OK) return st;
 #endif
 
+  // Both configured outputs are fully staged. Portable remains the authoritative snapshot.
+  st = portable.publish();
+  if (st != AGENT_OK) return st;
+  if (portable_published) *portable_published = true;
+#if defined(AGENT_HAVE_JSONCPP)
+  return legacy.publish();
+#else
   return AGENT_OK;
+#endif
 }
 
 agent_status_t session_store_list(const SessionStoreConfig& cfg, std::vector<std::string>* out_session_ids) {

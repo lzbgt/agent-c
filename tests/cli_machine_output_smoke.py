@@ -225,6 +225,8 @@ try:
         # A provider reply is not a successfully saved run if a snapshot cannot be replaced.
         sid = "snapshot_write_conflict"
         events(run("exec", "seed a session", "--json", "--tools", "none", "--session", sid))
+        portable = sessions / (sid + ".sess")
+        saved_before = portable.read_bytes()
         sidecar = sessions / (sid + ".json")
         sidecar.unlink()
         sidecar.mkdir()
@@ -235,7 +237,8 @@ try:
                      "-o", str(target), expected=1)
         rows = [json.loads(line) for line in result.stdout.splitlines()]
         assert rows[-1]["type"] == "run.failed"
-        assert "Could not save all session snapshots" in rows[-1]["data"]["error"]["message"]
+        assert "Session save failed before replacing any snapshot" in rows[-1]["data"]["error"]["message"]
+        assert portable.read_bytes() == saved_before, "failed JSON preparation advanced the authoritative session"
         assert not any(r["type"] == "run.completed" for r in rows)
         assert sidecar.is_dir() and old_tmp.read_bytes() == b"existing fixture bytes"
         assert target.read_bytes() == previous and not list(sessions.glob("*.agent-save-tmp-*"))

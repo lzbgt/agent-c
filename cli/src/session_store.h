@@ -38,7 +38,9 @@ struct SessionStoreConfig {
 // - Optional (when built with JSONCPP): <root>/<id>.json
 // This is a CLI/host concern (core remains persistence-agnostic).
 agent_status_t session_store_load(const SessionStoreConfig& cfg, const std::string& session_id, agent_session_t** out_session);
-agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::string& session_id, const agent_session_t* session);
+// If portable_published is supplied, it reports this call's primary replacement even if the JSON copy fails.
+agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::string& session_id,
+                                  const agent_session_t* session, bool* portable_published = nullptr);
 
 // Lists known session ids by scanning <root>/*.sess and <root>/*.json (excluding *.events.jsonl).
 agent_status_t session_store_list(const SessionStoreConfig& cfg, std::vector<std::string>* out_session_ids);

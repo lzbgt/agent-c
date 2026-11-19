@@ -45,6 +45,14 @@ static agent_status_t fp_save(void* vctx, const char* session_id, const agent_se
   return session_store_save(ctx->cfg, session_id, session);
 }
 
+agent_status_t agent_file_persistor_save_with_progress(const agent_persistor_t& persistor, const char* session_id,
+                                                       const agent_session_t* session, bool* portable_published) {
+  if (portable_published) *portable_published = false;
+  if (!persistor.ctx || persistor.save != fp_save || !session_id || !session) return AGENT_ERR_INVALID_ARGUMENT;
+  const auto* ctx = static_cast<const FilePersistorCtx*>(persistor.ctx);
+  return session_store_save(ctx->cfg, session_id, session, portable_published);
+}
+
 static agent_status_t fp_del(void* vctx, const char* session_id) {
   if (!vctx || !session_id) return AGENT_ERR_INVALID_ARGUMENT;
   const auto* ctx = static_cast<const FilePersistorCtx*>(vctx);

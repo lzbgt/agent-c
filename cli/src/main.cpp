@@ -850,10 +850,17 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     agent_session_destroy(session); agent_persistor_destroy(&persistor); return 2;
   }
 
-  const auto report_session_save_failure = [output]() {
-    const char message[] = "Could not save all session snapshots. Check the session directory; no final-message file was published.";
-    std::cerr << message << '\n';
-    output->set_error(message);
+  const auto save_session = [&]() {
+    bool portable_published = false;
+    const agent_status_t st = agent_file_persistor_save_with_progress(persistor, session_id.c_str(), session, &portable_published);
+    if (st != AGENT_OK) {
+      const char* message = portable_published
+        ? "Portable session snapshot was saved, but its JSON copy was not. Check saved history before retrying; no final-message file was published."
+        : "Session save failed before replacing any snapshot. Check the session directory; no final-message file was published.";
+      std::cerr << message << '\n';
+      output->set_error(message);
+    }
+    return st;
   };
 
   // Add one-time system message if requested and session is empty.
@@ -906,9 +913,8 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
       const bool changed = ensure_pinned_host_session_prompts(
         &session, system_profile, /*client_profile_prompt=*/"", /*client_profile_marker=*/"", project_instructions_prompt);
       if (changed && !no_session && !session_id.empty()) {
-        const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
+        const agent_status_t st = save_session();
         if (st != AGENT_OK) {
-          report_session_save_failure();
           agent_session_destroy(session);
           agent_persistor_destroy(&persistor);
           return 1;
@@ -1091,9 +1097,8 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     }
 
     if (!no_session && !session_id.empty()) {
-      const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
+      const agent_status_t st = save_session();
       if (st != AGENT_OK) {
-        report_session_save_failure();
         rc = 1;
       }
     }
@@ -1709,9 +1714,8 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     }
 
     if (!no_session && !session_id.empty()) {
-      const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
+      const agent_status_t st = save_session();
       if (st != AGENT_OK) {
-        report_session_save_failure();
         rc = 1;
       }
     }
