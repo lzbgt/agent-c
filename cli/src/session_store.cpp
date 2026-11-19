@@ -6,6 +6,9 @@
 #include <json/json.h>
 #endif
 
+#include <cerrno>
+#include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -137,36 +140,34 @@ static agent_status_t read_jsonl_tail_file(const std::filesystem::path& p, size_
 }
 
 static agent_status_t write_file_atomic(const std::filesystem::path& p, const char* data, size_t len) {
-  const auto tmp = std::filesystem::path(p.string() + ".tmp");
+  const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+  std::filesystem::path tmp;
+  FILE* out = nullptr;
+  for (int attempt = 0; attempt < 32 && !out; ++attempt) {
+    tmp = p;
+    tmp += ".agent-save-tmp-" + std::to_string(stamp) + "-" + std::to_string(attempt);
+    // Each writer owns only its newly created, same-directory staging file.
+#if defined(_WIN32)
+    out = ::_wfopen(tmp.c_str(), L"wbx");
+#else
+    out = std::fopen(tmp.c_str(), "wbx");
+#endif
+    if (!out && errno != EEXIST) return AGENT_ERR_INTERNAL;
+  }
+  if (!out) return AGENT_ERR_INTERNAL;
 
-  {
-    std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-    if (!out.is_open()) {
-      return AGENT_ERR_INTERNAL;
-    }
-    if (len) {
-      out.write(data, (std::streamsize)len);
-      if (!out) {
-        return AGENT_ERR_INTERNAL;
-      }
-    }
+  const bool written = len == 0 || std::fwrite(data, 1, len, out) == len;
+  const bool closed = std::fclose(out) == 0;
+  if (written && closed) {
+    std::error_code ec;
+    std::filesystem::rename(tmp, p, ec);
+    if (!ec) return AGENT_OK;
   }
 
-  std::error_code ec;
-  std::filesystem::rename(tmp, p, ec);
-  if (!ec) {
-    return AGENT_OK;
-  }
-
-  // Best-effort fallback for platforms where rename() won't replace existing files.
-  ec.clear();
-  std::filesystem::remove(p, ec);
-  ec.clear();
-  std::filesystem::rename(tmp, p, ec);
-  if (ec) {
-    return AGENT_ERR_INTERNAL;
-  }
-  return AGENT_OK;
+  // Never delete a destination to make rename succeed.
+  std::error_code ignored;
+  std::filesystem::remove(tmp, ignored);
+  return AGENT_ERR_INTERNAL;
 }
 
 static agent_status_t load_sess_file_filtered(const std::filesystem::path& p, agent_session_t** out_session) {

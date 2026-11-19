@@ -850,6 +850,12 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     agent_session_destroy(session); agent_persistor_destroy(&persistor); return 2;
   }
 
+  const auto report_session_save_failure = [output]() {
+    const char message[] = "Could not save all session snapshots. Check the session directory; no final-message file was published.";
+    std::cerr << message << '\n';
+    output->set_error(message);
+  };
+
   // Add one-time system message if requested and session is empty.
   if (!system_msg.empty() && session_started_empty) {
     agent_session_add_message(session, AGENT_ROLE_SYSTEM, system_msg.c_str());
@@ -902,7 +908,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
       if (changed && !no_session && !session_id.empty()) {
         const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
         if (st != AGENT_OK) {
-          std::cerr << "Failed to save session after prompt refresh: " << (int)st << "\n";
+          report_session_save_failure();
           agent_session_destroy(session);
           agent_persistor_destroy(&persistor);
           return 1;
@@ -1087,7 +1093,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     if (!no_session && !session_id.empty()) {
       const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
       if (st != AGENT_OK) {
-        std::cerr << "Failed to save session: " << (int)st << "\n";
+        report_session_save_failure();
         rc = 1;
       }
     }
@@ -1705,7 +1711,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     if (!no_session && !session_id.empty()) {
       const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
       if (st != AGENT_OK) {
-        std::cerr << "Failed to save session: " << (int)st << "\n";
+        report_session_save_failure();
         rc = 1;
       }
     }

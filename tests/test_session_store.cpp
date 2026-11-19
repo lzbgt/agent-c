@@ -115,7 +115,32 @@ static void test_list_dedups_extensions(void) {
   assert(ids[1] == "b");
 }
 
+static void test_save_failure_keeps_existing_paths() {
+  const auto root = make_temp_root();
+  SessionStoreConfig cfg;
+  cfg.root_dir = root.string();
+  const auto destination = root / "conflict.sess";
+  const auto old_tmp = root / "conflict.sess.tmp";
+  assert(std::filesystem::create_directory(destination));
+  write_file(old_tmp, "existing fixture bytes");
+
+  agent_session_t* session = nullptr;
+  assert(agent_session_create(&session) == AGENT_OK);
+  assert(agent_session_add_message(session, AGENT_ROLE_USER, "fixture question") == AGENT_OK);
+  assert(session_store_save(cfg, "conflict", session) != AGENT_OK);
+  agent_session_destroy(session);
+
+  assert(std::filesystem::is_directory(destination));
+  std::ifstream old_file(old_tmp, std::ios::binary);
+  std::string text;
+  assert(std::getline(old_file, text) && text == "existing fixture bytes");
+  for (const auto& entry : std::filesystem::directory_iterator(root)) {
+    assert(entry.path() == destination || entry.path() == old_tmp);
+  }
+}
+
 int main() {
+  test_save_failure_keeps_existing_paths();
   test_load_prefers_sess_over_json();
   test_load_falls_back_to_json_if_sess_corrupt();
   test_list_dedups_extensions();

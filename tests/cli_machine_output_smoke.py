@@ -222,6 +222,24 @@ try:
         events(run("resume", sid, "follow up", "--json", "--tools", "none"))
         assert len(requests) == count + 1 and requests[-1]["messages"][:2] == messages
 
+        # A provider reply is not a successfully saved run if a snapshot cannot be replaced.
+        sid = "snapshot_write_conflict"
+        events(run("exec", "seed a session", "--json", "--tools", "none", "--session", sid))
+        sidecar = sessions / (sid + ".json")
+        sidecar.unlink()
+        sidecar.mkdir()
+        old_tmp = sessions / (sid + ".sess.tmp")
+        old_tmp.write_bytes(b"existing fixture bytes")
+        previous = target.read_bytes()
+        result = run("resume", sid, "normal follow up", "--json", "--tools", "none",
+                     "-o", str(target), expected=1)
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        assert rows[-1]["type"] == "run.failed"
+        assert "Could not save all session snapshots" in rows[-1]["data"]["error"]["message"]
+        assert not any(r["type"] == "run.completed" for r in rows)
+        assert sidecar.is_dir() and old_tmp.read_bytes() == b"existing fixture bytes"
+        assert target.read_bytes() == previous and not list(sessions.glob("*.agent-save-tmp-*"))
+
         publish_conflict = root / "became-a-directory"
         result = run("exec", "PUBLISH_CONFLICT", "--json", "--tools", "none", "-o", str(publish_conflict), expected=1)
         rows = [json.loads(line) for line in result.stdout.splitlines()]
