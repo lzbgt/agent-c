@@ -71,6 +71,35 @@ for (const width of [1440, 390, 320]) {
   });
 }
 
+test("technical history distinguishes original tool evidence from summaries", async ({ page }) => {
+  test.setTimeout(25_000);
+  const recorded = {
+    ...turn(300, "trace-history-evidence"),
+    events: [
+      { type: "tool_result", data: { tool_name: "metadata-summary", status: 0, summary: { marker: "summary-metadata-only" } } },
+      { type: "tool_result", data: { tool_name: "text-summary", summary: { output: "retained summary text" } } },
+      { type: "tool_result", data: { tool_name: "native-output", content: "recorded original output", content_truncated: 0 } },
+      { type: "tool_result", data: { tool_name: "excerpt", content: "recorded excerpt", content_truncated: 1 } },
+      { type: "tool_result", data: { tool_name: "missing-data", status: 0 } },
+    ],
+  };
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/session/audit")) return route.fulfill({ json: { ok: true, entries: [recorded] } });
+    return route.fulfill({ json: { ok: true, service: "agentd", version: "test", sessions: ["default"], messages: [], runs: [], entries: [], events: [], tools: [], skills: [], entities: [], artifacts: [], prefs: {}, features: { client_prefs: { enabled: false } } } });
+  });
+  await page.goto("/");
+  const details = page.getByTestId("conversation-details");
+  await details.locator(":scope > summary").click();
+  // The only saved run is already expanded; no older-history toggle exists.
+  await expect(details.getByText("Unverified: this event contains a summary, not the original tool output.")).toHaveCount(2);
+  await expect(details.getByText("Unverified: this event contains only a truncated copy of the tool output.")).toBeVisible();
+  await expect(details.getByText("Unverified: this event does not include the original tool output.")).toBeVisible();
+  await expect(details.getByText(/summary-metadata-only/)).toBeVisible();
+  await expect(details.getByText("recorded original output", { exact: true })).toBeVisible();
+  await expect(details.getByTestId("tool-output-copy")).toHaveCount(3);
+});
+
 test("settings leads with subject options and keeps technical controls closed", async ({ page }) => {
   const requests: string[] = [];
   await page.route("**/api/v1/**", async (route) => {

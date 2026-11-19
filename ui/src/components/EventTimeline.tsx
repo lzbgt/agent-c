@@ -1,5 +1,6 @@
 import React from "react";
 import type { AgentEvent } from "../api";
+import { toolEvidenceNote } from "../history/executionEvidence";
 import { normalizeEventData, prettyJsonOrRaw, safeObject } from "../jsonUtils";
 import Markdown from "./Markdown";
 import LlmDebugView from "./LlmDebugView";
@@ -18,6 +19,7 @@ function EventCard({
   const type = ev.type;
   const data = normalizeEventData(ev.data);
   const dataRecord = safeObject(data);
+  const evidenceNote = type === "tool_result" ? toolEvidenceNote(dataRecord) : null;
 
   const title = (() => {
     if (type === "user_message") return "User";
@@ -61,13 +63,16 @@ function EventCard({
               {typeof dataRecord.delta === "string" ? dataRecord.delta : JSON.stringify(data, null, 2)}
             </pre>
           ) : type === "tool_result" ? (
-            typeof dataRecord.content === "string" ? (
-              <ToolResultView baseUrl={baseUrl} yolo={yolo} content={dataRecord.content} />
-            ) : (
-              <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-                {dataRecord.summary !== undefined ? JSON.stringify(dataRecord.summary, null, 2) : "(enable verbose to capture tool output)"}
-              </pre>
-            )
+            <>
+              {evidenceNote ? <p className="mb-2 text-xs text-amber-200" role="status">{evidenceNote}</p> : null}
+              {typeof dataRecord.content === "string" ? (
+                <ToolResultView baseUrl={baseUrl} yolo={yolo} content={dataRecord.content} />
+              ) : dataRecord.summary !== undefined && dataRecord.summary !== null ? (
+                <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+                  {JSON.stringify(dataRecord.summary, null, 2)}
+                </pre>
+              ) : null}
+            </>
           ) : type === "tool_call" ? (
             <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
               {typeof dataRecord.arguments_json === "string"

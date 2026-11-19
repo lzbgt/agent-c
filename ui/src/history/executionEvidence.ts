@@ -25,3 +25,28 @@ export function executionEvent(event: AgentEvent): AgentEvent | null {
 export function executionEvents(events: AgentEvent[]): AgentEvent[] {
   return events.map(executionEvent).filter((event): event is AgentEvent => event !== null);
 }
+
+// Transport status or a summary is not evidence that the original tool
+// response is present. Honor the native 0/1 flag and boolean transport forms.
+export function toolEvidenceNote(data: Record<string, unknown>): string | null {
+  if (typeof data.content !== "string") {
+    return data.summary === undefined || data.summary === null
+      ? "Unverified: this event does not include the original tool output."
+      : "Unverified: this event contains a summary, not the original tool output.";
+  }
+  const flag = data.content_truncated;
+  if (flag === 0 || flag === false) return null;
+  return flag === 1 || flag === true
+    ? "Unverified: this event contains only a truncated copy of the tool output."
+    : "Unverified: this event does not record whether the tool output is complete.";
+}
+
+// Make retained text copyable, without inventing an outcome or converting
+// metadata alone into a synthetic tool result.
+export function toolSummaryOutput(summary: Record<string, unknown>, toolName: string): string | null {
+  if (typeof summary.output !== "string") return null;
+  return JSON.stringify({
+    ...(typeof summary.ok === "boolean" ? { ok: summary.ok } : {}),
+    data: { ...summary, tool: toolName },
+  });
+}

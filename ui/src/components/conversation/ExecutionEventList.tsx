@@ -1,7 +1,7 @@
 import React from "react";
 
 import type { AgentEvent } from "../../api";
-import { executionEvent } from "../../history/executionEvidence";
+import { executionEvent, toolEvidenceNote, toolSummaryOutput } from "../../history/executionEvidence";
 import ArtifactView from "../ArtifactView";
 import ConversationCard from "../ConversationCard";
 import ToolResultView from "../ToolResultView";
@@ -112,68 +112,43 @@ export default function ExecutionEventList(props: ExecutionEventListProps) {
     }
 
     if (type === "tool_result") {
-      const name = String(data.tool_name ?? "");
+      const name = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : "(unknown)";
       const toolCallId = typeof data.tool_call_id === "string" ? data.tool_call_id : "";
-      const summaryFromResult = toolCallId && toolCallSummaryById[toolCallId] ? toolCallSummaryById[toolCallId] : null;
-      const commandLine = summaryFromResult?.cmd ? summaryFromResult.cmd : summaryFromResult?.argv ? summaryFromResult.argv : "";
-      if (typeof data.content === "string") {
-        items.push(
-          <Card key={`tr-${idx}`} title={`Tool output: ${name || "(unknown)"}`}>
-            {commandLine ? (
-              <div className="mb-2">
-                <div className="mb-1 text-[11px] font-semibold text-white/60">Command</div>
-                <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
-                  {commandLine}
-                </pre>
-              </div>
-            ) : null}
-            <ToolResultView
-              baseUrl={baseUrl}
-              yolo={yolo}
-              daemonAuth={daemonAuth}
-              sessionId={sessionId}
-              toolCallId={toolCallId}
-              content={data.content}
-            />
-          </Card>,
-        );
-        return;
-      }
-      const summaryRecord = safeObject(data.summary);
-      if (Object.keys(summaryRecord).length > 0) {
-        let envelope = "";
-        try {
-          envelope = JSON.stringify({ ok: summaryRecord.ok ?? true, data: { ...summaryRecord, tool: name } });
-        } catch {
-          envelope = JSON.stringify({ ok: true, data: { tool: name } });
-        }
-        items.push(
-          <Card key={`tr-${idx}`} title={`Tool output: ${name || "(unknown)"}`}>
-            {commandLine ? (
-              <div className="mb-2">
-                <div className="mb-1 text-[11px] font-semibold text-white/60">Command</div>
-                <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
-                  {commandLine}
-                </pre>
-              </div>
-            ) : null}
-            <ToolResultView
-              baseUrl={baseUrl}
-              yolo={yolo}
-              daemonAuth={daemonAuth}
-              sessionId={sessionId}
-              toolCallId={toolCallId}
-              content={envelope}
-            />
-          </Card>,
-        );
-        return;
-      }
+      const retainedCommand = toolCallId ? toolCallSummaryById[toolCallId] : undefined;
+      const commandLine = retainedCommand?.cmd || retainedCommand?.argv || "";
+      const hasOriginal = typeof data.content === "string";
+      const hasSummary = data.summary !== undefined && data.summary !== null;
+      const content = typeof data.content === "string"
+        ? data.content
+        : toolSummaryOutput(safeObject(data.summary), name);
+      const note = toolEvidenceNote(data);
+      const label = hasOriginal ? "Tool output" : hasSummary ? "Tool result summary" : "Tool result";
+
       items.push(
-        <Card key={`tr-${idx}`} title={`Tool result: ${name || "(unknown)"}`}>
-          <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-            {data.summary ? JSON.stringify(data.summary, null, 2) : "(enable verbose to capture tool output)"}
-          </pre>
+        <Card key={`tr-${idx}`} title={`${label}: ${name}`}>
+          {note ? <p className="mb-2 text-xs text-amber-200" role="status">{note}</p> : null}
+          {commandLine && (hasOriginal || hasSummary) ? (
+            <div className="mb-2">
+              <div className="mb-1 text-[11px] font-semibold text-white/60">Command</div>
+              <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
+                {commandLine}
+              </pre>
+            </div>
+          ) : null}
+          {content !== null ? (
+            <ToolResultView
+              baseUrl={baseUrl}
+              yolo={yolo}
+              daemonAuth={daemonAuth}
+              sessionId={sessionId}
+              toolCallId={toolCallId}
+              content={content}
+            />
+          ) : hasSummary ? (
+            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+              {JSON.stringify(data.summary, null, 2)}
+            </pre>
+          ) : null}
         </Card>,
       );
       return;

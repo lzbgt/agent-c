@@ -21,6 +21,7 @@ import ToolResultView from "./ToolResultView";
 import { normalizeEventData, safeObject } from "../jsonUtils";
 import ChatThread from "./history/ChatThread";
 import { buildChatTranscript, latestChatFailure } from "../history/chatTranscript";
+import { toolEvidenceNote, toolSummaryOutput } from "../history/executionEvidence";
 import HistoryPanelTechnicalSection from "./history/HistoryPanelTechnicalSection";
 
 export type HistoryPanelProps = {
@@ -115,33 +116,14 @@ export default function HistoryPanel(props: HistoryPanelProps) {
     const data = safeObject(normalizeEventData(event.data));
     const summary = safeObject(data.summary);
     const toolName = String(data.tool_name || summary.tool || "tool");
-    const fromOriginalEvent = typeof data.content === "string";
-    const content = typeof data.content === "string" ? data.content
-      : typeof summary.output === "string"
-        ? JSON.stringify({
-            ...(typeof summary.ok === "boolean" ? { ok: summary.ok } : {}),
-            data: { ...summary, tool: toolName },
-          })
-        : null;
+    const content = typeof data.content === "string" ? data.content : toolSummaryOutput(summary, toolName);
     if (content === null) return [];
-
-    // Copy/download can still offer captured text, but an event summary or
-    // excerpt is not the original terminal tool receipt.
-    const captureFlag = data.content_truncated;
-    let evidenceNote: string | null = null;
-    if (!fromOriginalEvent) {
-      evidenceNote = "Unverified: this event contains a summary, not the original tool output.";
-    } else if (captureFlag === 1 || captureFlag === true) {
-      evidenceNote = "Unverified: this event contains only a truncated copy of the tool output.";
-    } else if (captureFlag !== 0 && captureFlag !== false) {
-      evidenceNote = "Unverified: this event does not record whether the tool output is complete.";
-    }
     return [{
       key: index,
       toolName,
       toolCallId: typeof data.tool_call_id === "string" ? data.tool_call_id : "",
       content,
-      evidenceNote,
+      evidenceNote: toolEvidenceNote(data),
     }];
   }), [entries]);
 
