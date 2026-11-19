@@ -8,6 +8,7 @@ import {
   type AgentEvent,
 } from "./api";
 import { safeObject } from "./jsonUtils";
+import { isTerminalJobStatus } from "./jobStore";
 import { brokerBaseFromProxy } from "./utils/brokerBase";
 import HistoryPanel from "./components/HistoryPanel";
 import SceneView from "./components/SceneView";
@@ -476,7 +477,7 @@ export default function App() {
     effectiveBase,
   });
 
-  useJobStreaming({
+  const nativeStopRequested = useJobStreaming({
     activeJobId,
     connectionMode,
     daemonAuth,
@@ -749,8 +750,9 @@ export default function App() {
         effectiveBase={effectiveBase}
         sessionId={sessionId}
         tools={tools}
-        activeJobId={activeJobId}
+        activeJobId={isTerminalJobStatus(jobStatus) ? null : activeJobId}
         jobStatus={jobStatus}
+        nativeStopRequested={nativeStopRequested}
         jobProgressLabel={jobProgressLabel}
         runWatchMode={runWatchMode}
         daemonAuth={daemonAuth}

@@ -9,7 +9,7 @@ import {
   type ApiAuth,
 } from "../api";
 import { loadJson, safeObject } from "../jsonUtils";
-import { pruneJobsBySession } from "../jobStore";
+import { isTerminalJobStatus, pruneJobsBySession } from "../jobStore";
 import {
   extractRunWatchByScope,
   mergeRunWatchByScope,
@@ -276,11 +276,12 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
           });
           return;
         }
+        if (job.job_id !== jobId) return;
         const status = typeof job.status === "string" ? job.status : "";
-        if (status === "queued" || status === "running") {
-          // The cursor is persisted, but liveEvents are not. Replay the job's
-          // retained events when rebuilding a watcher so completed tool output
-          // remains available after reload/reconnect.
+        if (status === "queued" || status === "running" || isTerminalJobStatus(status)) {
+          // Replay the exact job from cursor zero. An outcome reached while
+          // this tab was closed still goes through the normal terminal path,
+          // so its result and retained output are received instead of dropped.
           cursorRef.current = 0;
           setJobError(null);
           setJobStatus(status);

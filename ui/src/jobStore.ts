@@ -3,6 +3,10 @@ import type { RunWatchByScope, RunWatchEntry } from "./runWatchPrefs";
 export const JOB_STORE_MAX = 64;
 export const JOB_STORE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+export function isTerminalJobStatus(status: string | null | undefined): status is "done" | "error" | "cancelled" | "interrupted" {
+  return status === "done" || status === "error" || status === "cancelled" || status === "interrupted";
+}
+
 export function pruneJobsBySession(
   nowMs: number,
   jobs: RunWatchByScope,

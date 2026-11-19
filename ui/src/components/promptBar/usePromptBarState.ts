@@ -11,18 +11,65 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+type StoredStopPhase = "sending" | "requested" | "unconfirmed";
+type StopRequest = { scope: string; phase: StoredStopPhase | "error"; error?: string };
+const STOP_RECEIPTS_KEY = "agentui.stopReceipts.v1";
+
+function stopScope(base: string, sessionId: string | null | undefined, jobId: string | null): string | null {
+  if (!jobId) return null;
+  try {
+    const endpoint = new URL(base, window.location.href);
+    // Do not store key/auth values, URL userinfo, queries, or response bodies.
+    return JSON.stringify([endpoint.origin, endpoint.pathname, sessionId || "", jobId]);
+  } catch {
+    return null;
+  }
+}
+
+function readStopReceipts(): Record<string, StoredStopPhase> {
+  try {
+    const raw = sessionStorage.getItem(STOP_RECEIPTS_KEY) || "";
+    if (!raw || raw.length > 20_000) return {};
+    const result: Record<string, StoredStopPhase> = {};
+    for (const [key, phase] of Object.entries(safeObject(JSON.parse(raw)))) {
+      if (key.startsWith("[") && key.length <= 1024 &&
+          (phase === "sending" || phase === "requested" || phase === "unconfirmed")) result[key] = phase;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function rememberStop(scope: string, phase: StoredStopPhase | "error"): void {
+  if (scope.length > 1024) return;
+  try {
+    const receipts = readStopReceipts();
+    delete receipts[scope];
+    if (phase !== "error") receipts[scope] = phase;
+    sessionStorage.setItem(STOP_RECEIPTS_KEY, JSON.stringify(Object.fromEntries(Object.entries(receipts).slice(-16))));
+  } catch {
+    // The live UI still works when browser storage is unavailable.
+  }
+}
+
 export default function usePromptBarState(props: PromptBarProps) {
   const [attachments, setAttachments] = React.useState<Attachment[]>([]);
   const [uploadBusy, setUploadBusy] = React.useState<boolean>(false);
-  const [cancelRequest, setCancelRequest] = React.useState<{
-    jobId: string;
-    phase: "sending" | "requested" | "error";
-    error?: string;
-  } | null>(null);
-  React.useEffect(() => setCancelRequest(null), [props.activeJobId]);
-  const currentCancelRequest = cancelRequest?.jobId === props.activeJobId ? cancelRequest : null;
-  const cancelPending = currentCancelRequest?.phase === "sending" || currentCancelRequest?.phase === "requested";
-  const cancelError = currentCancelRequest?.phase === "error" ? currentCancelRequest.error : null;
+  const [cancelRequest, setCancelRequest] = React.useState<StopRequest | null>(null);
+  const scope = stopScope(props.effectiveBase, props.sessionId, props.activeJobId);
+  const selectedStopScope = React.useRef(scope);
+  selectedStopScope.current = scope;
+  const sendingStops = React.useRef(new Set<string>());
+  const restoredPhase = React.useMemo(() => scope ? readStopReceipts()[scope] : undefined, [scope]);
+  // Reload during the POST has unknown delivery, not an active browser request.
+  const request = cancelRequest?.scope === scope ? cancelRequest : null;
+  const phase = request?.phase ?? (restoredPhase === "sending" ? "unconfirmed" : restoredPhase);
+  const cancelSending = !props.nativeStopRequested && phase === "sending";
+  const cancelAcknowledged = !!scope && (props.nativeStopRequested === true || phase === "requested");
+  const cancelPending = cancelSending || cancelAcknowledged;
+  const cancelUnconfirmed = !cancelAcknowledged && phase === "unconfirmed";
+  const cancelError = !cancelAcknowledged && phase === "error" ? request?.error : null;
   const uploadsEnabled = props.uploadsEnabled !== false;
   const uploadsDisabledReason = String(props.uploadsDisabledReason || "").trim();
   const uploadMaxBytes =
@@ -71,20 +118,25 @@ export default function usePromptBarState(props: PromptBarProps) {
 
   const handleCancel = React.useCallback(async () => {
     const jobId = props.activeJobId;
-    if (!jobId || cancelPending) return;
-    setCancelRequest({ jobId, phase: "sending" });
+    if (!jobId || !scope || cancelPending || sendingStops.current.has(scope)) return;
+    sendingStops.current.add(scope);
+    const record = (phase: StopRequest["phase"], error?: string) => {
+      rememberStop(scope, phase);
+      if (selectedStopScope.current === scope) setCancelRequest({ scope, phase, error });
+    };
+    // Persist intention before the POST so reload cannot turn a lost ACK into
+    // either a confirmed stop or an automatic resubmission.
+    record("sending");
     try {
       const response = await apiCancelJob(props.effectiveBase, jobId, props.daemonAuth);
-      if (response.ok !== true) {
-        throw new Error(response.error || response.err || response.code || `HTTP ${response.status ?? "error"}`);
-      }
-      setCancelRequest((current) => current?.jobId === jobId ? { jobId, phase: "requested" } : current);
-    } catch (error) {
-      setCancelRequest((current) => current?.jobId === jobId
-        ? { jobId, phase: "error", error: errorMessage(error, "Cancellation failed") }
-        : current);
+      if (response.ok) record("requested");
+      else record("error", response.error || response.err || response.code || "Stop was rejected");
+    } catch {
+      record("unconfirmed");
+    } finally {
+      sendingStops.current.delete(scope);
     }
-  }, [cancelPending, props]);
+  }, [cancelPending, props, scope]);
 
   const handleUploadFiles = React.useCallback(
     async (files: FileList | File[]) => {
@@ -186,6 +238,8 @@ export default function usePromptBarState(props: PromptBarProps) {
     attachments,
     cancelError,
     cancelPending,
+    cancelSending,
+    cancelUnconfirmed,
     chatTarget,
     onRun,
     promptPlaceholder,

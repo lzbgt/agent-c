@@ -21,6 +21,9 @@ async function mockActiveLocalJob(
   const state = {
     status: "running",
     rejectCancel: false,
+    dropCancelReply: false,
+    emptyCancelReply: false,
+    cancelRequested: false,
     cancelCalls: 0,
     progressCalls: 0,
     streamCursors: [] as number[],
@@ -84,7 +87,10 @@ async function mockActiveLocalJob(
     }
     if (url.pathname === "/api/v1/job/cancel") {
       state.cancelCalls += 1;
-      await json(state.rejectCancel ? { ok: false, error: "fixture rejection" } : { ok: true }, state.rejectCancel ? 409 : 200);
+      if (state.dropCancelReply) { await route.abort("failed"); return; }
+      if (state.emptyCancelReply) { await route.fulfill({ status: 200, headers, body: "" }); return; }
+      if (!state.rejectCancel) state.cancelRequested = true;
+      await json(state.rejectCancel ? { job_id: jobId, ok: false, error: "fixture rejection" } : { job_id: jobId, ok: true }, state.rejectCancel ? 409 : 200);
       return;
     }
     if (url.pathname === "/api/v1/job") {
@@ -92,7 +98,7 @@ async function mockActiveLocalJob(
       if (includeEvents) state.progressCalls += 1;
       const cursor = Number(url.searchParams.get("cursor") || 0);
       await json({
-        ok: true, job_id: jobId, status: state.status, updated_unix_ms: Date.now(),
+        ok: true, job_id: jobId, status: state.status, cancel_requested: state.cancelRequested, updated_unix_ms: Date.now(),
         ...(includeEvents ? { events: eventsForJob.slice(cursor), events_cursor_next: eventsForJob.length } : {}),
         ...(state.status === "cancelled" ? { result: { ok: false, error: "cancelled", events: eventsForJob } } : {}),
         ...(state.status === "done" ? { result: { ok: true, assistant_text: "See captured tool output.", events: eventsForJob } } : {}),
@@ -186,6 +192,57 @@ test("active local jobs replay output after reload and keep Stop pending through
   state.status = "cancelled";
   await expect(stop).toHaveCount(0);
   await expect(page.getByText("Stopping current run…", { exact: true })).toHaveCount(0);
+});
+
+test("lost Stop reply is unconfirmed across reload until the native job reports a request", async ({ page }) => {
+  test.setTimeout(30_000);
+  const state = await mockActiveLocalJob(page);
+  state.dropCancelReply = true;
+  await page.goto("/");
+  const stop = page.getByTestId("stop-run");
+  const unknown = page.getByText("Stop not confirmed. Checking the native run status.", { exact: true });
+  await stop.click();
+  await expect(unknown).toBeVisible();
+  await expect(page.getByText(/^Stop failed:/)).toHaveCount(0);
+  await expect(stop).toBeEnabled();
+
+  const beforeReload = state.progressCalls;
+  await page.reload();
+  await expect(unknown).toBeVisible();
+  await expect.poll(() => state.progressCalls).toBeGreaterThan(beforeReload);
+  expect(state.cancelCalls).toBe(1);
+
+  // Same-job status, not another Stop request, establishes native receipt.
+  state.cancelRequested = true;
+  await expect(stop).toHaveText("Stopping…");
+  await expect(stop).toBeDisabled();
+  await expect(unknown).toHaveCount(0);
+  expect(state.cancelCalls).toBe(1);
+  state.status = "cancelled";
+  await expect(stop).toHaveCount(0);
+  await expect(page.getByTestId("promptbar-root").getByText("cancelled", { exact: true })).toBeVisible();
+});
+
+test("an empty HTTP success is not a Stop receipt; native completion while unloaded is recovered", async ({ page }) => {
+  test.setTimeout(30_000);
+  const state = await mockActiveLocalJob(page);
+  state.emptyCancelReply = true;
+  await page.goto("/");
+  const stop = page.getByTestId("stop-run");
+  const unknown = page.getByText("Stop not confirmed. Checking the native run status.", { exact: true });
+  await stop.click();
+  await expect(unknown).toBeVisible();
+  expect(state.cancelCalls).toBe(1);
+
+  await page.goto("about:blank");
+  const beforeRestore = state.progressCalls;
+  state.status = "cancelled";
+  await page.goto("/");
+  await expect.poll(() => state.progressCalls).toBeGreaterThan(beforeRestore);
+  await expect(page.getByTestId("promptbar-root").getByText("cancelled", { exact: true })).toBeVisible();
+  await expect(unknown).toHaveCount(0);
+  await expect(stop).toHaveCount(0);
+  expect(state.cancelCalls).toBe(1);
 });
 
 test("rejected cancellation remains visible and permits a retry", async ({ page }) => {

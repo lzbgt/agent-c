@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { safeJsonParse, safeObject } from "../jsonUtils";
 import { appendLiveEvents, capLiveEvents } from "../liveEvents";
+import { isTerminalJobStatus } from "../jobStore";
 import { readSseStream } from "../sse";
 import { sleep } from "../timeUtils";
 import type { JobStoreWriter } from "./runtimePlaneTypes";
@@ -59,7 +60,7 @@ function parseStreamAgentEvent(raw: string): AgentEvent | null {
 function parseJobDonePayload(raw: string): JobDonePayload {
   const data = safeObject(safeJsonParse(raw));
   const status = typeof data.status === "string" ? data.status : "";
-  if (!["done", "error", "cancelled", "interrupted"].includes(status)) {
+  if (!isTerminalJobStatus(status)) {
     throw new Error("missing or nonterminal job_done status");
   }
   const error =
@@ -76,6 +77,7 @@ function parseJobDonePayload(raw: string): JobDonePayload {
 }
 
 export default function useJobStreaming(args: JobStreamingArgs) {
+  const [observedStop, setObservedStop] = React.useState<{ jobId: string; scope: string } | null>(null);
   const {
     activeJobId,
     connectionMode,
@@ -105,6 +107,12 @@ export default function useJobStreaming(args: JobStreamingArgs) {
     let cancelled = false;
     const jobId = activeJobId;
     let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+    const observeNativeStop = (job: JobResp) => {
+      if (job.job_id !== jobId || job.cancel_requested !== true) return;
+      setObservedStop((previous) => previous?.jobId === jobId && previous.scope === jobStoreKey
+        ? previous
+        : { jobId, scope: jobStoreKey });
+    };
 
     const startPolling = () => {
       (async () => {
@@ -146,6 +154,12 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             await sleep(1000);
             continue;
           }
+          if (job.job_id !== jobId) {
+            setJobNotice("job status did not match the current run (retrying)");
+            await sleep(1000);
+            continue;
+          }
+          observeNativeStop(job);
           setJobStatus(job.status ?? null);
           setJobError(job.status === "error" || job.status === "interrupted" ? (job.error ?? null) : null);
           setJobNotice(null);
@@ -162,7 +176,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             cursorRef.current = next;
           }
 
-          if (job.status === "done" || job.status === "error" || job.status === "cancelled" || job.status === "interrupted") {
+          if (isTerminalJobStatus(job.status)) {
             if (job.result) {
               setResult(job.result);
               setLastCompletedPrompt(lastRunPromptRef.current);
@@ -243,7 +257,9 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             }
             return;
           }
-          if (job.status === "done" || job.status === "error" || job.status === "cancelled" || job.status === "interrupted") {
+          if (job.job_id !== jobId) return;
+          observeNativeStop(job);
+          if (isTerminalJobStatus(job.status)) {
             // Trigger the same completion path as streaming.
             if (job.result) {
               setResult(job.result);
@@ -279,7 +295,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
       )}`;
       const controller = new AbortController();
       fetchAbort = controller;
-      setJobStatus("running");
+      setJobStatus((current) => isTerminalJobStatus(current) ? current : "running");
       setJobUpdatedMs(null);
 
       (async () => {
@@ -351,7 +367,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
           String(cursorRef.current),
         )}`;
         es = new EventSource(url);
-        setJobStatus("running");
+        setJobStatus((current) => isTerminalJobStatus(current) ? current : "running");
         setJobUpdatedMs(null);
         es.onopen = () => {
           // ok
@@ -474,4 +490,5 @@ export default function useJobStreaming(args: JobStreamingArgs) {
     setResult,
     writeJobsBySession,
   ]);
+  return observedStop?.jobId === activeJobId && observedStop.scope === jobStoreKey;
 }

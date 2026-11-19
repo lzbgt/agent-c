@@ -15,6 +15,7 @@ export type PromptBarProps = {
   sessionId: string | null | undefined;
   tools: string;
   activeJobId: string | null;
+  nativeStopRequested?: boolean;
   jobStatus: string | null;
   jobProgressLabel: string;
   runWatchMode: string;

@@ -86,9 +86,21 @@ export async function apiGetJobProgress(
 }
 
 export async function apiCancelJob(base: string, jobId: string, auth?: ApiAuth): Promise<JobCancelResp> {
-  const r = await fetch(`${base}/api/v1/job/cancel?job_id=${encodeURIComponent(jobId)}`, daemonFetchInit(auth, { method: "POST" }));
-  const j = await parseJsonObject(r);
-  return JobCancelRespSchema.parse({ ok: r.ok, status: r.status, ...j });
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const r = await fetch(`${base}/api/v1/job/cancel?job_id=${encodeURIComponent(jobId)}`,
+      daemonFetchInit(auth, { method: "POST", signal: controller.signal }));
+    const reply = JobCancelRespSchema.parse({ ...await parseJsonObject(r), status: r.status });
+    if (r.ok && reply.ok && reply.job_id === jobId) return reply;
+    const authRejected = reply.job_id === undefined && (r.status === 401 || r.status === 403);
+    if (!reply.ok && r.status >= 400 && r.status < 500 && (reply.job_id === jobId || authRejected)) return reply;
+    // A missing/wrong-job receipt or a gateway/server failure cannot say
+    // whether native cancellation was requested. Never synthesize an outcome.
+    throw new Error("No matching Stop acknowledgement");
+  } finally {
+    clearTimeout(deadline);
+  }
 }
 
 export async function apiRunReplay(base: string, runId: string, auth?: ApiAuth): Promise<RunReplayResp> {

@@ -122,7 +122,8 @@ export type RunAsyncResp = z.infer<typeof RunAsyncRespSchema>;
 
 export const JobCancelRespSchema = z
   .object({
-    ok: z.boolean().optional(),
+    ok: z.boolean(),
+    job_id: z.string().optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
@@ -135,7 +136,8 @@ export const JobRespSchema = z.object({
   ok: z.boolean(),
   job_id: z.string().optional(),
   trace_id: z.string().optional(),
-  status: z.string().optional(), // queued|running|done|error|cancelled
+  status: z.string().optional(), // queued|running|done|error|cancelled|interrupted
+  cancel_requested: z.boolean().optional(),
   error: z.string().optional(),
   err: z.string().optional(),
   code: z.string().optional(),

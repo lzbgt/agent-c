@@ -49,15 +49,17 @@ Example:
 ## Stop, reload and exact output
 
 **Stop** requests native cancellation, including during model prefill, token
-generation, host tools and provider retry waits. The control remains
-**Stopping…** until the terminal job update arrives. A rejected request displays
-**Stop failed** and permits retry. The underlying transport/tool-loop behavior
-is specified in [Cancellation and captured output](TOOLS.md#cancellation-and-captured-output).
+generation, host tools and provider retry waits. A matching acknowledgement or
+native cancellation-request flag shows **Stopping…**, not a completed Stop.
+An explicit rejection displays **Stop failed**. A dropped or malformed reply
+shows **Stop not confirmed** and the existing watcher keeps checking the run.
+Stop is never automatically sent again. The underlying transport/tool-loop
+behavior is specified in [Cancellation and captured output](TOOLS.md#cancellation-and-captured-output).
 
-Reloading restores the active watcher from this browser and replays retained
-events, so earlier tool results and Stop remain available. A dropped stream
-falls back to progress polling. This state is browser-local; adapter restart or
-cookie expiry may require unlocking again.
+Reloading the tab preserves its pending Stop state and restores the exact job
+watcher, including a native result that arrived while the tab was unloaded.
+Retained events replay; a dropped stream falls back to progress polling. This
+state is browser-local; adapter restart or cookie expiry may require unlocking.
 
 Open **Tool outputs** as soon as a result appears, without waiting for the final
 answer. **Copy output** and **Download output** preserve the returned text and
