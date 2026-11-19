@@ -53,14 +53,21 @@ class H(BaseHTTPRequestHandler):
       req = {}
 
     prompt = next((m.get("content") for m in reversed(req.get("messages", [])) if m.get("role") == "user"), "")
-    if not req.get("stream") or prompt == "JSON_FALLBACK_STREAM":
+    case = prompt.split(":", 1)[0] if isinstance(prompt, str) else ""
+    output = {
+      "EMPTY_OUTPUT": {"content": ""},
+      "BLANK_OUTPUT": {"content": " \t\r\n"},
+      "REASONING_ONLY_OUTPUT": {"content": None, "reasoning_content": "fixture, not a reply"},
+      "PADDED_OUTPUT": {"content": " \nFixture answer\t\n"},
+    }.get(case)
+    if not req.get("stream") or prompt == "JSON_FALLBACK_STREAM" or (output is not None and prompt.endswith(":fallback")):
       body = {
         "id": "cmpl_stub_nonstream",
         "object": "chat.completion",
         "created": 0,
         "model": "stub",
         "choices": [
-          {"index": 0, "message": {"role": "assistant", "content": "Hello world END"}, "finish_reason": "stop"}
+          {"index": 0, "message": {"role": "assistant", **(output if output is not None else {"content": "Hello world END"})}, "finish_reason": "stop"}
         ],
       }
       data = json.dumps(body).encode("utf-8")
@@ -82,6 +89,8 @@ class H(BaseHTTPRequestHandler):
       {"choices": [{"delta": {"content": "Hello "}}]},
       {"choices": [{"delta": {"content": "world END"}}]},
     ]
+    if output is not None:
+      chunks = [{"choices": [{"delta": output}]}]
     for c in chunks:
       line = "data: " + json.dumps(c) + "\n\n"
       self.wfile.write(line.encode("utf-8"))
@@ -89,7 +98,7 @@ class H(BaseHTTPRequestHandler):
       time.sleep(0.05)
     if prompt == "INCOMPLETE_STREAM":
       return
-    if prompt in ("LENGTH_STREAM", "FINISH_ONLY_STREAM"):
+    if output is not None or prompt in ("LENGTH_STREAM", "FINISH_ONLY_STREAM"):
       reason = "length" if prompt == "LENGTH_STREAM" else "stop"
       finish = {"choices": [{"delta": {}, "finish_reason": reason}]}
       self.wfile.write(("data: " + json.dumps(finish) + "\n\n").encode("utf-8"))
@@ -102,7 +111,7 @@ PY
 STUB_PID=$!
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_local_stream_assistant_smoke" \
-  --tools none
+  --tools basic
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
@@ -230,6 +239,24 @@ for prompt, should_complete in (("INCOMPLETE_STREAM", False), ("LENGTH_STREAM", 
             assert "completion marker" in json.dumps(result.get("error")), result
         stored = call("/api/v1/session?" + urllib.parse.urlencode({"session_id": session}))
         assert not any(m.get("role") == "assistant" for m in stored.get("messages", [])), stored
+
+for tools in ("none", "basic"):
+    for mode in ("raw", "sse", "fallback"):
+        for index, prompt in enumerate(("EMPTY_OUTPUT", "BLANK_OUTPUT", "REASONING_ONLY_OUTPUT", "PADDED_OUTPUT")):
+            session = f"{sid}_{tools}_{mode}_{index}"
+            expected = " \nFixture answer\t\n" if prompt == "PADDED_OUTPUT" else None
+            suffix = ":fallback" if mode == "fallback" else ""
+            result = call("/api/v1/run", {"prompt": prompt + suffix, "session_id": session,
+                          "tools": tools, "stream_assistant": mode != "raw", "base_url": stub,
+                          "api_key": "dummy", "model": "stub", "trace": False, "verbose": False})
+            stored = call("/api/v1/session?" + urllib.parse.urlencode({"session_id": session}))
+            replies = [m["content"] for m in stored.get("messages", []) if m.get("role") == "assistant"]
+            assert result.get("ok") is (expected is not None), (tools, mode, prompt, result)
+            if expected is None:
+                assert "without an assistant answer" in json.dumps(result.get("error")), result
+                assert not result.get("assistant_text") and not replies, (result, stored)
+            else:
+                assert result.get("assistant_text") == expected and replies == [expected], (result, stored)
 PY
 
 # Cleanup session artifacts.

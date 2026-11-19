@@ -108,6 +108,14 @@ OpenAIStreamResult openai_chat_completions_raw_stream(
 inline constexpr const char* kOpenAIOutputLimitError =
   "Output token limit reached (finish_reason=length); increase the output token budget or request a shorter response.";
 
+inline constexpr const char* kOpenAIEmptyAssistantError =
+  "Provider finished without an assistant answer.";
+
+// Preserve the original answer bytes; reject empty or ASCII-whitespace-only text.
+inline bool openai_has_nonblank_assistant_text(const std::string& text) {
+  return text.find_first_not_of(" \t\n\r\f\v") != std::string::npos;
+}
+
 // A successful HTTP response can still be an incomplete generation.
 bool openai_response_hit_output_limit(const std::string& response_body);
 

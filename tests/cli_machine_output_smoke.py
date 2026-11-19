@@ -13,6 +13,12 @@ requests = []
 publish_conflict = None
 long_text = "0123456789abcdef" * 4 * 9500
 large_text = "capture-budget-" * 100000
+output_cases = {
+    "EMPTY_OUTPUT": {"content": ""},
+    "BLANK_OUTPUT": {"content": " \t\r\n"},
+    "REASONING_ONLY_OUTPUT": {"content": None, "reasoning_content": "fixture, not a reply"},
+    "PADDED_OUTPUT": {"content": " \nFixture answer\t\n"},
+}
 envelope = json.loads((Path(__file__).resolve().parents[1] / "docs" / "cli_event_v1.schema.json").read_text())
 
 
@@ -24,16 +30,23 @@ class Model(BaseHTTPRequestHandler):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         requests.append(req)
         last = next(m["content"] for m in reversed(req["messages"]) if m["role"] == "user")
+        # Attachments can wrap the user message in content parts.
+        prompt_text = last if isinstance(last, str) else json.dumps(last)
+        output = next((v for key, v in output_cases.items() if key in prompt_text), None)
+        fallback = last == "JSON_FALLBACK_STREAM" or prompt_text.endswith(":fallback")
         if "FAIL" == last:
             self.send_response(400)
             body = b'{"error":{"message":"deterministic failure"}}'
-        elif req.get("stream") and last != "JSON_FALLBACK_STREAM":
+        elif req.get("stream") and not fallback:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
             text = long_text if last == "LONG_STREAM" else 'stream: quoted " text\nUnicode: \u4f60\u597d'
-            for offset in range(0, len(text), 64):
-                chunk = {"choices": [{"index": 0, "delta": {"content": text[offset:offset+64]}}]}
+            deltas = (output,) if output is not None else (
+                {"content": text[offset:offset+64]} for offset in range(0, len(text), 64)
+            )
+            for delta in deltas:
+                chunk = {"choices": [{"index": 0, "delta": delta}]}
                 self.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
             if last != "INCOMPLETE_STREAM":
                 reason = " " if last == "BLANK_FINISH_STREAM" else "stop"
@@ -46,6 +59,8 @@ class Model(BaseHTTPRequestHandler):
         else:
             self.send_response(200)
             message = {"role": "assistant", "content": large_text if last == "LARGE_CAPTURE" else 'verified: "quoted"\nUnicode: \u4f60\u597d'}
+            if output is not None:
+                message = {"role": "assistant", **output}
             if last == "CALCULATE" and not any(m["role"] == "tool" for m in req["messages"]):
                 message = {"role": "assistant", "content": "", "tool_calls": [{"id": "calc-1", "type": "function", "function": {"name": "calculator", "arguments": '{"expression":"2+2"}'}}]}
             if last == "PUBLISH_CONFLICT":
@@ -110,6 +125,24 @@ try:
                 assert target.read_text() == previous
                 assert len(requests) == count + 1, "partial streamed requests must not be replayed"
 
+        # A valid completion without an answer is not a successful run or file publication.
+        for tools in ("none", "basic"):
+            for mode in ("raw", "sse", "fallback"):
+                opts = ("--json", "--tools", tools, "--no-session", "-o", str(target))
+                if mode != "raw":
+                    opts += ("--stream-assistant",)
+                suffix = ":fallback" if mode == "fallback" else ""
+                previous = target.read_bytes()
+                for prompt in ("EMPTY_OUTPUT", "BLANK_OUTPUT", "REASONING_ONLY_OUTPUT"):
+                    count = len(requests)
+                    rows = events(run("exec", prompt + suffix, *opts, expected=1), False)
+                    assert "without an assistant answer" in rows[-1]["data"]["error"]["message"], (tools, mode, prompt, rows[-1])
+                    assert target.read_bytes() == previous
+                    assert len(requests) == count + 1, "completed-but-empty requests must not be replayed"
+                rows = events(run("exec", "PADDED_OUTPUT" + suffix, *opts))
+                text = output_cases["PADDED_OUTPUT"]["content"]
+                assert rows[-2]["data"]["text"] == text and target.read_bytes() == text.encode()
+
         # More than 4,000 live events must not be silenced by the bounded audit
         # capture. The accepted final result still follows all streamed deltas.
         rows = events(run("exec", "LONG_STREAM", "--json", "--stream-assistant", "--tools", "basic", "--session", "long"))
@@ -145,6 +178,11 @@ try:
         attachment = root / "note.txt"
         attachment.write_text("attachment evidence")
         events(run("exec", "inspect", "--json", "--tools", "none", "--no-session", "--attach", str(attachment)))
+        previous = target.read_bytes()
+        rows = events(run("exec", "BLANK_OUTPUT", "--json", "--tools", "none", "--no-session",
+                          "--attach", str(attachment), "-o", str(target), expected=1), False)
+        assert "without an assistant answer" in rows[-1]["data"]["error"]["message"]
+        assert target.read_bytes() == previous
 finally:
     server.shutdown()
     server.server_close()

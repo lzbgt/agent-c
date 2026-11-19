@@ -788,6 +788,11 @@ static agent_status_t openai_tool_provider_generate(
     }
   }
 
+  if (calls.empty() && !openai_has_nonblank_assistant_text(assistant_content)) {
+    (void)set_error(out_resp, kOpenAIEmptyAssistantError);
+    return AGENT_ERR_INTERNAL;
+  }
+
   if (agent_string_set_copy(&out_resp->assistant_content, assistant_content.c_str(), assistant_content.size()) != AGENT_OK) {
     return AGENT_ERR_OOM;
   }

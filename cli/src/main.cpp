@@ -1330,16 +1330,16 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
             Json::Value parsed;
             if (Json::parseFromStream(rb, iss, &parsed, &errs) && parsed.isObject()) {
               const auto& choices = parsed["choices"];
-              if (choices.isArray() && !choices.empty()) {
-                const auto& msg = choices[0]["message"];
-                const auto& content = msg["content"];
-                if (content.isString()) {
-                  assistant_text = content.asString();
-                } else {
-                  const auto& text = choices[0]["text"];
-                  if (text.isString()) assistant_text = text.asString();
+              if (choices.isArray() && !choices.empty() && choices[0].isObject()) {
+                const auto& choice = choices[0];
+                const auto& msg = choice["message"];
+                const auto& text = choice["text"];
+                got_json_completion = msg.isObject() || text.isString();
+                if (msg.isObject() && msg["content"].isString()) {
+                  assistant_text = msg["content"].asString();
+                } else if (text.isString()) {
+                  assistant_text = text.asString();
                 }
-                got_json_completion = !assistant_text.empty();
               }
             }
           }
@@ -1355,9 +1355,11 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
             break;
           }
 
-          if (assistant_text.empty()) {
+          if (!openai_has_nonblank_assistant_text(assistant_text)) {
             ok = false;
-            err = "streamed completion returned no assistant content";
+            err = kOpenAIEmptyAssistantError;
+            output->set_error(err);
+            http_body.clear();
             openai_stream_core_free(&sctx.core);
             break;
           }
@@ -1525,9 +1527,11 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
               }
             }
           }
-          if (assistant_text.empty()) {
+          if (!openai_has_nonblank_assistant_text(assistant_text)) {
             ok = false;
-            err = "completion returned no assistant content";
+            err = kOpenAIEmptyAssistantError;
+            output->set_error(err);
+            http_body.clear();
             break;
           }
           agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
@@ -1702,7 +1706,9 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
       if (!err.empty()) {
         std::cerr << err << "\n";
       }
-      if (!pctx.last_body.empty()) {
+      if (err == kOpenAIEmptyAssistantError) {
+        output->set_error(err);
+      } else if (!pctx.last_body.empty()) {
         std::cerr << pctx.last_body << "\n";
       } else if (final_attempt >= 2 && last_st == AGENT_ERR_CONTEXT_TOO_LONG) {
         std::cerr << "agent_run_once failed after retries\n";

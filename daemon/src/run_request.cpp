@@ -1425,22 +1425,28 @@ static Json::Value run_request_to_json_impl(
             ? std::string(sctx.core.error_message.data, sctx.core.error_message.len)
             : std::string(kOpenAIOutputLimitError);
         } else {
-          const bool has_stream_text = sctx.core.assistant.data && sctx.core.assistant.len > 0;
-          const std::string final_text = has_stream_text
-            ? std::string(sctx.core.assistant.data, sctx.core.assistant.len)
-            : json_try_extract_assistant_content_from_completion([&]() -> Json::Value {
-                Json::Value v;
-                std::string pe;
-                if (!json_parse_any(sr.response_body, &v, &pe)) return Json::Value(Json::nullValue);
-                return v;
-              }());
-          const bool got_json_completion = !has_stream_text && !final_text.empty();
+          std::string final_text;
+          bool got_json_completion = false;
+          if (sctx.core.assistant.data && sctx.core.assistant.len > 0) {
+            final_text.assign(sctx.core.assistant.data, sctx.core.assistant.len);
+          } else {
+            Json::Value v;
+            std::string pe;
+            if (json_parse_any(sr.response_body, &v, &pe) && v.isObject()) {
+              const auto& choices = v["choices"];
+              if (choices.isArray() && !choices.empty() && choices[0].isObject()) {
+                const auto& choice = choices[0];
+                got_json_completion = choice["message"].isObject() || choice["text"].isString();
+                if (got_json_completion) final_text = json_try_extract_assistant_content_from_completion(v);
+              }
+            }
+          }
           if (!got_json_completion && !openai_stream_has_completion(sctx.core, sr.saw_done)) {
             ok = false;
             err = kOpenAIIncompleteStreamError;
-          } else if (final_text.empty()) {
+          } else if (!openai_has_nonblank_assistant_text(final_text)) {
             ok = false;
-            err = "streamed completion returned no assistant content";
+            err = kOpenAIEmptyAssistantError;
           } else {
             assistant_text = final_text;
             ok = true;
