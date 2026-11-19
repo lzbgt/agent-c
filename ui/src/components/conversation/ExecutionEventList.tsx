@@ -142,6 +142,7 @@ export default function ExecutionEventList(props: ExecutionEventListProps) {
               daemonAuth={daemonAuth}
               sessionId={sessionId}
               toolCallId={toolCallId}
+              toolName={typeof data.tool_name === "string" ? data.tool_name : undefined}
               content={content}
             />
           ) : hasSummary ? (

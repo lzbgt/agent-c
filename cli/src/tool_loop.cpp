@@ -240,8 +240,10 @@ Json::Value summarize_tool_output_json(const std::string& tool_out, const std::s
       out += "…";
       return out;
     };
+    const bool process_tool = tool_name == "shell_exec" || tool_name == "proc_exec";
     if (data.isMember("exit_code")) summary["exit_code"] = data["exit_code"];
     if (data.isMember("timed_out")) summary["timed_out"] = data["timed_out"];
+    if (process_tool && data["cancelled"].isBool()) summary["cancelled"] = data["cancelled"];
     if (data.isMember("truncated")) summary["truncated"] = data["truncated"];
     if (data.isMember("argv")) summary["argv"] = data["argv"];
     // Production observability: include executed command + captured output when present.
@@ -252,7 +254,7 @@ Json::Value summarize_tool_output_json(const std::string& tool_out, const std::s
     if (data.isMember("output") && data["output"].isString()) {
       summary["output"] = cap_str(data["output"].asString(), 64 * 1024);
     }
-    if (tool_name == "shell_exec" || tool_name == "proc_exec" || tool_name == "fs_list") {
+    if (process_tool || tool_name == "fs_list") {
       for (const char* field : {"captured_output_bytes", "observed_output_bytes", "capture_truncated", "capture_complete", "entries_count", "listing_complete"}) {
         if (data.isMember(field)) summary[field] = data[field];
       }

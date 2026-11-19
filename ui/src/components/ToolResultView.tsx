@@ -91,6 +91,7 @@ export default function ToolResultView({
           parsed={parsed}
           sessionId={sessionId}
           state={state}
+          toolName={name}
           yolo={yolo}
         />
       ) : (

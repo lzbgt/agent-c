@@ -287,6 +287,51 @@ test("tool output distinguishes original event evidence from summaries and excer
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("summary payload\n");
 });
 
+test("command evidence distinguishes interruption, unknown exit and ordinary failure", async ({ page, context }) => {
+  test.setTimeout(25_000);
+  const raw = (marker: string, resultData: Record<string, unknown>) => ({
+    type: "tool_result",
+    data: { tool_name: "proc_exec", tool_call_id: marker, content_truncated: 0,
+      content: JSON.stringify({ ok: true, data: { output: marker + "\n", ...resultData } }) },
+  });
+  const summary = (marker: string, resultData: Record<string, unknown>) => ({
+    type: "tool_result",
+    data: { tool_name: "shell_exec", tool_call_id: marker,
+      summary: { ok: false, output: marker + "\n", ...resultData } },
+  });
+  const cases = [
+    ["interrupted-command-capture", "Cancelled"],
+    ["expired-command-capture", "Timed out"],
+    ["legacy-stop-capture", "Cancelled"],
+    ["unknown-exit-capture", "Outcome unverified"],
+    ["missing-exit-capture", "Outcome unverified"],
+    ["failed-command-capture", "Command failed"],
+  ];
+  await mockActiveLocalJob(page, [
+    raw("interrupted-command-capture", { cancelled: true, exit_code: 0 }),
+    raw("expired-command-capture", { timed_out: true, exit_code: 0 }),
+    summary("legacy-stop-capture", { error: "cancelled", exit_code: 143 }),
+    summary("unknown-exit-capture", { exit_code: -1 }),
+    raw("missing-exit-capture", {}),
+    raw("failed-command-capture", { exit_code: 7 }),
+    raw("successful-command-capture", { exit_code: 0, cancelled: false, timed_out: false }),
+  ]);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  const outputs = page.getByTestId("chat-tool-outputs");
+  await outputs.locator(":scope > summary").click();
+  const card = (marker: string) => outputs.locator("section").filter({ hasText: marker });
+  for (const [marker, label] of cases) {
+    await expect(card(marker).getByTestId("tool-command-status")).toHaveText(label);
+    await expect(card(marker).getByText("ok", { exact: true })).toHaveCount(0);
+  }
+  await expect(card("failed-command-capture").getByText("exit_code=7", { exact: true })).toBeVisible();
+  await expect(card("successful-command-capture").getByText("ok", { exact: true })).toBeVisible();
+  await expect(card("successful-command-capture").getByTestId("tool-command-status")).toHaveCount(0);
+  await card("interrupted-command-capture").getByTestId("tool-output-copy").click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("interrupted-command-capture\n");
+});
+
 test("display clipping is distinct from complete native capture", async ({ page, context }) => {
   test.setTimeout(20_000);
   const clippedEvents = [{

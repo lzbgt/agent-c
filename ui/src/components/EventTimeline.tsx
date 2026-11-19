@@ -66,7 +66,12 @@ function EventCard({
             <>
               {evidenceNote ? <p className="mb-2 text-xs text-amber-200" role="status">{evidenceNote}</p> : null}
               {typeof dataRecord.content === "string" ? (
-                <ToolResultView baseUrl={baseUrl} yolo={yolo} content={dataRecord.content} />
+                <ToolResultView
+                  baseUrl={baseUrl}
+                  yolo={yolo}
+                  toolName={typeof dataRecord.tool_name === "string" ? dataRecord.tool_name : undefined}
+                  content={dataRecord.content}
+                />
               ) : dataRecord.summary !== undefined && dataRecord.summary !== null ? (
                 <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
                   {JSON.stringify(dataRecord.summary, null, 2)}

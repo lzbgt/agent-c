@@ -19,14 +19,15 @@ type ToolResultParsedViewProps = {
   parsed: UnknownRecord;
   sessionId?: string;
   state: ReturnType<typeof useToolResultViewState>;
+  toolName: string;
   yolo: boolean;
 };
 
 export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
-  const { parsed, state } = props;
+  const { parsed, state, toolName } = props;
   const data = safeObject(parsed.data);
   const apply = safeObject(data.apply);
-  const toolName = typeof data.tool === "string" ? data.tool : "";
+  const isProcess = toolName === "shell_exec" || toolName === "proc_exec";
   const patch = typeof data.patch === "string" ? data.patch : null;
   const output = typeof data.output === "string" ? data.output : null;
   const hasOutput = output !== null;
@@ -44,9 +45,22 @@ export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
         ? apply.exit_code
         : null;
   const ok = typeof parsed.ok === "boolean" ? parsed.ok : null;
-  const error = typeof parsed.error === "string" ? parsed.error : null;
+  const error = typeof parsed.error === "string" ? parsed.error
+    : isProcess && typeof data.error === "string" ? data.error : null;
   const protocolViolation = parsed.protocol_violation === true;
-  const timedOut = typeof data.timed_out === "boolean" ? data.timed_out : null;
+  const timedOut = data.timed_out === true || (isProcess && parsed.timed_out === true);
+  const cancelled = data.cancelled === true || parsed.cancelled === true || error === "cancelled";
+  const processExit = typeof data.exit_code === "number" && Number.isInteger(data.exit_code) ? data.exit_code : null;
+  // An interrupted or unconfirmed command must not get a green success badge,
+  // even if the retained envelope has a contradictory generic ok hint.
+  const commandStatus = !isProcess ? null
+    : cancelled && timedOut ? "Cancelled and timed out"
+    : cancelled ? "Cancelled"
+    : timedOut ? "Timed out"
+    : (processExit === null && ok !== false) || (processExit !== null && processExit < 0) ? "Outcome unverified"
+    : processExit !== null && processExit > 0 ? "Command failed"
+    : null;
+  const commandIncomplete = commandStatus !== null && commandStatus !== "Command failed";
   const waitForType = typeof data.wait_for_type === "string" ? data.wait_for_type : null;
   const waitTimeoutMs = typeof data.timeout_ms === "number" ? data.timeout_ms : null;
   const lastType = typeof data.last_type === "string" ? data.last_type : null;
@@ -77,7 +91,11 @@ export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
     <div>
       <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
         {toolName ? <span className="rounded-md bg-white/10 px-2 py-0.5">{toolName}</span> : null}
-        {ok !== null ? (
+        {commandStatus ? (
+          <span data-testid="tool-command-status" className={`rounded-md px-2 py-0.5 ${
+            commandIncomplete ? "bg-amber-500/15 text-amber-200" : "bg-rose-500/15 text-rose-200"
+          }`}>{commandStatus}</span>
+        ) : ok !== null ? (
           <span
             className={`rounded-md px-2 py-0.5 ${
               ok ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"
@@ -88,9 +106,9 @@ export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
         ) : null}
         {exitCode !== null ? <span className="rounded-md bg-white/10 px-2 py-0.5">exit_code={exitCode}</span> : null}
         {toolPath ? <span className="rounded-md bg-white/10 px-2 py-0.5">path={toolPath}</span> : null}
-        {timedOut === true ? <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-amber-200">timed_out</span> : null}
+        {!isProcess && timedOut ? <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-amber-200">timed_out</span> : null}
         {protocolViolation ? <span className="rounded-md bg-rose-500/10 px-2 py-0.5 text-rose-200">protocol_violation</span> : null}
-        {error ? <span className="rounded-md bg-rose-500/10 px-2 py-0.5 text-rose-200">{error}</span> : null}
+        {error && !(isProcess && error === "cancelled") ? <span className="rounded-md bg-rose-500/10 px-2 py-0.5 text-rose-200">{error}</span> : null}
 
         {hasOutput ? (
           <div className="ml-auto flex items-center gap-2">
@@ -130,6 +148,12 @@ export default function ToolResultParsedView(props: ToolResultParsedViewProps) {
           </button>
         )}
       </div>
+
+      {commandIncomplete ? (
+        <p className="mb-2 text-xs text-amber-200" role="status">
+          A normal exit was not verified. Captured output alone does not establish completion.
+        </p>
+      ) : null}
 
       {isTimeout ? (
         <div className="mb-2 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100/90">

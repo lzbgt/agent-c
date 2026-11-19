@@ -64,6 +64,11 @@ captured output fulfills an exact-output request. Point to **Tool outputs** or a
 registered capture file;
 do not generate a large transcription or invent missing lines.
 
+For command results, cancellation or timeout takes precedence over a generic
+`ok` hint; missing or negative exit status does not verify completion. A known
+nonzero exit is shown as a command failure. A partial capture remains copyable,
+but its presence does not establish completion or prove that no effects occurred.
+
 `shell_exec` and `proc_exec` accept integer `max_output_bytes` in
 1..1048576, default 65536. They keep draining pipes after the retention cap.
 Text captures from `shell_exec`, `proc_exec` and `fs_list` larger than 8 KiB

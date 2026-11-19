@@ -306,6 +306,33 @@ static void test_saved_exec_output_receipt() {
 }
 
 
+static void test_process_outcome_summary() {
+  for (const char* tool : {"shell_exec", "proc_exec"}) {
+    Json::Value input;
+    input["ok"] = false;
+    input["error"] = "cancelled";
+    auto& data = input["data"];
+    data["exit_code"] = 143;
+    data["cancelled"] = true;
+    data["timed_out"] = false;
+    data["output"] = "partial native output\n";
+    const auto cancelled = summarize_tool_output_json(encode_json(input), tool);
+    assert(cancelled["cancelled"].isBool() && cancelled["cancelled"].asBool());
+    assert(!cancelled["timed_out"].asBool() && !cancelled["ok"].asBool());
+    assert(cancelled["error"] == "cancelled" && cancelled["exit_code"].asInt() == 143);
+    assert(cancelled["output"] == data["output"]);
+
+    input.removeMember("error");
+    data["cancelled"] = false;
+    data["timed_out"] = true;
+    const auto timeout = summarize_tool_output_json(encode_json(input), tool);
+    assert(timeout["cancelled"].isBool() && !timeout["cancelled"].asBool());
+    assert(timeout["timed_out"].asBool());
+    data["cancelled"] = "unknown";
+    assert(!summarize_tool_output_json(encode_json(input), tool).isMember("cancelled"));
+  }
+}
+
 static void test_saved_fs_list_output_receipt() {
   Json::Value input;
   input["ok"] = true;
@@ -394,6 +421,7 @@ static void test_saved_fs_list_output_receipt() {
 
 int main() {
   test_saved_exec_output_receipt();
+  test_process_outcome_summary();
   test_saved_fs_list_output_receipt();
   test_plain_text_truncation();
   test_json_output_field_truncation();
