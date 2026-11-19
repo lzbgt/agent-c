@@ -3,11 +3,13 @@ import React from "react";
 import usePromptBarState from "./promptBar/usePromptBarState";
 import PromptBarComposerBody from "./promptBar/PromptBarComposerBody";
 import type { Attachment, PromptBarProps } from "./promptBar/promptBarTypes";
+import { UNVERIFIED_JOB_RECEIPT, UNVERIFIED_JOB_STATUS } from "../jobStore";
 
 export type { Attachment } from "./promptBar/promptBarTypes";
 
 const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function PromptBar(props, ref) {
   const state = usePromptBarState(props);
+  const unverifiedRun = props.jobStatus === UNVERIFIED_JOB_STATUS || props.jobNotice === UNVERIFIED_JOB_RECEIPT;
 
   return (
     <div
@@ -50,7 +52,8 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
         {state.cancelPending ? <div className="text-xs text-white/70" role="status">{state.cancelSending ? "Requesting Stop for this run…" : "Stopping current run…"}</div> : null}
         {state.cancelUnconfirmed ? <div className="text-xs text-amber-200" role="status">Stop not confirmed. Checking the native run status.</div> : null}
         {state.cancelError ? <div className="chat-send-error" role="alert">Stop failed: {state.cancelError}</div> : null}
-        {props.jobNotice && !/^(queued|uploaded \d+ file)/.test(props.jobNotice) ? <div className="text-xs text-white/60" role="status">{props.jobNotice}</div> : null}
+        {unverifiedRun ? <div className="text-xs text-amber-200" role="status" data-testid="run-receipt-unverified">{UNVERIFIED_JOB_RECEIPT}</div> : null}
+        {props.jobNotice && props.jobNotice !== UNVERIFIED_JOB_RECEIPT && !/^(queued|uploaded \d+ file)/.test(props.jobNotice) ? <div className="text-xs text-white/60" role="status">{props.jobNotice}</div> : null}
 
       </div>
     </div>

@@ -20,6 +20,8 @@ async function mockActiveLocalJob(
 ) {
   const state = {
     status: "running",
+    lookupGap: null as null | "not-found" | "unavailable",
+    omitTerminalResult: false,
     rejectCancel: false,
     dropCancelReply: false,
     emptyCancelReply: false,
@@ -76,6 +78,7 @@ async function mockActiveLocalJob(
     if (url.pathname === "/api/v1/job/stream") {
       const cursor = Number(url.searchParams.get("cursor") || 0);
       state.streamCursors.push(cursor);
+      if (state.lookupGap) { await json({ ok: false, error: state.lookupGap }, state.lookupGap === "not-found" ? 404 : 503); return; }
       // End the stream after the retained events to exercise polling reconnect.
       await route.fulfill({
         headers,
@@ -96,18 +99,23 @@ async function mockActiveLocalJob(
     if (url.pathname === "/api/v1/job") {
       const includeEvents = url.searchParams.get("include_events") === "1";
       if (includeEvents) state.progressCalls += 1;
+      if (state.lookupGap) {
+        const notFound = state.lookupGap === "not-found";
+        await json({ ok: false, error: notFound ? "job not found; this does not prove nonexecution" : "native status unavailable" }, notFound ? 404 : 503);
+        return;
+      }
       const cursor = Number(url.searchParams.get("cursor") || 0);
       await json({
         ok: true, job_id: jobId, status: state.status, cancel_requested: state.cancelRequested, updated_unix_ms: Date.now(),
         ...(includeEvents ? { events: eventsForJob.slice(cursor), events_cursor_next: eventsForJob.length } : {}),
-        ...(state.status === "cancelled" ? { result: { ok: false, error: "cancelled", events: eventsForJob } } : {}),
-        ...(state.status === "done" ? { result: { ok: true, assistant_text: "See captured tool output.", events: eventsForJob } } : {}),
+        ...(state.status === "cancelled" && !state.omitTerminalResult ? { result: { ok: false, error: "cancelled", events: eventsForJob } } : {}),
+        ...(state.status === "done" && !state.omitTerminalResult ? { result: { ok: true, assistant_text: "See captured tool output.", events: eventsForJob } } : {}),
       });
       return;
     }
     if (url.pathname === "/api/v1/session/audit") {
       state.auditRequests += 1;
-      const completed = state.status === "done" && url.searchParams.get("session_id") === "default";
+      const completed = state.status === "done" && !state.omitTerminalResult && url.searchParams.get("session_id") === "default";
       if (completed && state.auditDelayMs) await new Promise((resolve) => setTimeout(resolve, state.auditDelayMs));
       await json({ ok: true, entries: completed ? [{
         ts_unix_ms: Date.now(), prompt: "Show exact output", assistant_text: "See captured tool output.",
@@ -243,6 +251,76 @@ test("an empty HTTP success is not a Stop receipt; native completion while unloa
   await expect(unknown).toHaveCount(0);
   await expect(stop).toHaveCount(0);
   expect(state.cancelCalls).toBe(1);
+});
+
+async function savedFixtureWatcher(page: Page): Promise<boolean> {
+  return page.evaluate((expected) => {
+    const jobs = JSON.parse(JSON.parse(localStorage.getItem("agentui.jobsBySession") || '"{}"'));
+    return Object.values(jobs).some((entry) => (entry as { job_id?: string })?.job_id === expected);
+  }, jobId);
+}
+
+test("not-found on reload keeps the saved watcher unverified until the exact job returns", async ({ page }) => {
+  test.setTimeout(25_000);
+  const state = await mockActiveLocalJob(page);
+  state.lookupGap = "not-found";
+  await page.goto("/");
+  const unverified = page.getByTestId("run-receipt-unverified");
+  const stop = page.getByTestId("stop-run");
+  await expect(unverified).toBeVisible();
+  await expect.poll(() => state.progressCalls).toBeGreaterThan(0);
+  await expect.poll(() => savedFixtureWatcher(page)).toBe(true);
+  await expect(stop).toHaveCount(0);
+
+  const beforeReload = state.progressCalls;
+  await page.reload();
+  await expect(unverified).toBeVisible();
+  await expect.poll(() => state.progressCalls).toBeGreaterThan(beforeReload);
+  await expect.poll(() => savedFixtureWatcher(page)).toBe(true);
+  expect(state.runRequests).toHaveLength(0);
+  expect(state.cancelCalls).toBe(0);
+
+  state.lookupGap = null;
+  await expect(stop).toBeVisible();
+  await expect(unverified).toHaveCount(0);
+  state.status = "cancelled";
+  await expect(page.getByTestId("promptbar-root").getByText("cancelled", { exact: true })).toBeVisible();
+  await expect.poll(() => savedFixtureWatcher(page)).toBe(false);
+  expect(state.runRequests).toHaveLength(0);
+  expect(state.cancelCalls).toBe(0);
+});
+
+test("live receipt loss and a terminal row without its result keep captured evidence and the watcher", async ({ page }) => {
+  test.setTimeout(25_000);
+  const state = await mockActiveLocalJob(page);
+  await page.goto("/");
+  const stop = page.getByTestId("stop-run");
+  const unverified = page.getByTestId("run-receipt-unverified");
+  const outputs = page.getByTestId("chat-tool-outputs");
+  await expect(stop).toBeVisible();
+  await expect(outputs).toContainText("Tool outputs (2)");
+
+  state.lookupGap = "unavailable";
+  await expect(unverified).toBeVisible();
+  await expect(stop).toHaveCount(0);
+  await expect(outputs).toContainText("Tool outputs (2)");
+  await expect.poll(() => savedFixtureWatcher(page)).toBe(true);
+
+  state.status = "done";
+  state.omitTerminalResult = true;
+  state.lookupGap = null;
+  const beforeLookup = state.progressCalls;
+  await expect.poll(() => state.progressCalls).toBeGreaterThan(beforeLookup + 1);
+  await expect(unverified).toBeVisible();
+  await expect(stop).toHaveCount(0);
+  await expect(outputs).not.toContainText("available now");
+  await expect.poll(() => savedFixtureWatcher(page)).toBe(true);
+  state.omitTerminalResult = false;
+  await expect(page.getByRole("log", { name: "Conversation", exact: true })).toContainText("See captured tool output.");
+  await expect(unverified).toHaveCount(0);
+  await expect.poll(() => savedFixtureWatcher(page)).toBe(false);
+  expect(state.runRequests).toHaveLength(0);
+  expect(state.cancelCalls).toBe(0);
 });
 
 test("rejected cancellation remains visible and permits a retry", async ({ page }) => {

@@ -12,7 +12,7 @@ import {
 } from "../api";
 import { safeJsonParse, safeObject } from "../jsonUtils";
 import { appendLiveEvents, capLiveEvents } from "../liveEvents";
-import { isTerminalJobStatus } from "../jobStore";
+import { isTerminalJobStatus, UNVERIFIED_JOB_RECEIPT, UNVERIFIED_JOB_STATUS } from "../jobStore";
 import { readSseStream } from "../sse";
 import { sleep } from "../timeUtils";
 import type { JobStoreWriter } from "./runtimePlaneTypes";
@@ -114,6 +114,18 @@ export default function useJobStreaming(args: JobStreamingArgs) {
         : { jobId, scope: jobStoreKey });
     };
 
+    const matchingStatus = (job: JobResp) => {
+      const status = job.status;
+      if (!job.ok || job.job_id !== jobId) return null;
+      return status === "queued" || status === "running" || isTerminalJobStatus(status) ? status : null;
+    };
+    const markReceiptUnverified = () => {
+      // Lack of a result is not evidence of nonexecution or reversal of an
+      // already observed terminal status.
+      setJobStatus((previous) => isTerminalJobStatus(previous) ? previous : UNVERIFIED_JOB_STATUS);
+      setJobNotice(UNVERIFIED_JOB_RECEIPT);
+    };
+
     const startPolling = () => {
       (async () => {
         // Poll job progress + stream events via cursor.
@@ -122,47 +134,23 @@ export default function useJobStreaming(args: JobStreamingArgs) {
           let job: JobResp;
           try {
             job = await apiGetJobProgress(effectiveBase, jobId, daemonAuth, { cursor: cursorRef.current, maxEvents: 256 });
-          } catch (e) {
-            // Transient fetch failures should not invalidate the visible conversation.
-            // Keep the current liveEvents and keep the job active; retry with backoff.
-            setJobNotice(`job fetch failed (retrying): ${String(e)}`);
-            await sleep(1000);
+          } catch {
+            if (cancelled) return;
+            markReceiptUnverified();
+            await sleep(2000);
             continue;
           }
 
           if (cancelled) return;
-          if (!job?.ok) {
-            const code = String(job?.code ?? "").toLowerCase();
-            const err = String(job?.error ?? job?.err ?? "").toLowerCase();
-            const notFound = code.includes("not_found") || err.includes("not found");
-            if (notFound) {
-              setJobNotice("job not found (clearing)");
-              setActiveJobId(null);
-              const sid = String(sessionId || "").trim();
-              if (sid) {
-                writeJobsBySession((prev) => {
-                  const nextm = { ...prev };
-                  delete nextm[jobStoreKey];
-                  return nextm;
-                });
-              }
-              void auditRefetch();
-              void sessionsRefetch();
-              return;
-            }
-            setJobNotice(`job fetch failed (retrying): ${String(job?.error ?? job?.err ?? job?.code ?? "unknown")}`);
-            await sleep(1000);
-            continue;
-          }
-          if (job.job_id !== jobId) {
-            setJobNotice("job status did not match the current run (retrying)");
-            await sleep(1000);
+          const status = matchingStatus(job);
+          if (!status) {
+            markReceiptUnverified();
+            await sleep(2000);
             continue;
           }
           observeNativeStop(job);
-          setJobStatus(job.status ?? null);
-          setJobError(job.status === "error" || job.status === "interrupted" ? (job.error ?? null) : null);
-          setJobNotice(null);
+          setJobStatus(status);
+          setJobError(status === "error" || status === "interrupted" ? (job.error ?? null) : null);
           setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
 
           const ev = Array.isArray(job.events) ? job.events : [];
@@ -176,13 +164,14 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             cursorRef.current = next;
           }
 
-          if (isTerminalJobStatus(job.status)) {
-            if (job.result) {
-              setResult(job.result);
-              setLastCompletedPrompt(lastRunPromptRef.current);
-            } else {
-              setJobError("job completed but missing result");
+          if (isTerminalJobStatus(status)) {
+            if (!job.result) {
+              markReceiptUnverified();
+              await sleep(2000);
+              continue;
             }
+            setResult(job.result);
+            setLastCompletedPrompt(lastRunPromptRef.current);
             setJobNotice(null);
             setActiveJobId(null);
             const sid = String(sessionId || "").trim();
@@ -198,12 +187,11 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             return;
           }
 
+          setJobNotice(null);
           await sleep(500);
         }
-      })().catch((e) => {
-        if (cancelled) return;
-        // Keep job state visible; do not invalidate the conversation on unexpected polling loop errors.
-        setJobNotice(`polling loop failed (retrying): ${String(e)}`);
+      })().catch(() => {
+        if (!cancelled) markReceiptUnverified();
       });
     };
 
@@ -226,51 +214,40 @@ export default function useJobStreaming(args: JobStreamingArgs) {
     const fallbackToPolling = () => {
       if (fallbackStarted) return;
       fallbackStarted = true;
+      if (watchdogTimer !== null) clearInterval(watchdogTimer);
+      watchdogTimer = null;
       startPolling();
     };
 
     // Watchdog: even if SSE/streaming is flaky, ensure we eventually observe terminal state.
     // This avoids "stuck Running…" UIs when the stream drops before a job_done event.
+    let watchdogPending = false;
     watchdogTimer = setInterval(() => {
-      if (cancelled) return;
+      if (cancelled || watchdogPending) return;
+      watchdogPending = true;
       void (async () => {
         try {
           const job = await apiGetJob(effectiveBase, jobId, daemonAuth);
-          if (cancelled) return;
-          if (!job?.ok) {
-            const code = String(job?.code ?? "").toLowerCase();
-            const err = String(job?.error ?? job?.err ?? "").toLowerCase();
-            const notFound = code.includes("not_found") || err.includes("not found");
-            if (notFound) {
-              setJobNotice("job not found (clearing)");
-              setActiveJobId(null);
-              const sid = String(sessionId || "").trim();
-              if (sid) {
-                writeJobsBySession((prev) => {
-                  const nextm = { ...prev };
-                  delete nextm[jobStoreKey];
-                  return nextm;
-                });
-              }
-              void auditRefetch();
-              void sessionsRefetch();
-            }
+          if (cancelled || fallbackStarted) return;
+          const status = matchingStatus(job);
+          if (!status) {
+            markReceiptUnverified();
             return;
           }
-          if (job.job_id !== jobId) return;
           observeNativeStop(job);
-          if (isTerminalJobStatus(job.status)) {
-            // Trigger the same completion path as streaming.
-            if (job.result) {
-              setResult(job.result);
-              setLastCompletedPrompt(lastRunPromptRef.current);
-              setJobStatus(job.status);
-              setJobError(job.status === "error" || job.status === "interrupted" ? (job.error ?? null) : null);
-              setJobNotice(null);
-            } else {
-              setJobError("job completed but missing result");
-              setJobNotice(null);
+          setJobStatus(status);
+          setJobError(status === "error" || status === "interrupted" ? (job.error ?? null) : null);
+          setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
+          if (isTerminalJobStatus(status)) {
+            if (!job.result) {
+              markReceiptUnverified();
+              return;
             }
+            // Use the native terminal result, not the existence of a request or
+            // an empty historical row, to release the saved watcher.
+            setResult(job.result);
+            setLastCompletedPrompt(lastRunPromptRef.current);
+            setJobNotice(null);
             setActiveJobId(null);
             const sid = String(sessionId || "").trim();
             if (sid) {
@@ -282,9 +259,13 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             }
             void auditRefetch();
             void sessionsRefetch();
+          } else {
+            setJobNotice((previous) => previous === UNVERIFIED_JOB_RECEIPT ? null : previous);
           }
         } catch {
-          // ignore; watchdog is best-effort
+          if (!cancelled && !fallbackStarted) markReceiptUnverified();
+        } finally {
+          watchdogPending = false;
         }
       })();
     }, 3000);
@@ -295,7 +276,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
       )}`;
       const controller = new AbortController();
       fetchAbort = controller;
-      setJobStatus((current) => isTerminalJobStatus(current) ? current : "running");
+      // Opening a stream does not prove that the saved job is running.
       setJobUpdatedMs(null);
 
       (async () => {
@@ -332,7 +313,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
                 setLastCompletedPrompt(lastRunPromptRef.current);
               }
             } catch {
-              setJobNotice("failed to parse job_done event (falling back to polling)");
+              markReceiptUnverified();
               fallbackToPolling();
               return;
             }
@@ -367,7 +348,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
           String(cursorRef.current),
         )}`;
         es = new EventSource(url);
-        setJobStatus((current) => isTerminalJobStatus(current) ? current : "running");
+        // Opening a stream does not prove that the saved job is running.
         setJobUpdatedMs(null);
         es.onopen = () => {
           // ok
@@ -406,7 +387,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
               setLastCompletedPrompt(lastRunPromptRef.current);
             }
           } catch {
-            setJobNotice("failed to parse job_done event (falling back to polling)");
+            markReceiptUnverified();
             es?.close();
             fallbackToPolling();
             return;

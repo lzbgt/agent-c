@@ -8,7 +8,7 @@ import {
   type AgentEvent,
 } from "./api";
 import { safeObject } from "./jsonUtils";
-import { isTerminalJobStatus } from "./jobStore";
+import { isTerminalJobStatus, UNVERIFIED_JOB_STATUS } from "./jobStore";
 import { brokerBaseFromProxy } from "./utils/brokerBase";
 import HistoryPanel from "./components/HistoryPanel";
 import SceneView from "./components/SceneView";
@@ -657,7 +657,7 @@ export default function App() {
                 }}
                 historyPanelProps={{
                   entries: historyEntriesDesc,
-                  activeJobId: activeJobId || "",
+                  activeJobId: jobStatus === UNVERIFIED_JOB_STATUS || isTerminalJobStatus(jobStatus) ? "" : activeJobId || "",
                   chatTarget: isTeamTarget ? "team" : "session",
                   showAllEntries: showAllHistoryEntries,
                   setShowAllEntries: setShowAllHistoryEntries,
@@ -750,7 +750,7 @@ export default function App() {
         effectiveBase={effectiveBase}
         sessionId={sessionId}
         tools={tools}
-        activeJobId={isTerminalJobStatus(jobStatus) ? null : activeJobId}
+        activeJobId={isTerminalJobStatus(jobStatus) || jobStatus === UNVERIFIED_JOB_STATUS ? null : activeJobId}
         jobStatus={jobStatus}
         nativeStopRequested={nativeStopRequested}
         jobProgressLabel={jobProgressLabel}

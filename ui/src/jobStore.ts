@@ -2,6 +2,8 @@ import type { RunWatchByScope, RunWatchEntry } from "./runWatchPrefs";
 
 export const JOB_STORE_MAX = 64;
 export const JOB_STORE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const UNVERIFIED_JOB_STATUS = "unverified";
+export const UNVERIFIED_JOB_RECEIPT = "Run receipt unverified. Waiting for the native receipt.";
 
 export function isTerminalJobStatus(status: string | null | undefined): status is "done" | "error" | "cancelled" | "interrupted" {
   return status === "done" || status === "error" || status === "cancelled" || status === "interrupted";

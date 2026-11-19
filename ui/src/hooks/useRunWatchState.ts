@@ -3,13 +3,12 @@ import {
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
   apiGetClientPrefs,
-  apiGetJob,
   apiPostClientPrefs,
   type AgentEvent,
   type ApiAuth,
 } from "../api";
 import { loadJson, safeObject } from "../jsonUtils";
-import { isTerminalJobStatus, pruneJobsBySession } from "../jobStore";
+import { pruneJobsBySession, UNVERIFIED_JOB_STATUS } from "../jobStore";
 import {
   extractRunWatchByScope,
   mergeRunWatchByScope,
@@ -246,7 +245,7 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
   );
 
   React.useEffect(() => {
-    if (activeJobId) return;
+    if (activeJobId || !effectiveBase.trim()) return;
     const sid = typeof sessionId === "string" ? sessionId.trim() : "";
     if (!sid) return;
     const jobs = parseJobsBySession();
@@ -263,49 +262,18 @@ export function useRunWatchState(args: UseRunWatchStateArgs) {
       });
     }
 
-    let cancelled = false;
-    (async () => {
-      try {
-        const job = await apiGetJob(effectiveBase, jobId, daemonAuth);
-        if (cancelled) return;
-        if (!job.ok) {
-          writeJobsBySession((prev) => {
-            const next = { ...prev };
-            delete next[jobStoreKey];
-            return next;
-          });
-          return;
-        }
-        if (job.job_id !== jobId) return;
-        const status = typeof job.status === "string" ? job.status : "";
-        if (status === "queued" || status === "running" || isTerminalJobStatus(status)) {
-          // Replay the exact job from cursor zero. An outcome reached while
-          // this tab was closed still goes through the normal terminal path,
-          // so its result and retained output are received instead of dropped.
-          cursorRef.current = 0;
-          setJobError(null);
-          setJobStatus(status);
-          setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
-          setLiveEvents([]);
-          setActiveJobId(jobId);
-          return;
-        }
-        writeJobsBySession((prev) => {
-          const next = { ...prev };
-          delete next[jobStoreKey];
-          return next;
-        });
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    // A saved ID is evidence of what to watch, not evidence that the run is
+    // still executing or finished. Let the existing read-only watcher obtain
+    // that proof; an unavailable lookup must not erase the saved descriptor.
+    cursorRef.current = 0;
+    setJobError(null);
+    setJobStatus(UNVERIFIED_JOB_STATUS);
+    setJobUpdatedMs(null);
+    setLiveEvents([]);
+    setActiveJobId(jobId);
   }, [
     activeJobId,
     cursorRef,
-    daemonAuth,
     effectiveBase,
     jobStoreKey,
     parseJobsBySession,

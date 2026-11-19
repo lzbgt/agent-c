@@ -61,6 +61,13 @@ watcher, including a native result that arrived while the tab was unloaded.
 Retained events replay; a dropped stream falls back to progress polling. This
 state is browser-local; adapter restart or cookie expiry may require unlocking.
 
+If the exact native job lookup is unavailable or says not found, the run
+receipt is **unverified**, not cancelled or proved absent. The saved watcher
+and retained output stay available while the browser retries read-only status
+checks. Stop returns only when the native job is verified active; a terminal
+status without its result remains incomplete. The watcher does not resubmit a
+run or a Stop request.
+
 Open **Tool outputs** as soon as a result appears, without waiting for the final
 answer. **Copy output** and **Download output** preserve the returned text and
 whitespace even when the preview is collapsed. A flagged display excerpt
