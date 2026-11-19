@@ -32,19 +32,46 @@ for (const fetchMode of [false,true]) {
  }
 }
 test("late watchdog completion cannot clear a newer job",async({page})=>{
- let release:()=>void=()=>{},held=false;
+ let release:()=>void=()=>{}, closeStreams:()=>void=()=>{}, held=false;
  const gate=new Promise<void>(r=>release=r);
+ const streamGate=new Promise<void>(r=>closeStreams=r);
+ const watching=new Set<string>();
+ const isOriginalWatchdogLookup=(url:string)=>{
+  const u=new URL(url);
+  return u.pathname==="/api/v1/job" && u.searchParams.get("job_id")==="original" && !u.searchParams.has("include_events");
+ };
  await page.route("**/api/v1/**",r=>r.fulfill({json:{ok:true,sessions:[],features:{},tools:[],prefs:{}}}));
- await page.route("**/api/v1/job/stream?**",r=>r.fulfill({contentType:"text/event-stream",body:""}));
+ await page.route("**/api/v1/job/stream?**",async r=>{
+  // EOF starts cursor polling and clears the watchdog. Leave this stream pending.
+  const id=new URL(r.request().url()).searchParams.get("job_id");
+  if(id) watching.add(id);
+  await streamGate;
+  await r.abort().catch(()=>{}); // superseded fetch stream can already be aborted
+ });
  await page.route("**/api/v1/job?**",async r=>{
-  const u=new URL(r.request().url()),id=u.searchParams.get("job_id");
-  if(id==="original"&&!u.searchParams.has("include_events")){held=true;await gate;return r.fulfill({json:{ok:true,job_id:id,status:"done",result:{ok:true,assistant_text:"stale"}}});}
+  const url=r.request().url(),id=new URL(url).searchParams.get("job_id");
+  if(isOriginalWatchdogLookup(url)){
+   held=true;
+   await gate;
+   return r.fulfill({json:{ok:true,job_id:id,status:"done",result:{ok:true,assistant_text:"stale"}}});
+  }
   return r.fulfill({json:{ok:true,job_id:id,status:"running"}});
  });
- await page.goto("/");await page.evaluate(async()=>{(await import("/e2e/jobWatcherHarness.tsx")).mount(true);});
- await expect.poll(()=>held,{timeout:7000}).toBe(true);
- await page.evaluate(()=>(window as any).watchTest.switchJob());release();
- await page.waitForTimeout(500);
- const state=await page.evaluate(()=>(window as any).watchTest);
- expect(state.active).toBe("new-job");expect(state.result).toBeUndefined();
+ try{
+  await page.goto("/");
+  await page.evaluate(async()=>{(await import("/e2e/jobWatcherHarness.tsx")).mount(true);});
+  await expect.poll(()=>watching.has("original")).toBe(true);
+  await expect.poll(()=>held,{timeout:7000}).toBe(true);
+  await page.evaluate(()=>(window as any).watchTest.switchJob());
+  await expect.poll(()=>watching.has("new-job")).toBe(true);
+  const lateReply=page.waitForResponse(r=>isOriginalWatchdogLookup(r.url()));
+  release();
+  expect(await (await lateReply).json()).toMatchObject({job_id:"original",status:"done",result:{assistant_text:"stale"}});
+  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+  const state=await page.evaluate(()=>(window as any).watchTest);
+  expect(state.active).toBe("new-job");expect(state.result).toBeUndefined();
+ }finally{
+  release();
+  closeStreams();
+ }
 });
