@@ -1,4 +1,5 @@
 """Real CLI JSONL/stream/artifact contracts against a local model service."""
+import ctypes
 import json
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -167,6 +168,32 @@ try:
         events(run("resume", "default", "--json", expected=2), False)
         events(run("exec", "inspect", "--json", "--json", expected=2), False)
         events(run("exec", "inspect", "--json", "-o", expected=2), False)
+
+        # Bad numeric limits are caller errors, not adjusted/defaulted limits on a real request.
+        too_long_for_timeout = str(1 << (8 * ctypes.sizeof(ctypes.c_long) - 1))
+        bad_numeric = (
+            ("--timeout-ms", "2500ms"),
+            ("--timeout-ms", too_long_for_timeout),
+            ("--max-steps", "-1"),
+            ("--keep-last", " 3"),
+            ("--max-tool-calls-total", ""),
+            ("--max-tool-calls-per-tool", "+3"),
+            ("--max-output-tokens", str(1 << 63)),
+            ("--tool-call-limit", "calculator=2calls"),
+        )
+        previous = target.read_bytes()
+        count = len(requests)
+        for flag, value in bad_numeric:
+            rows = events(run("exec", "inspect", "--json", "--tools", "none", "-o", str(target),
+                              flag, value, expected=2), False)
+            assert not any(r["type"] == "run.started" for r in rows), (flag, value, rows)
+            assert flag in rows[-1]["data"]["error"]["message"], (flag, value, rows[-1])
+        assert len(requests) == count and target.read_bytes() == previous
+        events(run("exec", "inspect", "--json", "--tools", "none", "--no-session",
+                   "--timeout-ms", "2500", "--max-steps", "0", "--max-output-tokens", "16",
+                   "--tool-call-limit", "calculator=2"))
+        assert len(requests) == count + 1
+        assert any(requests[-1].get(key) == 16 for key in ("max_tokens", "max_completion_tokens"))
 
         publish_conflict = root / "became-a-directory"
         result = run("exec", "PUBLISH_CONFLICT", "--json", "--tools", "none", "-o", str(publish_conflict), expected=1)

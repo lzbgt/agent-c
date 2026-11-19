@@ -7,7 +7,7 @@
   -C /path/to/project --json -o ./verified-result.txt > ./run-events.jsonl
 ```
 
-Options follow the command. `--output-last-message <path>` and `-o <path>` are equivalent. These options require a non-interactive prompt; `chat` and promptless `resume` reject them. `--help` retains normal help output. `--json` requires jsoncpp. `--quiet` suppresses the existing diagnostic transcript while machine events continue.
+Options follow the command. `--output-last-message <path>` and `-o <path>` are equivalent. These options require a non-interactive prompt; `chat` and promptless `resume` reject them. `--help` retains normal help output. `--json` requires jsoncpp. `--quiet` suppresses the existing diagnostic transcript while machine events continue. Numeric timeout and budget values use nonnegative decimal digits; malformed or out-of-range values fail before a provider request and name the option in the terminal error. Where an option documents zero as a special value, that behavior is unchanged.
 
 ## Envelope and lifecycle
 

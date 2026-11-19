@@ -27,6 +27,7 @@
 #include <string>
 #include <vector>
 #include <cctype>
+#include <charconv>
 #include <chrono>
 #include <cstring>
 #if !defined(_WIN32)
@@ -481,6 +482,17 @@ static bool take_multi_flag(std::vector<std::string>& args, const std::string& f
   return true;
 }
 
+template <typename Integer>
+static bool parse_nonnegative_decimal(const std::string& text, Integer* out_value) {
+  if (text.empty() || text.front() < '0' || text.front() > '9') return false;
+  Integer value{};
+  const char* end = text.data() + text.size();
+  const auto result = std::from_chars(text.data(), end, value, 10);
+  if (result.ec != std::errc{} || result.ptr != end) return false;
+  *out_value = value;
+  return true;
+}
+
 static bool parse_tool_call_limit_spec(const std::string& spec, ToolCallLimit* out_limit) {
   if (!out_limit) return false;
   *out_limit = ToolCallLimit{};
@@ -489,29 +501,17 @@ static bool parse_tool_call_limit_spec(const std::string& spec, ToolCallLimit* o
   if (eq == std::string::npos) return false;
   const std::string tool = trim_copy(s.substr(0, eq));
   const std::string num = trim_copy(s.substr(eq + 1));
-  if (tool.empty() || num.empty()) return false;
-  try {
-    out_limit->tool = tool;
-    out_limit->max_calls = (size_t)std::stoull(num);
-    return true;
-  } catch (...) {
-    return false;
-  }
+  if (tool.empty() || !parse_nonnegative_decimal(num, &out_limit->max_calls)) return false;
+  out_limit->tool = tool;
+  return true;
 }
 
-static bool take_flag_u64(std::vector<std::string>& args, const std::string& flag, size_t* out_value) {
-  std::string v;
-  if (!take_flag(args, flag, &v)) {
-    return false;
-  }
-  if (v.empty()) {
-    return true;
-  }
-  try {
-    *out_value = static_cast<size_t>(std::stoull(v));
-  } catch (...) {
-    return false;
-  }
+template <typename Integer>
+static bool take_nonnegative_flag(std::vector<std::string>& args, const std::string& flag, Integer* out_value) {
+  const auto at = std::find(args.begin(), args.end(), flag);
+  if (at == args.end()) return true;
+  if (at + 1 == args.end() || !parse_nonnegative_decimal(*(at + 1), out_value)) return false;
+  args.erase(at, at + 2);
   return true;
 }
 
@@ -570,9 +570,8 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   size_t keep_last = 16;
   std::string summary_model;
   size_t summary_max_chars = 1200;
-  size_t timeout_ms = 60000;
+  long timeout_ms = 60000;
   int64_t max_output_tokens = 0;
-  std::string max_output_tokens_arg;
   std::string tools_mode = "host";
   std::string tools_root; // empty => unrestricted (YOLO)
   std::string host_policy = "full";
@@ -607,28 +606,14 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     std::cerr << "Missing value for --proxy\n";
     return 2;
   }
-  if (!take_flag_u64(args, "--timeout-ms", &timeout_ms)) {
-    std::cerr << "Invalid value for --timeout-ms\n";
+  const auto invalid_number = [output](const char* flag) {
+    const std::string message = std::string("Invalid value for ") + flag + " (expected a nonnegative decimal integer in range)";
+    std::cerr << message << '\n';
+    output->set_error(message);
     return 2;
-  }
-  const bool output_cap_supplied = std::find(args.begin(), args.end(), "--max-output-tokens") != args.end();
-  if (!take_flag(args, "--max-output-tokens", &max_output_tokens_arg)) {
-    std::cerr << "Missing value for --max-output-tokens\n";
-    return 2;
-  }
-  if (output_cap_supplied) {
-    bool valid = std::all_of(max_output_tokens_arg.begin(), max_output_tokens_arg.end(),
-                            [](unsigned char c) { return c >= '0' && c <= '9'; });
-    try {
-      if (valid) max_output_tokens = std::stoll(max_output_tokens_arg);
-    } catch (...) {
-      valid = false;
-    }
-    if (!valid) {
-      std::cerr << "Invalid value for --max-output-tokens (expected a nonnegative integer)\n";
-      return 2;
-    }
-  }
+  };
+  if (!take_nonnegative_flag(args, "--timeout-ms", &timeout_ms)) return invalid_number("--timeout-ms");
+  if (!take_nonnegative_flag(args, "--max-output-tokens", &max_output_tokens)) return invalid_number("--max-output-tokens");
   if (!take_switch(args, "--trace", &trace)) {
     std::cerr << "Invalid flag: --trace\n";
     return 2;
@@ -665,22 +650,13 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     std::cerr << "Invalid flag: --no-default-system\n";
     return 2;
   }
-  if (!take_flag_u64(args, "--max-chars", &max_chars)) {
-    std::cerr << "Invalid value for --max-chars\n";
-    return 2;
-  }
-  if (!take_flag_u64(args, "--keep-last", &keep_last)) {
-    std::cerr << "Invalid value for --keep-last\n";
-    return 2;
-  }
+  if (!take_nonnegative_flag(args, "--max-chars", &max_chars)) return invalid_number("--max-chars");
+  if (!take_nonnegative_flag(args, "--keep-last", &keep_last)) return invalid_number("--keep-last");
   if (!take_flag(args, "--summary-model", &summary_model)) {
     std::cerr << "Missing value for --summary-model\n";
     return 2;
   }
-  if (!take_flag_u64(args, "--summary-max-chars", &summary_max_chars)) {
-    std::cerr << "Invalid value for --summary-max-chars\n";
-    return 2;
-  }
+  if (!take_nonnegative_flag(args, "--summary-max-chars", &summary_max_chars)) return invalid_number("--summary-max-chars");
   if (!take_enum(args, "--tools", &tools_mode)) {
     std::cerr << "Missing value for --tools\n";
     return 2;
@@ -701,30 +677,12 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
     std::cerr << "Invalid flag: --require-tool-call\n";
     return 2;
   }
-  if (!take_flag_u64(args, "--max-steps", &max_steps)) {
-    std::cerr << "Invalid value for --max-steps\n";
-    return 2;
-  }
-  if (!take_flag_u64(args, "--max-repeated-tool-calls", &max_repeated_tool_calls)) {
-    std::cerr << "Invalid value for --max-repeated-tool-calls\n";
-    return 2;
-  }
-  if (!take_flag_u64(args, "--max-tool-calls-total", &max_tool_calls_total)) {
-    std::cerr << "Invalid value for --max-tool-calls-total\n";
-    return 2;
-  }
-  if (!take_flag_u64(args, "--max-tool-calls-per-tool", &max_tool_calls_per_tool)) {
-    std::cerr << "Invalid value for --max-tool-calls-per-tool\n";
-    return 2;
-  }
-  if (!take_flag_u64(args, "--max-tool-call-args-chars", &max_tool_call_args_chars)) {
-    std::cerr << "Invalid value for --max-tool-call-args-chars\n";
-    return 2;
-  }
-  if (!take_flag_u64(args, "--max-tool-result-chars", &max_tool_result_chars)) {
-    std::cerr << "Invalid value for --max-tool-result-chars\n";
-    return 2;
-  }
+  if (!take_nonnegative_flag(args, "--max-steps", &max_steps)) return invalid_number("--max-steps");
+  if (!take_nonnegative_flag(args, "--max-repeated-tool-calls", &max_repeated_tool_calls)) return invalid_number("--max-repeated-tool-calls");
+  if (!take_nonnegative_flag(args, "--max-tool-calls-total", &max_tool_calls_total)) return invalid_number("--max-tool-calls-total");
+  if (!take_nonnegative_flag(args, "--max-tool-calls-per-tool", &max_tool_calls_per_tool)) return invalid_number("--max-tool-calls-per-tool");
+  if (!take_nonnegative_flag(args, "--max-tool-call-args-chars", &max_tool_call_args_chars)) return invalid_number("--max-tool-call-args-chars");
+  if (!take_nonnegative_flag(args, "--max-tool-result-chars", &max_tool_result_chars)) return invalid_number("--max-tool-result-chars");
   if (!take_multi_flag(args, "--tool-call-limit", &tool_call_limit_specs)) {
     std::cerr << "Missing value for --tool-call-limit\n";
     return 2;
@@ -771,7 +729,9 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   for (const auto& spec : tool_call_limit_specs) {
     ToolCallLimit lim;
     if (!parse_tool_call_limit_spec(spec, &lim) || lim.tool.empty()) {
-      std::cerr << "Invalid --tool-call-limit (expected: tool=max_calls): " << spec << "\n";
+      const char message[] = "Invalid value for --tool-call-limit (expected tool=<nonnegative decimal integer in range>)";
+      std::cerr << message << '\n';
+      output->set_error(message);
       return 2;
     }
     // Upsert (last wins).
@@ -897,7 +857,7 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   pctx.cfg.api_key = api_key;
   pctx.cfg.model = model;
   pctx.cfg.proxy_url = proxy_url;
-  pctx.cfg.timeout_ms = (long)timeout_ms;
+  pctx.cfg.timeout_ms = timeout_ms;
   pctx.cfg.max_tokens = max_output_tokens;
   if (const char* r = getenv_s("OPENROUTER_HTTP_REFERER")) {
     pctx.cfg.openrouter_http_referer = r;
