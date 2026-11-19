@@ -67,9 +67,18 @@ static agent_status_t ensure_dir(const std::string& dir) {
   return AGENT_OK;
 }
 
-static bool file_exists(const std::filesystem::path& p) {
+// A dangling snapshot link or failed status check is not a clean new session.
+static agent_status_t probe_session_snapshot(const std::filesystem::path& p, bool* present) {
   std::error_code ec;
-  return std::filesystem::exists(p, ec);
+  const auto status = std::filesystem::symlink_status(p, ec);
+  if (status.type() == std::filesystem::file_type::not_found &&
+      (!ec || ec == std::errc::no_such_file_or_directory)) {
+    *present = false;
+    return AGENT_OK;
+  }
+  if (ec || !std::filesystem::status_known(status)) return AGENT_ERR_INTERNAL;
+  *present = std::filesystem::exists(status);
+  return AGENT_OK;
 }
 
 static agent_status_t read_file_all(const std::filesystem::path& p, std::string* out) {
@@ -212,74 +221,56 @@ agent_status_t session_store_load(const SessionStoreConfig& cfg, const std::stri
   const auto json_path = session_path_json(cfg, session_id);
   const auto sess_path = session_path_sess(cfg, session_id);
 
-  // Prefer the portable JSON-free session format when present (it is the primary persisted format).
-  // Fall back to .json for older sessions or if the .sess file is corrupt/unreadable.
-  if (file_exists(sess_path)) {
-    agent_status_t st = load_sess_file_filtered(sess_path, out_session);
-    if (st == AGENT_OK && *out_session) {
-      return AGENT_OK;
-    }
-    // Best-effort fallback: try .json next.
+  // Prefer the portable snapshot; a valid legacy JSON copy can recover it.
+  bool has_sess = false;
+  agent_status_t portable_status = probe_session_snapshot(sess_path, &has_sess);
+  if (portable_status == AGENT_OK && has_sess) {
+    portable_status = load_sess_file_filtered(sess_path, out_session);
+    if (portable_status == AGENT_OK && *out_session) return AGENT_OK;
+    if (portable_status == AGENT_OK) portable_status = AGENT_ERR_INTERNAL;
   }
 
+  bool has_json = false;
+  const agent_status_t json_status = probe_session_snapshot(json_path, &has_json);
+  if (json_status != AGENT_OK) return json_status;
+  if (has_json) {
 #if defined(AGENT_HAVE_JSONCPP)
-  if (file_exists(json_path)) {
-    agent_session_t* s = nullptr;
-    agent_status_t st = agent_session_create(&s);
-    if (st != AGENT_OK) {
-      return st;
-    }
-
     std::ifstream in(json_path);
-    if (!in.is_open()) {
-      agent_session_destroy(s);
+    Json::CharReaderBuilder rb;
+    Json::Value root;
+    std::string errs;
+    if (!in || !Json::parseFromStream(rb, in, &root, &errs) || !root.isObject() || !root["messages"].isArray()) {
       return AGENT_ERR_INTERNAL;
     }
 
-  Json::CharReaderBuilder rb;
-  Json::Value root;
-  std::string errs;
-  if (!Json::parseFromStream(rb, in, &root, &errs)) {
-    agent_session_destroy(s);
-    if (file_exists(sess_path)) {
-      return load_sess_file_filtered(sess_path, out_session);
-    }
-    return AGENT_ERR_INTERNAL;
-  }
-  const auto& messages = root["messages"];
-  if (messages.isArray()) {
-    for (const auto& m : messages) {
-      if (!m.isObject()) {
-        continue;
-      }
+    agent_session_t* session = nullptr;
+    const agent_status_t st = agent_session_create(&session);
+    if (st != AGENT_OK) return st;
+    for (const auto& m : root["messages"]) {
+      if (!m.isObject()) continue;
+      const auto& role_s = m["role"];
+      const auto& content_s = m["content"];
+      if (!role_s.isString() || !content_s.isString()) continue;
       agent_role_t role;
-      const auto role_s = m["role"];
-      const auto content_s = m["content"];
-      if (!role_s.isString() || !content_s.isString()) {
-        continue;
-      }
-      if (agent_role_from_string(role_s.asCString(), &role) != AGENT_OK) {
-        continue;
-      }
+      if (agent_role_from_string(role_s.asCString(), &role) != AGENT_OK) continue;
       const std::string content = content_s.asString();
-      if (is_portable_tool_transcript_marker(role, content)) {
-        continue;
+      if (is_portable_tool_transcript_marker(role, content)) continue;
+      const agent_status_t add = agent_session_add_message(session, role, content.c_str());
+      if (add != AGENT_OK) {
+        agent_session_destroy(session);
+        return add;
       }
-      agent_session_add_message(s, role, content.c_str());
     }
-  }
-    *out_session = s;
+    *out_session = session;
     return AGENT_OK;
-  }
+#else
+    // The existing legacy snapshot must not be replaced by a new empty session.
+    return AGENT_ERR_INTERNAL;
 #endif
-
-  agent_session_t* s = nullptr;
-  agent_status_t st = agent_session_create(&s);
-  if (st != AGENT_OK) {
-    return st;
   }
-  *out_session = s;
-  return AGENT_OK; // new session
+
+  if (portable_status != AGENT_OK) return portable_status;
+  return agent_session_create(out_session); // both snapshot paths are absent
 }
 
 agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::string& session_id, const agent_session_t* session) {

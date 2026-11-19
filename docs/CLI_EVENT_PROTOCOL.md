@@ -9,6 +9,8 @@
 
 Options follow the command. `--output-last-message <path>` and `-o <path>` are equivalent. These options require a non-interactive prompt; `chat` and promptless `resume` reject them. `--help` retains normal help output. `--json` requires jsoncpp. `--quiet` suppresses the existing diagnostic transcript while machine events continue. Numeric timeout and budget values use nonnegative decimal digits; malformed or out-of-range values fail before a provider request and name the option in the terminal error. Where an option documents zero as a special value, that behavior is unchanged.
 
+If a saved session cannot be read, the CLI does not start over under the same ID or overwrite its history. It can recover a damaged portable snapshot from a readable legacy JSON copy. If neither snapshot is usable, restore a readable copy or choose a different session ID. Failed recovery sends no provider request and leaves an existing final-message file unchanged.
+
 ## Envelope and lifecycle
 
 Each stdout line is one complete JSON object described by [cli_event_v1.schema.json](cli_event_v1.schema.json):

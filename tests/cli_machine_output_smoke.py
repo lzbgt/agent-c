@@ -195,6 +195,33 @@ try:
         assert len(requests) == count + 1
         assert any(requests[-1].get(key) == 16 for key in ("max_tokens", "max_completion_tokens"))
 
+        # Existing but unreadable history must never be mistaken for a new chat.
+        sessions = root / "sessions"
+        previous = target.read_bytes()
+        count = len(requests)
+        for sid, suffix, original in (
+            ("unreadable_portable", ".sess", b"fixture: truncated portable session"),
+            ("unrecognized_json", ".json", b'{"not_messages":"fixture"}'),
+        ):
+            source = sessions / (sid + suffix)
+            source.write_bytes(original)
+            initial = sorted(sessions.glob(sid + ".*"))
+            for entry in (("exec", "follow up", "--session", sid), ("resume", sid, "follow up")):
+                rows = events(run(*entry, "--json", "--tools", "none", "-o", str(target), expected=1), False)
+                assert not any(r["type"] == "run.started" for r in rows)
+                assert "Could not load saved session" in rows[-1]["data"]["error"]["message"], rows[-1]
+                assert source.read_bytes() == original and sorted(sessions.glob(sid + ".*")) == initial
+                assert target.read_bytes() == previous and len(requests) == count
+
+        # A valid legacy copy is a real recovery, with previous context still sent.
+        sid = "recover_legacy"
+        (sessions / (sid + ".sess")).write_bytes(b"fixture: invalid portable copy")
+        messages = [{"role": "user", "content": "Earlier question"},
+                    {"role": "assistant", "content": "Earlier answer"}]
+        (sessions / (sid + ".json")).write_text(json.dumps({"messages": messages}))
+        events(run("resume", sid, "follow up", "--json", "--tools", "none"))
+        assert len(requests) == count + 1 and requests[-1]["messages"][:2] == messages
+
         publish_conflict = root / "became-a-directory"
         result = run("exec", "PUBLISH_CONFLICT", "--json", "--tools", "none", "-o", str(publish_conflict), expected=1)
         rows = [json.loads(line) for line in result.stdout.splitlines()]

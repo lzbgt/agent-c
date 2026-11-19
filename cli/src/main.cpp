@@ -828,7 +828,10 @@ static int cli_main(int argc, char** argv, CliRunOutput* output) {
   if (!no_session && !session_id.empty()) {
     const agent_status_t st = persistor.load(persistor.ctx, session_id.c_str(), &session);
     if (st != AGENT_OK) {
-      std::cerr << "Failed to load session: " << (int)st << "\n";
+      const std::string message = "Could not load saved session '" + session_id +
+        "'. Restore a readable snapshot or choose a new session ID; existing files were not overwritten.";
+      std::cerr << message << '\n';
+      output->set_error(message);
       agent_persistor_destroy(&persistor);
       return 1;
     }
