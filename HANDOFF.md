@@ -72,23 +72,27 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
 
 ## Continue the next concrete requirement
 
-1. Extend effect continuity to remaining uninstrumented preparation/native-tool
-   paths. Select a concrete uncovered path from the current model/tool dispatch
-   code, add its durable intent/receipt boundary and verify crash recovery without
-   repeating uncertain work. Trusted host receipt resolvers and additional device
-   adapters remain open. Keep unknown outcomes explicit and require evidence
-   before recovery.
-2. Add permanent conversation identity/history and move remaining consumers to
-   bounded retrieval. Keep content idempotency, synchronous-run reconciliation
-   and cross-tab/device admission explicit rather than inferring them from traces.
-3. Extend single-authority broker coordination with durable notification history
-   and deliberate multi-authority handoff; never reconstruct an unknown dispatch
-   by sending it again.
-4. Extend typed SOP contracts and authoring for general inboxes, publisher/role
-   identity, richer transitions and compensation. Retain immutable source pinning,
-   cancellation and independent progress.
-5. Introduce instance-scoped pollable embedded ports, then qualify them on a
-   pinned board with measured memory, cancellation and power-loss behavior.
+1. Prioritize memory authority: inspect `cli/src/toolset_host_memory.cpp` and its
+   callers; establish one revision-checked atomic update/publication path before
+   claiming a production race. Enforce current/history/evidence modes and scope
+   across structured/FTS/fallback/salience/context retrieval. Bind evidence to
+   source ID, revision/hash and span; corrections/deletions must invalidate
+   derived eligibility without replaying effects.
+2. Then implement bounded lexical multi-hop retrieval with a pluggable scorer.
+   The [architecture evaluation gate](docs/ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
+   records the owner-authorized TypeSafe/Jev canary and 20-question pilot bounds.
+   Retain the existing 4B answerer; no 9B substitution. Production remains stopped.
+3. Extend uncovered preparation/native-tool continuity and trusted receipt
+   resolvers. Native remote workflow calls now use a durable admission and
+   original-workflow reads, including direct and broker proxy paths; this does
+   not establish general multi-authority goal handoff or unknown host outcomes.
+4. Strengthen permanent conversation identity/history, bounded consumers,
+   executable requirement evidence and provenance-preserving handoffs. Keep
+   content idempotency, synchronous reconciliation and cross-tab/device admission
+   explicit separate contracts. Extend richer typed SOP transitions/inboxes and
+   compensation only through the maintained source contracts.
+5. Advance per-instance allocator/clock/cancel ports and a pollable embedded
+   lifecycle for a concrete device milestone. Host checks do not qualify an MCU.
 
 Choose work from actual source, failures and the prioritized roadmap. Update its
 owning contract and reproducible verification in the same milestone. The broader

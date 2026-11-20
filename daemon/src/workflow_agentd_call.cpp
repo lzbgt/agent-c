@@ -34,11 +34,7 @@ static bool json_parse_any_value(const std::string& s, Json::Value* out, std::st
   return true;
 }
 
-static int64_t unix_ms_now() {
-  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
-           std::chrono::system_clock::now().time_since_epoch())
-    .count();
-}
+
 
 static void sleep_ms(int ms) {
   if (ms <= 0) return;
@@ -68,23 +64,7 @@ static std::string json_stringify_compact(const Json::Value& v) {
   return Json::writeString(wb, v);
 }
 
-static std::string sanitize_id_token(std::string s, size_t max_len) {
-  if (s.size() > max_len) s.resize(max_len);
-  if (s.empty()) return s;
-  for (char& c : s) {
-    const bool ok =
-      (c >= 'a' && c <= 'z') ||
-      (c >= 'A' && c <= 'Z') ||
-      (c >= '0' && c <= '9') ||
-      c == '-' || c == '_' || c == '.' || c == ':';
-    if (!ok) c = '_';
-  }
-  while (!s.empty() && s.front() == '_') s.erase(s.begin());
-  while (!s.empty() && s.back() == '_') s.pop_back();
-  if (s.empty()) s = "msg";
-  if (s.size() > max_len) s.resize(max_len);
-  return s;
-}
+
 
 static std::string join_base_path(std::string base, const std::string& path) {
   if (base.empty()) return path;
@@ -193,22 +173,188 @@ static void add_final_hash_surface_best_effort(Json::Value* out) {
 
 }  // namespace
 
+namespace {
+constexpr size_t kRemoteReceiptMax = 8 * 1024 * 1024;
+std::string remote_hash(const Json::Value& value) {
+  const auto raw = json_stringify_compact(value);
+  if (raw.size() > kRemoteReceiptMax) return {};
+  char digest[80]{}, error[160]{};
+  if (agent_json_c14n_sha256_token(raw.data(), raw.size(), digest, error, sizeof(error)) != AGENT_OK) return {};
+  return digest;
+}
+Json::Value remote_failure(const std::string& reason) {
+  Json::Value out; out["ok"] = false; out["error"] = reason; out["assistant_text"] = "";
+  out["retryable"] = false; out["tool_calls_total"] = Json::Int64(0); out["steps_executed"] = Json::Int64(0);
+  return out;
+}
+}
+WorkflowAgentdCallEffect::WorkflowAgentdCallEffect(WorkflowEffectContext context, const Json::Value& call, bool last_attempt, bool previously_attempted)
+    : context_(std::move(context)), call_(call), last_attempt_(last_attempt), previously_attempted_(previously_attempted) {
+  definition_.workflow_id = context_.workflow_id; definition_.task_id = context_.task_id; definition_.mode = "guarded";
+  Json::Value identity(Json::arrayValue); identity.append(context_.workflow_id); identity.append(context_.task_id);
+  const auto digest = remote_hash(identity);
+  if (!digest.empty()) definition_.effect_id = "afx_" + digest.substr(7);
+  Json::Value request; request["protocol"] = "agentd.remote_workflow.v1"; request["call"] = call;
+  definition_.request_hash = remote_hash(request);
+  if (!call.isObject() || !call["workflow"].isObject() || definition_.effect_id.empty() || definition_.request_hash.empty())
+    identity_error_ = "remote workflow request cannot be durably identified";
+}
+Json::Value WorkflowAgentdCallEffect::submission() const {
+  auto result = call_["workflow"];
+  result["idempotency_key"] = remote_key_;
+  result["trace_id"] = remote_key_;
+  return result;
+}
+Json::Value WorkflowAgentdCallEffect::admission() const {
+  Json::Value value; value["schema"] = "agentd.remote_workflow.admission.v1";
+  value["effect_id"] = definition_.effect_id; value["request_hash"] = definition_.request_hash;
+  value["submission_hash"] = remote_hash(submission());value["remote_key"] = remote_key_;
+  return value;
+}
+void WorkflowAgentdCallEffect::annotate(Json::Value* result, bool replayed) const {
+  if (row_.effect_id.empty()) return;
+  auto& effect = (*result)["effect"];
+  effect["effect_id"] = row_.effect_id; effect["request_hash"] = row_.request_hash;
+  effect["mode"] = row_.mode; effect["state"] = row_.state;
+  effect["revision"] = Json::Int64(row_.revision); effect["attempt"] = Json::Int64(row_.attempt);
+  effect["boundary"] = "agentd_call"; effect["replayed"] = replayed;
+}
+Json::Value WorkflowAgentdCallEffect::pending(const std::string& reason, bool retryable) const {
+  auto out = remote_failure(reason); annotate(&out);
+  out["kind"] = "agentd_call"; out["retryable"] = retryable;
+  if (retryable) out["retry_in_ms"] = Json::Int64(250);
+  if (retryable && !last_attempt_) return out;
+  out["needs_input"] = true;
+  auto& blocker = out["blocker"];
+  blocker["id"] = definition_.effect_id; blocker["kind"] = "remote_workflow_outcome_unknown";
+  blocker["reason"] = reason; blocker["workflow_id"] = context_.workflow_id; blocker["task_id"] = context_.task_id;
+  blocker["required_action"] = row_.effect_id.empty() ?
+    "Inspect the earlier remote submission and its original receipt/trace. No durable admission is available; do not recreate it by submitting another workflow." :
+    "Check the original remote workflow using its recorded target and key " + remote_key_ +
+    ". Restore remote access or its original durable receipt; do not submit a replacement. Reconciliation performs reads only.";
+  blocker["attempts"] = Json::Value(Json::arrayValue);
+  blocker["attempts"].append("Inspected the immutable local admission; another execution POST is forbidden.");
+  blocker["attempts"].append(reason);
+  return out;
+}
+bool WorkflowAgentdCallEffect::matches_workflow(const Json::Value& response, std::string* workflow_id) const {
+  if (!response.isObject() || !call_.isObject() || !call_["workflow"].isObject()) return false;
+  const auto& workflow = response["workflow"];
+  if (response["ok"] != true || !workflow.isObject() ||
+      !workflow["workflow_id"].isString() || workflow["workflow_id"].asString().empty() ||
+      workflow["workflow_id"].asString().size() > 128 || workflow["idempotency_key"] != remote_key_ ||
+      workflow["trace_id"] != remote_key_) return false;
+  const auto& wanted = call_["workflow"]["session_id"];
+  const auto scope = call_["workflow"]["allow_sessions"] == true && wanted.isString() ? trim_copy(wanted.asString()) : "";
+  const auto& actual = workflow["session_id"];
+  if (!actual.isNull() && !actual.isString()) return false;
+  if (scope != (actual.isString() ? actual.asString() : "")) return false;
+  if (!workflow["status"].isString()) return false;
+  const auto state = workflow["status"].asString();
+  if (state != "queued" && state != "running" && !is_terminal_workflow_status(state)) return false;
+  if (!remote_workflow_id_.empty() && workflow["workflow_id"] != remote_workflow_id_) return false;
+  if (workflow_id) *workflow_id = workflow["workflow_id"].asString();
+  return true;
+}
+Json::Value WorkflowAgentdCallEffect::preflight() {
+  checked_ = false;
+  if (context_.should_cancel && context_.should_cancel()) { auto out = remote_failure("cancelled");out["cancelled"] = true;return out; }
+  if (!identity_error_.empty()) return remote_failure(identity_error_);
+  if (!context_.db || !context_.db->is_open() || context_.workflow_id.empty() || context_.task_id.empty())
+    return remote_failure("durable remote-workflow context unavailable; submission refused");
+  bool found = false; std::string error, space;
+  if (!context_.db->workflow_remote_namespace(&space, &error)) return remote_failure(error);
+  Json::Value remote_identity(Json::arrayValue);remote_identity.append(space);remote_identity.append(definition_.effect_id);
+  const auto digest = remote_hash(remote_identity);
+  if (digest.empty()) return remote_failure("remote namespace cannot be hashed");
+  remote_key_ = "remote_" + digest.substr(7);
+  if (!context_.db->get_workflow_effect(definition_.effect_id, &row_, &found, &error)) return remote_failure(error);
+  if (!found) {
+    if (previously_attempted_) return pending("earlier remote attempt has no durable admission; fresh deployment or original-outcome review is required", false);
+    checked_ = true;return Json::Value();
+  }
+  if (row_.workflow_id != definition_.workflow_id || row_.task_id != definition_.task_id ||
+      row_.request_hash != definition_.request_hash || row_.mode != "guarded" || !row_.effect_slot.empty())
+    return pending("remote workflow identity or request changed; no network request was made", false);
+  if (row_.state == "prepared") { checked_ = true;return Json::Value(); }
+  Json::Value receipt;
+  if (row_.receipt_json.size() > kRemoteReceiptMax || !json_parse_any_value(row_.receipt_json, &receipt, &error) || !receipt.isObject())
+    return pending("remote workflow admission/receipt is invalid; no network request was made", false);
+  if (row_.state == "dispatching") {
+    if (receipt.isMember("remote_workflow_id")) {
+      if (!receipt["remote_workflow_id"].isString() || receipt["remote_workflow_id"].asString().empty() ||
+          receipt["remote_workflow_id"].asString().size() > 128) return pending("invalid saved remote workflow identity", false);
+      remote_workflow_id_ = receipt["remote_workflow_id"].asString();receipt.removeMember("remote_workflow_id");
+    }
+    if (receipt == admission()) { checked_ = true;return Json::Value(); }
+  }
+  if (row_.state != "completed" || receipt["schema"] != "agentd.remote_workflow.receipt.v1" ||
+      receipt["effect_id"] != definition_.effect_id || receipt["request_hash"] != definition_.request_hash ||
+      !receipt["result"].isObject() || !receipt["result"]["ok"].isBool())
+    return pending("remote workflow receipt cannot establish a terminal outcome", false);
+  const auto checksum = receipt["checksum"].isString() ? receipt["checksum"].asString() : "";
+  receipt.removeMember("checksum");
+  if (!receipt["result"]["agentd"].isObject()) return pending("remote receipt has no original workflow", false);
+  const auto& final = receipt["result"]["agentd"]["final"];
+  if (checksum.empty() || checksum != remote_hash(receipt) || !matches_workflow(final) ||
+      !is_terminal_workflow_status(final["workflow"]["status"].asString()))
+    return pending("remote workflow terminal receipt is inconsistent; no network request was made", false);
+  auto out = receipt["result"]; annotate(&out, true);out["retryable"] = false;
+  for (const char* key : {"tool_calls_total", "steps_executed", "elapsed_ms", "total_tokens", "token_budget_charge"}) {
+    if (out.isMember(key)) out["effect"]["original_usage"][key] = out[key];
+    out[key] = Json::Int64(0);
+  }
+  return out;
+}
+bool WorkflowAgentdCallEffect::admit(std::string* error) {
+  if (!checked_ || !needs_submission()) { if (error) *error = "remote submission was already admitted";return false; }
+  if (context_.should_cancel && context_.should_cancel()) { if (error) *error = "cancelled";return false; }
+  if (!context_.db->prepare_workflow_effect(definition_, &row_, error) || row_.state != "prepared") return false;
+  AgentDb::WorkflowEffectRow next;
+  if (!context_.db->transition_workflow_effect(row_, "dispatching", json_stringify_compact(admission()), &next, error)) return false;
+  row_ = std::move(next);return true;
+}
+bool WorkflowAgentdCallEffect::observe_workflow(const Json::Value& response, std::string* error) {
+  std::string id;
+  if (!checked_ || row_.state != "dispatching" || !matches_workflow(response, &id)) return false;
+  if (!remote_workflow_id_.empty()) return remote_workflow_id_ == id;
+  auto value = admission();value["remote_workflow_id"] = id;
+  AgentDb::WorkflowEffectRow saved;
+  if (!context_.db->checkpoint_workflow_effect(row_, json_stringify_compact(value), false, &saved, error)) return false;
+  row_ = std::move(saved);remote_workflow_id_ = id;return true;
+}
+Json::Value WorkflowAgentdCallEffect::complete(Json::Value result) {
+  if (!checked_ || row_.state != "dispatching" || !result.isObject() || !result["ok"].isBool() || !result["agentd"].isObject() ||
+      !matches_workflow(result["agentd"]["final"]) ||
+      !is_terminal_workflow_status(result["agentd"]["final"]["workflow"]["status"].asString()))
+    return pending("remote response is not a matching terminal receipt", false);
+  Json::Value receipt; receipt["schema"] = "agentd.remote_workflow.receipt.v1";
+  receipt["effect_id"] = definition_.effect_id; receipt["request_hash"] = definition_.request_hash;
+  result["retryable"] = false;receipt["result"] = result;
+  const auto checksum = remote_hash(receipt);
+  if (checksum.empty()) return pending("remote terminal receipt exceeds its 8-MiB bound", false);
+  receipt["checksum"] = checksum;
+  const auto raw = json_stringify_compact(receipt);
+  if (raw.size() > kRemoteReceiptMax) return pending("remote terminal receipt exceeds its 8-MiB bound", false);
+  AgentDb::WorkflowEffectRow saved; std::string error;
+  if (!context_.db->transition_workflow_effect(row_, "completed", raw, &saved, &error))
+    return pending("remote terminal receipt was not saved: " + error, false);
+  row_ = std::move(saved);annotate(&result);return result;
+}
+
 Json::Value workflow_agentd_call_to_json(
   const DaemonConfig& cfg,
   const Json::Value& agentd_call,
   const std::string& task_trace_id,
-  const std::string& previous_result_json,
+  WorkflowAgentdCallEffect& effect,
+  const WorkflowEffectContext& context,
   std::string* out_err
 ) {
   if (out_err) out_err->clear();
 
   auto err_out = [&](const std::string& e) -> Json::Value {
     if (out_err) *out_err = e;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["assistant_text"] = "";
-    o["error"] = e;
-    return o;
+    return effect.needs_submission() ? remote_failure(e) : effect.pending(e, false);
   };
 
   if (!cfg.workflow_enable_http_tasks) {
@@ -332,226 +478,95 @@ Json::Value workflow_agentd_call_to_json(
     }
   }
 
-  // Best-effort: reuse remote workflow_id from a previous attempt result to avoid duplicate submit.
-  std::string remote_workflow_id;
-  if (!previous_result_json.empty()) {
-    Json::Value prev;
-    std::string perr;
-    if (json_parse_any_value(previous_result_json, &prev, &perr) && prev.isObject()) {
-      const std::string prev_base =
-        prev.isMember("agentd") && prev["agentd"].isObject() && prev["agentd"].isMember("base_url") && prev["agentd"]["base_url"].isString()
-        ? trim_copy(prev["agentd"]["base_url"].asString())
-        : "";
-      const std::string prev_wid =
-        prev.isMember("agentd") && prev["agentd"].isObject() && prev["agentd"].isMember("workflow_id") && prev["agentd"]["workflow_id"].isString()
-        ? trim_copy(prev["agentd"]["workflow_id"].asString())
-        : "";
-      if (!prev_wid.empty() && (prev_base.empty() || prev_base == base_url)) {
-        remote_workflow_id = prev_wid;
-      }
-
-      // If the previous attempt already captured a terminal remote workflow response, reuse it without doing any network I/O.
-      // This avoids repeated charges/retries when the local workflow engine reclaims the task after a restart.
-      if (prev.isMember("agentd") && prev["agentd"].isObject() && prev["agentd"].isMember("final") && prev["agentd"]["final"].isObject()) {
-        const Json::Value final = prev["agentd"]["final"];
-        const std::string st =
-          final.isMember("workflow") && final["workflow"].isObject() && final["workflow"].isMember("status") && final["workflow"]["status"].isString()
-          ? trim_copy(final["workflow"]["status"].asString())
-          : "";
-        if (!st.empty() && is_terminal_workflow_status(st)) {
-          Json::Value out = prev;
-          out["kind"] = "agentd_call";
-          // Ensure base_url/op are present/canonical for debugging.
-          if (!out.isMember("agentd") || !out["agentd"].isObject()) out["agentd"] = Json::Value(Json::objectValue);
-          const Json::Value meta = attach_target_metadata();
-          for (const auto& k : meta.getMemberNames()) out["agentd"][k] = meta[k];
-          // Avoid budget double-charging on replay-only attempts.
-          out["tool_calls_total"] = (Json::Int64)0;
-          out["steps_executed"] = (Json::Int64)0;
-          if (st == "done") {
-            out["ok"] = true;
-            out["assistant_text"] = "agentd_call: remote workflow done (replayed)";
-            if (out.isMember("error")) out.removeMember("error");
-          } else {
-            out["ok"] = false;
-            if (!out.isMember("error")) out["error"] = "remote workflow status " + st;
-            out["assistant_text"] = "";
-          }
-          add_final_hash_surface_best_effort(&out);
-          return out;
-        }
-      }
-    }
-  }
-
-  Json::Value out(Json::objectValue);
-  out["kind"] = "agentd_call";
-  out["ok"] = false;
-  out["assistant_text"] = "";
-  out["agentd"] = attach_target_metadata();
-
-  const std::string submit_url = join_base_path(base_url, "/api/v1/workflow/submit");
   HttpClientPinnedResolve pin;
   const HttpClientPinnedResolve* pinp = nullptr;
   if (cfg.workflow_http_dns_pin && !base_check.host_is_ip) {
-    pin.host = base_check.host;
-    pin.port = base_check.port;
-    // Prefer IPv4 pinning when both families are available.
-    for (const auto& ip : base_check.resolved_addrs) {
-      if (!ip.empty() && ip.find(':') == std::string::npos) pin.addrs.push_back(ip);
-    }
+    pin.host = base_check.host;pin.port = base_check.port;
+    for (const auto& ip : base_check.resolved_addrs) if (!ip.empty() && ip.find(':') == std::string::npos) pin.addrs.push_back(ip);
     if (pin.addrs.empty()) pin.addrs = base_check.resolved_addrs;
     pinp = &pin;
   }
-
-  if (remote_workflow_id.empty()) {
-    const Json::Value wf = agentd_call.isMember("workflow") ? agentd_call["workflow"] : Json::Value(Json::nullValue);
-    if (!wf.isObject()) return err_out("agentd_call.workflow is required and must be an object");
-
-    Json::Value wf2 = wf;
-    if (!wf2.isMember("trace_id") || !wf2["trace_id"].isString() || trim_copy(wf2["trace_id"].asString()).empty()) {
-      const std::string t = !task_trace_id.empty() ? task_trace_id : "agentd_call";
-      wf2["trace_id"] = sanitize_id_token(t, 128);
-    }
-    if (!wf2.isMember("idempotency_key") || !wf2["idempotency_key"].isString() || trim_copy(wf2["idempotency_key"].asString()).empty()) {
-      const std::string t = !task_trace_id.empty() ? task_trace_id : "agentd_call";
-      wf2["idempotency_key"] = sanitize_id_token(std::string("agentd_call:") + t, 128);
-    }
-
-    const std::string body = json_stringify_compact(wf2);
-    const HttpClientResult r = http_request(submit_url, "POST", headers, body, timeout_ms, max_bytes, cfg.proxy_url, pinp);
-
-    Json::Value submit_http(Json::objectValue);
-    submit_http["status"] = (Json::Int64)r.http_status;
-    submit_http["response_text"] = r.response_body;
-    if (r.retry_after_ms >= 0) submit_http["retry_after_ms"] = (Json::Int64)r.retry_after_ms;
-    if (!r.resolved_addrs.empty()) {
-      Json::Value arr(Json::arrayValue);
-      for (const auto& ip : r.resolved_addrs) {
-        if (!ip.empty()) arr.append(ip);
-      }
-      if (!arr.empty()) submit_http["resolved_addrs"] = arr;
-    }
-    out["agentd"]["submit_http"] = submit_http;
-
-    if (!r.ok) {
-      out["error"] = r.error.empty() ? "agentd_call submit http request failed" : r.error;
-      out["retryable"] = true;
-      out["retry_in_ms"] = (Json::Int64)poll_ms;
-      return out;
-    }
-
-    Json::Value submit_json;
-    std::string jerr;
-    if (json_parse_any_value(r.response_body, &submit_json, &jerr) && submit_json.isObject()) {
-      out["agentd"]["submit_json"] = submit_json;
-      if (submit_json.isMember("workflow_id") && submit_json["workflow_id"].isString()) {
-        remote_workflow_id = trim_copy(submit_json["workflow_id"].asString());
-      }
-      const bool ok = submit_json.isMember("ok") && submit_json["ok"].isBool() && submit_json["ok"].asBool();
-      if (!ok && submit_json.isMember("error") && submit_json["error"].isString()) {
-        out["error"] = submit_json["error"].asString();
-      }
-    } else if (!r.response_body.empty()) {
-      out["agentd"]["submit_parse_error"] = jerr;
-    }
-
-    if (r.http_status < 200 || r.http_status >= 300) {
-      if (!out.isMember("error")) out["error"] = "agentd_call submit http status " + std::to_string((int)r.http_status);
-      const bool transient =
-        (r.http_status == 408 || r.http_status == 429 || r.http_status == 500 || r.http_status == 502 || r.http_status == 503 || r.http_status == 504);
-      if (transient) {
-        out["retryable"] = true;
-        int64_t retry_ms = 1000;
-        if (r.retry_after_ms >= 0) retry_ms = r.retry_after_ms;
-        retry_ms = std::max<int64_t>(0, std::min<int64_t>(60000, retry_ms));
-        out["retry_in_ms"] = (Json::Int64)retry_ms;
-      }
-      return out;
-    }
-
-    if (remote_workflow_id.empty()) {
-      out["error"] = "agentd_call submit succeeded but response missing workflow_id";
-      out["retryable"] = true;
-      out["retry_in_ms"] = (Json::Int64)poll_ms;
-      return out;
-    }
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  int64_t calls = 0;
+  const auto cancelled = [&]() { return context.should_cancel && context.should_cancel(); };
+  const auto remaining = [&]() { return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count(); };
+  const auto network_available = [&]() {
+    return !cancelled() && remaining() > 0 && (context.max_network_calls <= 0 || calls < context.max_network_calls);
+  };
+  auto decorate = [&](Json::Value result) {
+    result["kind"] = "agentd_call";result["tool_calls_total"] = Json::Int64(calls);result["steps_executed"] = Json::Int64(calls);
+    if (!result["agentd"].isObject()) result["agentd"] = attach_target_metadata();
+    result["agentd"]["idempotency_key"] = effect.remote_key();
+    if (!task_trace_id.empty()) result["agentd"]["parent_trace_id"] = task_trace_id;
+    if (cancelled()) { result["cancelled"] = true;result["retryable"] = false; }
+    return result;
+  };
+  auto pending = [&](const std::string& reason, bool retryable) { return decorate(effect.pending(reason, retryable)); };
+  auto request = [&](const std::string& url, const std::string& method, const std::string& body) {
+    ++calls;
+    auto callback = [](void* ptr) { return (*static_cast<const std::function<bool()>*>(ptr))(); };
+    const std::function<bool()> cancel = cancelled;
+    return http_request(url, method, headers, body, std::max<int64_t>(1, remaining()), max_bytes, cfg.proxy_url, pinp,
+                        callback, const_cast<std::function<bool()>*>(&cancel), false);
+  };
+  if (effect.needs_submission()) {
+    if (!network_available()) return decorate(remote_failure("no remote submission grant or deadline remains"));
+    std::string error;
+    if (!effect.admit(&error)) return pending("remote submission admission failed: " + error, false);
+    // The immutable admission precedes HTTP. Every later attempt, including
+    // timeout/HTTP rejection/malformed acceptance, can only look up this key.
+    const auto submitted = request(join_base_path(base_url, "/api/v1/workflow/submit"), "POST", json_stringify_compact(effect.submission()));
+    (void)submitted;
+    // Rejections and malformed/lost replies are not nonexecution proof. Use the
+    // authenticated lookup below for every outcome; never retry this POST.
   }
-
-  out["agentd"]["workflow_id"] = remote_workflow_id;
-
-  // Poll until terminal or attempt-level timeout.
-  const int64_t deadline_ms = unix_ms_now() + timeout_ms;
-  std::string final_url = join_base_path(base_url, "/api/v1/workflow");
-  final_url += "?workflow_id=" + remote_workflow_id;
-  if (include_tasks) final_url += "&include_tasks=1";
-  if (include_results) final_url += "&include_results=1";
-
-  while (unix_ms_now() <= deadline_ms) {
-    const HttpClientResult r = http_request(final_url, "GET", headers, /*body=*/"", timeout_ms, max_bytes, cfg.proxy_url, pinp);
-
-    Json::Value poll_http(Json::objectValue);
-    poll_http["status"] = (Json::Int64)r.http_status;
-    poll_http["response_text"] = r.response_body;
-    if (r.retry_after_ms >= 0) poll_http["retry_after_ms"] = (Json::Int64)r.retry_after_ms;
-    if (!r.resolved_addrs.empty()) {
-      Json::Value arr(Json::arrayValue);
-      for (const auto& ip : r.resolved_addrs) {
-        if (!ip.empty()) arr.append(ip);
+  const auto encode_query = [](const std::string& input) {
+    std::string output;const char* hex = "0123456789ABCDEF";
+    for (const unsigned char c : input) {
+      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') output += char(c);
+      else { output += '%';output += hex[c >> 4];output += hex[c & 15]; }
+    }
+    return output;
+  };
+  const auto submission = effect.submission();
+  const auto session = submission["allow_sessions"] == true && submission["session_id"].isString() ? trim_copy(submission["session_id"].asString()) : "";
+  std::string url = join_base_path(base_url, "/api/v1/workflow") + "?idempotency_key=" + effect.remote_key() +
+    "&session_id=" + encode_query(session) + "&include_tasks=" + (include_tasks ? "1" : "0") +
+    "&include_results=" + (include_results ? "1" : "0");
+  int unavailable_reads = 0;
+  const auto pause = [&](int64_t milliseconds) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(milliseconds);
+    while (!cancelled() && std::chrono::steady_clock::now() < until && remaining() > 0) sleep_ms(10);
+  };
+  while (network_available()) {
+    const auto response = request(url, "GET", "");
+    if (!response.ok || response.http_status < 200 || response.http_status >= 300) {
+      const bool transient = response.http_status == 0 || response.http_status == 404 || response.http_status == 408 ||
+        response.http_status == 429 || response.http_status == 500 || response.http_status == 502 || response.http_status == 503 || response.http_status == 504;
+      if (transient && !response.response_too_large && ++unavailable_reads < 3 && network_available()) {
+        pause(unavailable_reads == 1 ? 250 : 1000);continue;
       }
-      if (!arr.empty()) poll_http["resolved_addrs"] = arr;
+      return pending("original remote workflow lookup unavailable (HTTP " + std::to_string(response.http_status) + "); no execution was repeated",
+                     transient && !response.response_too_large);
     }
-    out["agentd"]["poll_http"] = poll_http;
-
-    if (!r.ok) {
-      out["error"] = r.error.empty() ? "agentd_call poll http request failed" : r.error;
-      out["retryable"] = true;
-      out["retry_in_ms"] = (Json::Int64)poll_ms;
-      return out;
+    Json::Value final;std::string error, remote_id;
+    if (!json_parse_any_value(response.response_body, &final, &error) || !effect.matches_workflow(final, &remote_id))
+      return pending("remote workflow lookup returned invalid or mismatching identity/state; no execution was repeated", false);
+    unavailable_reads = 0;
+    if (!effect.observe_workflow(final, &error)) return pending("original remote workflow identity was not saved: " + error, false);
+    const auto status = final["workflow"]["status"].asString();
+    if (is_terminal_workflow_status(status)) {
+      Json::Value result;result["ok"] = status == "done";
+      result["assistant_text"] = status == "done" ? "agentd_call: remote workflow done" : "";
+      if (status != "done") result["error"] = "remote workflow status " + status;
+      result["agentd"] = attach_target_metadata();result["agentd"]["workflow_id"] = remote_id;result["agentd"]["final"] = final;
+      add_final_hash_surface_best_effort(&result);
+      return effect.complete(decorate(std::move(result)));
     }
-
-    Json::Value final;
-    std::string perr;
-    if (!json_parse_any_value(r.response_body, &final, &perr) || !final.isObject()) {
-      out["error"] = "agentd_call poll: failed to parse remote JSON response";
-      if (!perr.empty()) out["parse_error"] = perr;
-      out["retryable"] = true;
-      out["retry_in_ms"] = (Json::Int64)poll_ms;
-      return out;
-    }
-    out["agentd"]["final"] = final;
-
-    const bool ok_flag = final.isMember("ok") && final["ok"].isBool() && final["ok"].asBool();
-    if (!ok_flag && final.isMember("error") && final["error"].isString()) {
-      out["error"] = final["error"].asString();
-    }
-
-    const std::string st =
-      final.isMember("workflow") && final["workflow"].isObject() && final["workflow"].isMember("status") && final["workflow"]["status"].isString()
-      ? trim_copy(final["workflow"]["status"].asString())
-      : "";
-    if (!st.empty() && is_terminal_workflow_status(st)) {
-      if (st == "done") {
-        out["ok"] = true;
-        out["assistant_text"] = "agentd_call: remote workflow done";
-      } else {
-        out["ok"] = false;
-        if (!out.isMember("error")) out["error"] = "remote workflow status " + st;
-        out["assistant_text"] = "";
-      }
-      add_final_hash_surface_best_effort(&out);
-      return out;
-    }
-
-    // Not terminal yet. Sleep in a simple loop (no busy spin).
-    // Note: using delay_ms in the workflow engine would be overkill; this is a deterministic task attempt.
-    sleep_ms((int)poll_ms);
+    pause(poll_ms);
   }
+  return pending("remote workflow wait exhausted its attempt deadline or network grant; only original-workflow reads may continue", true);
 
-  out["error"] = "agentd_call timeout waiting for remote workflow";
-  out["retryable"] = true;
-  out["retry_in_ms"] = (Json::Int64)poll_ms;
-  return out;
 }
 
 }  // namespace agentd

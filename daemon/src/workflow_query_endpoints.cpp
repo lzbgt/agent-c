@@ -121,6 +121,7 @@ void handle_workflow_get_endpoint(
       if (!row.effect_slot.empty()) effect["effect_slot"] = row.effect_slot;
       effect["request_hash"] = row.request_hash; effect["mode"] = row.mode;
       if (row.effect_id.rfind("mfx_", 0) == 0) effect["boundary"] = "model_run";
+      if (row.effect_id.rfind("afx_", 0) == 0) effect["boundary"] = "agentd_call";
       effect["state"] = row.state; effect["revision"] = Json::Int64(row.revision);
       effect["attempt"] = Json::Int64(row.attempt);
       effect["updated_unix_ms"] = Json::Int64(row.updated_unix_ms);

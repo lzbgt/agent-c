@@ -56,6 +56,83 @@ A successfully finished model run saves a bounded complete run receipt. Recovery
 
 If a host call is admitted without a durable terminal receipt, a tool times out or returns an invalid/unbounded result, the replay context does not match, or a checkpoint is corrupt, the task returns `needs_input: true`, `retryable: false` and a `model_run_outcome_unknown` blocker. Later calls in the same run are refused after an uncertain tool result. A time-grant expiry cannot turn that refusal back into permission to retry. Independent work can continue within remaining budgets; dependent work does not advance.
 
+### Durable remote workflow admission
+
+`kind: agentd_call` now owns a local guarded admission before its remote submit
+POST. The journal shares the existing workflow effect table and revision/owner
+fences; it adds no scheduler. `afx_…` identifies the parent workflow/task. A
+separate `remote_…` key also incorporates a stable random namespace stored once
+in the parent database's `meta` key `workflow_remote_namespace_v1`. Two independent
+parents with caller-chosen identical workflow/task names therefore use different
+remote keys. The namespace is 32 random bytes stored as 64 lowercase hex digits.
+`afx_` hashes the complete `[workflow_id, task_id]`; `remote_` hashes
+`[namespace, effect_id]`. Both use SHA-256 over `agent_json_c14n_v1` canonical JSON.
+The request hash binds `{protocol: "agentd.remote_workflow.v1", call: <resolved
+original call>}`, before runtime remaining-time caps are applied. Preserve the original database, including this namespace, during
+recovery; an invalid existing namespace is never silently replaced.
+
+The parent replaces the child submission's trace and idempotency keys with that
+server-owned remote key. After admission it can only issue authenticated native
+workflow GETs using the recorded target, key and effective session scope.
+`allow_sessions: false` means empty remote scope even when a session ID appeared
+in the submitted definition. The response must name that exact key, trace,
+scope, a bounded workflow ID and a known status. The first verified ID is saved
+with a revision-checked checkpoint; later replies and restart cannot substitute
+another ID. A malformed, oversized, ambiguous or mismatching lookup never
+permits another POST. URL allowlists, DNS pinning, configured authentication and
+broker deployment routing still apply before fresh network I/O.
+
+Transient transport/404/408/429/500/502/503/504 lookup failures allow at most three consecutive
+reads per attempt, with 250/1000-ms delays, within its existing network grant and
+monotonic total deadline. Valid running observations retain the existing bounded
+poll interval. Each actual POST or GET consumes one reported tool call and one
+step; finite grants are checked before each HTTP request. The configured response
+byte cap, 1–300000-ms attempt timeout and cancellation cover submit, reads and
+waiting together. The task's existing retry policy can start another read-only
+attempt. Recoverable waits do not raise a human blocker until automatic attempts
+are exhausted; invalid receipts raise scoped `remote_workflow_outcome_unknown`.
+Independent tasks remain eligible with one worker after the bounded attempt.
+
+A matching terminal native response is saved as a checksum-checked receipt of at
+most 8 MiB before parent task settlement. Its `checksum` is SHA-256 over the
+canonical JSON object containing schema, effect ID, request hash and original
+result, excluding the checksum field itself; the stored token uses `sha256:`. Completed success and failure receipts
+replay with zero new network/tool/step usage before fresh budget reservation.
+A crash before task settlement therefore does not repeat remote work or require
+a new call grant. Failed persistence remains unresolved. A previously attempted
+workflow lacking an admission record is held; old result text is not adopted as
+proof. Use fresh deployments/workflows rather than migrating uncertain work.
+
+For a stopped automatic attempt, the WebUI exposes **Check remote workflow**.
+The existing authenticated reconciliation API accepts only `workflow_id` and
+`task_id` for this boundary; supplying `reconcile_url` is rejected. It requeues
+original-workflow reads under existing budgets and original target/request
+fences. Owner cancellation and expired deadlines cannot be revived. Parent
+cancellation aborts local HTTP/waiting; it does not undo an accepted child or
+assert that downstream work stopped. Destination history loss and unresolved
+physical effects remain distinct problems; no distributed exactly-once claim
+is made.
+
+Reproduce this boundary in an assertion-enabled host build:
+
+```sh
+cmake --build build-snapshot --target agentd workflow_agentd_call_effect_tests -j4
+ctest --test-dir build-snapshot \
+  -R '^(workflow_agentd_call_effect_tests|agentd_workflow_agentd_call_smoke|agentd_workflow_agentd_call_broker_proxy_smoke|agentd_workflow_agentd_call_recovery_smoke)$' \
+  --output-on-failure
+```
+
+Configure the Debug host build first using [the canonical lane](CURRENT_SNAPSHOT.md#reproduce).
+The controller test covers namespace separation, changed identities, exact
+receipts, corruption/size bounds, stale runners, storage failures and owner stops.
+The real-process fixture uses two temporary authenticated daemons, a fault proxy
+and actual file-appending host subprocesses. It checks response loss, delayed
+acceptance, parent death before/after remote identity capture, receipt-before-task
+settlement, exhausted-grant cached recovery, missing/mismatched receipts,
+read-only reconciliation and independent progress. It uses no real provider,
+production database or deployed service. Physical/business outcome guarantees
+require their own destination contracts.
+
 ### Verified transcript continuation
 
 For supported host-model tasks, the host adapter records the exact provider decisions (including original tool-call IDs) and raw bounded terminal tool results. Before each fresh host call it commits a pending-dispatch marker using the effect revision; after the call it commits the result before returning it to the core. The first marker is still lazy and policy-first. Provider-only tasks create no effect row. Provider requests are fingerprinted, not copied into this journal. A bounded host-adapter sidecar also retains the original reasoning content keyed by tool-call IDs when the current OpenAI-compatible adapter captured it (for example DeepSeek/Moonshot nonstreaming tool turns). It is restored before a fresh provider request; missing required adapter metadata fails closed. This does not synthesize metadata that a provider/streaming decoder never captured. The portable C kernel has no new storage dependency.

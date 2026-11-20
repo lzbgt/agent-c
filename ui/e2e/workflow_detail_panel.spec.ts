@@ -96,8 +96,10 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
           { task_id: "task-f", status: "error", depends_on: [], attempt: 1, max_attempts: 2,
             blocker: {kind:"model_session_changed", required_action:"Inspect the newer conversation and preserved tool receipts."} },
           { task_id: "task-e", status: "error", depends_on: [], attempt: 2, max_attempts: 2, error: "Provider unavailable" },
+          { task_id: "task-remote", status: "error", depends_on: [], attempt: 1, max_attempts: 1,
+            blocker: {kind:"remote_workflow_outcome_unknown", required_action:"Restore access to the original remote workflow."} },
         ],
-        effects: [{effect_id:"mfx-session",task_id:"task-f",request_hash:"sha256:session",mode:"guarded",boundary:"model_run",state:"unknown",revision:5,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"mfx-saved",task_id:"task-e",request_hash:"sha256:saved",mode:"guarded",boundary:"model_run",state:"dispatching",revision:4,attempt:1,updated_unix_ms:1700000100000,resume_available:true}, {effect_id:"mfx-fixture",task_id:"task-d",request_hash:"sha256:model",mode:"guarded",boundary:"model_run",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"fx-host",task_id:"task-a",request_hash:"sha256:host",mode:"guarded",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
+        effects: [{effect_id:"afx-remote",task_id:"task-remote",request_hash:"sha256:remote",mode:"guarded",boundary:"agentd_call",state:"dispatching",revision:1,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"mfx-session",task_id:"task-f",request_hash:"sha256:session",mode:"guarded",boundary:"model_run",state:"unknown",revision:5,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"mfx-saved",task_id:"task-e",request_hash:"sha256:saved",mode:"guarded",boundary:"model_run",state:"dispatching",revision:4,attempt:1,updated_unix_ms:1700000100000,resume_available:true}, {effect_id:"mfx-fixture",task_id:"task-d",request_hash:"sha256:model",mode:"guarded",boundary:"model_run",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id:"fx-host",task_id:"task-a",request_hash:"sha256:host",mode:"guarded",state:"unknown",revision:2,attempt:1,updated_unix_ms:1700000100000}, {effect_id: "fx-fixture", task_id: "task-b", request_hash: "sha256:fixture", mode: "guarded", state: "unknown", revision: 2, attempt: 1, updated_unix_ms: 1700000100000}],
         workflow_limits: { max_steps: 12 },
         workflow_usage: { steps: 4 },
         workflow_remaining: { steps: 8 },
@@ -123,7 +125,7 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect(page.getByRole("region", { name: "Needs your attention" })).toContainText("Verify the original device operation and its readback.");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("Workflow summary");
   await expect(page.getByTestId("workflow-detail-panel")).toContainText("trace-123");
-  await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 6");
+  await expect(page.getByTestId("workflow-dag-panel")).toContainText("tasks: 7");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-a");
   await expect(page.getByTestId("workflow-dag-panel")).toContainText("task-b");
   await expect(page.getByTestId("workflow-effects")).toContainText("Outcome unresolved");
@@ -159,6 +161,9 @@ test("workflow detail panel loads summary and DAG from selected workflow", async
   await expect.poll(() => deviceChecks).toBe(2);
   await expect.poll(() => reconciliation).toEqual({workflow_id:"wf-detail-1",task_id:"task-c"});
   await expect(receipt).toBeEnabled();
+  await expect(page.getByRole("textbox", {name:"Receipt endpoint for task-remote"})).toHaveCount(0);
+  await page.getByRole("button", {name:"Check remote workflow", exact:true}).click();
+  await expect.poll(() => reconciliation).toEqual({workflow_id:"wf-detail-1",task_id:"task-remote"});
   cancelled = true;
   await page.getByTestId("workflow-detail-panel").getByRole("button",{name:"Reload",exact:true}).click();
   await expect(receipt).toHaveCount(0);

@@ -443,8 +443,8 @@ For multi-agent collaboration where **another `agentd` instance** should run a d
 result, workflows can use `kind:"agentd_call"`.
 
 This is a deterministic collaboration primitive:
- - submit a remote workflow (`POST <base_url>/api/v1/workflow/submit`)
- - poll until terminal (`GET <base_url>/api/v1/workflow?workflow_id=...`)
+ - save one immutable local admission, then submit the remote workflow once (`POST <base_url>/api/v1/workflow/submit`)
+ - recover/poll the original via `GET <base_url>/api/v1/workflow?idempotency_key=...&session_id=...`; lost replies and restart never authorize another POST
  - compute best-effort deterministic hash surfaces for quorum/correlation:
    - `agentd.result_sha256`: hash of a **stable projection** of terminal remote `final.result` (preferred stable surface)
      - `agentd.result_sha256_schema=agentd_call_result_stable_v1` (defines which ephemeral fields are pruned before hashing)
@@ -514,10 +514,17 @@ Result shape (high level):
   `broker:<broker_base_url>:<agent_id>[:<deployment_id>]` for broker-proxy targets).
 - `agentd.target_id`, `agentd.broker_agent_id`, and `agentd.broker_deployment_id` are present when the submit-time spec or
   `agentd_parallel` macro supplies that metadata.
-- `agentd.workflow_id` is the remote workflow_id (reused on retry to avoid duplicate submit).
+- `agentd.workflow_id` is the original remote workflow ID, pinned after the first matching authenticated lookup.
+- `agentd.idempotency_key` is server-owned and scoped by a durable random parent-database namespace plus the complete parent workflow/task identity. Supplied child trace/idempotency fields are replaced. The remote session scope is nonempty only when the child workflow enables `allow_sessions`.
 - `agentd.final` is the remote `GET /api/v1/workflow` JSON response (best-effort bounded), enabling references like:
   - `${task.REMOTE.json:/agentd/final/workflow/status}`
   - `{"$ref":"task.REMOTE.json:/agentd/final/result/results_by_task/W/assistant_text"}`
+
+The [durable remote-call contract](WORKFLOW_EFFECTS.md#durable-remote-workflow-admission)
+explains admission, bounded lookup, saved terminal receipts, fresh network budgets,
+owner stops, scoped blockers and **Check remote workflow**. A previous attempt
+without the new admission journal is held for original-outcome review; deploy
+fresh workflows instead of treating old result text as permission to submit.
 
 ### Parallel agent collaboration macro (`kind:"agentd_parallel"`) (v1.10)
 

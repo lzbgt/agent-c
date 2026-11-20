@@ -96,7 +96,7 @@ export const WorkflowDetailRespSchema = z
     effects: z.array(z.object({
       effect_id: z.string(), task_id: z.string(), request_hash: z.string(),
       mode: z.enum(["guarded", "idempotent"]),
-      boundary: z.literal("model_run").optional(),
+      boundary: z.enum(["model_run", "agentd_call"]).optional(),
       resume_available: z.boolean().optional(),
       state: z.enum(["prepared", "dispatching", "completed", "unknown"]),
       revision: z.number(), attempt: z.number(), updated_unix_ms: z.number(),

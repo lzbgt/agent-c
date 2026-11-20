@@ -76,6 +76,14 @@ void handle_workflow_reconcile_endpoint(const DaemonConfig& cfg, const CorsConfi
   if (!cfg.workflow_enable_http_tasks) { fail(409,"HTTP workflow tasks are disabled"); return; }
   const auto effect = std::find_if(effects.begin(),effects.end(),[&](const auto& e) { return e.task_id == args["task_id"].asString(); });
   if (task == tasks.end() || effect == effects.end()) { fail(404,"effect task not found"); return; }
+  if (device_request["kind"] == "agentd_call") {
+    if (args.isMember("reconcile_url")) { fail(400,"remote workflow recovery uses its recorded target; no resolver URL is accepted");return; }
+    if (effect->effect_id.rfind("afx_", 0) != 0 || !effect->reconcile_url.empty()) { fail(409,"recorded remote admission is unavailable");return; }
+    if (!db->requeue_workflow_effect(*task, *effect, "", &error)) { fail(409,error);return; }
+    Json::Value out;out["ok"] = true;out["workflow_id"] = workflow.workflow_id;out["task_id"] = task->task_id;
+    out["effect_id"] = effect->effect_id;out["kind"] = "remote_workflow_receipt";
+    resp->body = json_stringify_compact(out);return;
+  }
   const auto resolver = args.isMember("reconcile_url") ? args["reconcile_url"].asString() : effect->reconcile_url;
   Json::Value request;
   if (!json_parse_object(task->request_json,&request,&error) || !request["http_json"].isObject()) { fail(409,"stored effect task is invalid"); return; }

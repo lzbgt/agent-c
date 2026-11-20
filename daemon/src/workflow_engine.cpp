@@ -424,6 +424,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   // Probe before allocating fresh budget. Pure/deterministic tasks create no
   // model journal row. Old model receipts and unresolved effects need no calls.
   if (out.isNull()) out = model_effect.preflight();
+  WorkflowAgentdCallEffect remote_effect(model_context, rr["agentd_call"], task.attempt >= std::max(1, task.max_attempts), task.attempt > 1);
+  if (out.isNull() && kind == "agentd_call") out = remote_effect.preflight();
   if (out.isNull() && kind == "timer") {
     if (!rr["due_unix_ms"].isInt64() || rr["due_unix_ms"].asInt64() <= 0 ||
         rr["due_unix_ms"].asInt64() > 253402300799999LL) {
@@ -1415,7 +1417,14 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         const std::string ttrace =
           rr.isMember("trace_id") && rr["trace_id"].isString() ? trim_copy(rr["trace_id"].asString()) : "";
         std::string aerr;
-        out = workflow_agentd_call_to_json(cfg, ac, ttrace, task.result_json, &aerr);
+        WorkflowEffectContext remote_context{db_, wf.workflow_id, task.task_id, [&]() {
+          cancel_ctx.last_check_unix_ms = 0;
+          return workflow_run_should_cancel(&cancel_ctx);
+        }};
+        if (wf_limits.max_tool_calls_total > 0) remote_context.max_network_calls = wf_tool_calls_remaining;
+        if (wf_limits.max_steps_total > 0) remote_context.max_network_calls = remote_context.max_network_calls > 0 ?
+          std::min(remote_context.max_network_calls, wf_steps_remaining) : wf_steps_remaining;
+        out = workflow_agentd_call_to_json(cfg, ac, ttrace, remote_effect, remote_context, &aerr);
         out["kind"] = "agentd_call";
         // Budget charging: deterministic external calls. Count as one tool call / step per attempt.
         if (!out.isMember("tool_calls_total")) out["tool_calls_total"] = (Json::Int64)1;

@@ -476,7 +476,7 @@ bool WorkflowModelEffect::save_checkpoint(bool admitting_tool) {
   if (value["checksum"].asString().empty()) { reject("model transcript exceeded its bounded checkpoint size"); return false; }
   if (!dispatched_) return true;
   AgentDb::WorkflowEffectRow saved; std::string error;
-  if (!context_.db->checkpoint_workflow_model_effect(row_, encode(value), admitting_tool, &saved, &error, session_bound_ ? &session_ : nullptr)) {
+  if (!context_.db->checkpoint_workflow_effect(row_, encode(value), admitting_tool, &saved, &error, session_bound_ ? &session_ : nullptr)) {
     if (error.rfind("session revision conflict",0) == 0) {
       session_conflict_ = true;
       // This admission rolled back before any host dispatch. Preserve the

@@ -23,7 +23,8 @@ export default function WorkflowEffectsSection(props: Props) {
     if (!props.controls || pending) return;
     setPending(taskId); setError(null);
     try {
-      const url = (urls[taskId] ?? "").trim();
+      const remote = props.effects.some(effect => effect.task_id === taskId && effect.boundary === "agentd_call");
+      const url = remote ? "" : (urls[taskId] ?? "").trim();
       const result = await apiReconcileWorkflowEffect(props.controls.baseUrl, {
         workflow_id: props.workflowId, task_id: taskId, ...(url ? { reconcile_url: url } : {}),
       }, props.controls.auth);
@@ -43,6 +44,7 @@ export default function WorkflowEffectsSection(props: Props) {
     <div className="mt-3 grid gap-2">
       {props.effects.map((effect) => {
         const task = props.tasks.find((item) => item.task_id === effect.task_id);
+        const remoteCall = effect.boundary === "agentd_call";
         const hostTool = task?.blocker?.kind === "host_tool_outcome_unknown";
         const sessionChanged = task?.blocker?.kind === "model_session_changed";
         const modelRun = sessionChanged || effect.boundary === "model_run" || task?.blocker?.kind === "model_run_outcome_unknown";
@@ -53,12 +55,12 @@ export default function WorkflowEffectsSection(props: Props) {
             <span className="font-medium text-white/80">{effect.task_id}</span>
             <span className={unresolved ? "text-amber-200" : "text-emerald-200"}>{sessionChanged ? "Conversation changed" : savedProgress ? "Verified progress saved" : unresolved ? "Outcome unresolved" : effect.state === "completed" ? "Receipt saved" : effect.state === "prepared" ? "Prepared" : "Dispatch admitted"}</span>
           </div>
-          <div className="mt-1 text-[11px] text-white/50">{modelRun ? "Model-run host boundary" : effect.mode === "idempotent" ? "Destination deduplication" : "Guarded write"} · dispatch {effect.attempt}</div>
+          <div className="mt-1 text-[11px] text-white/50">{remoteCall ? "Remote workflow" : modelRun ? "Model-run host boundary" : effect.mode === "idempotent" ? "Destination deduplication" : "Guarded write"} · dispatch {effect.attempt}</div>
           {savedProgress ? <p className="mt-2 text-[11px] leading-relaxed text-white/70">The provider/tool transcript is saved. Inspect the provider error and remaining budget; automatic attempts have stopped. Replayed receipts do not repeat host actions. No manual resume control is available.</p> : null}
-          {unresolved ? <p className="mt-2 text-[11px] leading-relaxed text-amber-100/80">{sessionChanged ? "The newer conversation was preserved and prior tool receipts remain saved. Inspect both before continuing; automatic rebase and rerun are disabled." : modelRun ? "Inspect prior model-selected host actions. Automatic rerun and transcript resume are disabled for this incomplete run." : hostTool ? "Inspect the original host operation before repeating it. No automatic receipt resolver is available for this tool." : "Verify the destination receipt before repeating this write. Automatic reconciliation follows the task retry policy when a receipt endpoint is configured."}</p> : null}
+          {unresolved ? <p className="mt-2 text-[11px] leading-relaxed text-amber-100/80">{remoteCall ? "Check the original remote workflow. Recovery never submits another run." : sessionChanged ? "The newer conversation was preserved and prior tool receipts remain saved. Inspect both before continuing; automatic rebase and rerun are disabled." : modelRun ? "Inspect prior model-selected host actions. Automatic rerun and transcript resume are disabled for this incomplete run." : hostTool ? "Inspect the original host operation before repeating it. No automatic receipt resolver is available for this tool." : "Verify the destination receipt before repeating this write. Automatic reconciliation follows the task retry policy when a receipt endpoint is configured."}</p> : null}
           {unresolved && !hostTool && !modelRun && task?.status === "error" && props.controls ? <form className="mt-3 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void reconcile(effect.task_id); }}>
-            <input aria-label={`Receipt endpoint for ${effect.task_id}`} type="url" value={urls[effect.task_id] ?? ""} onChange={(event) => setUrls((prev) => ({ ...prev, [effect.task_id]: event.target.value }))} placeholder="Receipt endpoint (optional if configured)" className="min-w-0 flex-1 rounded border border-white/10 bg-black/20 px-2 py-1 text-xs" />
-            <button type="submit" className="workspace-button disabled:opacity-50" disabled={pending !== null}>{pending === effect.task_id ? "Queuing…" : "Reconcile outcome"}</button>
+            {remoteCall ? null : <input aria-label={`Receipt endpoint for ${effect.task_id}`} type="url" value={urls[effect.task_id] ?? ""} onChange={(event) => setUrls((prev) => ({ ...prev, [effect.task_id]: event.target.value }))} placeholder="Receipt endpoint (optional if configured)" className="min-w-0 flex-1 rounded border border-white/10 bg-black/20 px-2 py-1 text-xs" />}
+            <button type="submit" className="workspace-button disabled:opacity-50" disabled={pending !== null}>{pending === effect.task_id ? "Queuing…" : remoteCall ? "Check remote workflow" : "Reconcile outcome"}</button>
           </form> : null}
           <details className="mt-2 text-[10px] text-white/45"><summary className="cursor-pointer">Effect identity</summary><div className="mt-1 break-all font-mono">{effect.effect_id}<br />{effect.request_hash}</div></details>
         </div>;

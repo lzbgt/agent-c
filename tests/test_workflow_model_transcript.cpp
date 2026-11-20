@@ -180,8 +180,8 @@ int main() {
     Fake fake; const auto id = checkpoint("cas", fake);
     AgentDb::WorkflowEffectRow row, saved; bool found = false;
     check(db.get_workflow_effect(id, &row, &found, &error) && found, "CAS lookup");
-    check(db.checkpoint_workflow_model_effect(row, row.receipt_json, false, &saved, &error), error);
-    check(!db.checkpoint_workflow_model_effect(row, row.receipt_json, true, &saved, &error), "stale checkpoint admitted");
+    check(db.checkpoint_workflow_effect(row, row.receipt_json, false, &saved, &error), error);
+    check(!db.checkpoint_workflow_effect(row, row.receipt_json, true, &saved, &error), "stale checkpoint admitted");
     check(row.attempt == saved.attempt, "checkpoint counted a redispatch");
   }
   {

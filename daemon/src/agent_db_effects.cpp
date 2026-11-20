@@ -94,6 +94,30 @@ bool AgentDb::prepare_workflow_effect(const WorkflowEffectRow& def, WorkflowEffe
 #endif
 }
 
+bool AgentDb::workflow_remote_namespace(std::string* out, std::string* error) {
+  if (error) error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)out;if (error) *error = "SQLite support required";return false;
+#else
+  if (!out) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) { if (error) *error = "database unavailable";return false; }
+  if (!exec_locked("INSERT INTO meta(key,value) VALUES('workflow_remote_namespace_v1',lower(hex(randomblob(32)))) ON CONFLICT(key) DO NOTHING", error)) return false;
+  sqlite3_stmt* raw = nullptr;
+  if (sqlite3_prepare_v2(db_, "SELECT value FROM meta WHERE key='workflow_remote_namespace_v1'", -1, &raw, nullptr) != SQLITE_OK) {
+    if (error) *error = agent_db_sqlite_err(db_);return false;
+  }
+  Statement stmt(raw, sqlite3_finalize);
+  if (sqlite3_step(raw) != SQLITE_ROW || sqlite3_column_type(raw, 0) != SQLITE_TEXT) return false;
+  const auto* value = reinterpret_cast<const char*>(sqlite3_column_text(raw, 0));
+  const std::string space(value ? value : "", sqlite3_column_bytes(raw, 0));
+  if (space.size() != 64 || space.find_first_not_of("0123456789abcdef") != std::string::npos) {
+    if (error) *error = "invalid durable remote namespace; refusing to replace it";return false;
+  }
+  *out = space;return true;
+#endif
+}
+
 bool AgentDb::transition_workflow_effect(const WorkflowEffectRow& expected, const std::string& state,
                                         const std::string& receipt, WorkflowEffectRow* out, std::string* error,
                                         const SessionFence* session, const std::vector<MessageRow>* session_messages) {
@@ -138,7 +162,7 @@ bool AgentDb::transition_workflow_effect(const WorkflowEffectRow& expected, cons
 #endif
 }
 
-bool AgentDb::checkpoint_workflow_model_effect(const WorkflowEffectRow& expected, const std::string& receipt,
+bool AgentDb::checkpoint_workflow_effect(const WorkflowEffectRow& expected, const std::string& receipt,
                                                bool admitting_tool, WorkflowEffectRow* out, std::string* error,
                                                const SessionFence* session) {
   if (error) error->clear();
@@ -148,9 +172,9 @@ bool AgentDb::checkpoint_workflow_model_effect(const WorkflowEffectRow& expected
   return false;
 #else
   if (!out || expected.mode != "guarded" || expected.state != "dispatching" ||
-      expected.effect_id.rfind("mfx_", 0) != 0 || receipt.empty() || receipt.size() > 8 * 1024 * 1024 ||
+      (expected.effect_id.rfind("mfx_", 0) != 0 && expected.effect_id.rfind("afx_", 0) != 0) || receipt.empty() || receipt.size() > 8 * 1024 * 1024 ||
       expected.revision == std::numeric_limits<int64_t>::max()) {
-    if (error) *error = "invalid model checkpoint";
+    if (error) *error = "invalid effect checkpoint";
     return false;
   }
   std::lock_guard<std::mutex> lock(mu_);
@@ -169,7 +193,7 @@ bool AgentDb::checkpoint_workflow_model_effect(const WorkflowEffectRow& expected
     agent_db_bind_text(raw,7,expected.task_id) && agent_db_bind_i32(raw,8,admitting_tool ? 1 : 0) &&
     agent_db_bind_i64(raw,9,now) && agent_db_step_done(raw);
   if (!ok || sqlite3_changes(db_) != 1) {
-    if (error) *error = ok ? "model checkpoint conflict, deadline, or owner stop" : agent_db_sqlite_err(db_);
+    if (error) *error = ok ? "effect checkpoint conflict, deadline, or owner stop" : agent_db_sqlite_err(db_);
     return rollback();
   }
   if (!exec_locked("COMMIT",error)) return rollback();
@@ -212,7 +236,7 @@ bool AgentDb::requeue_workflow_effect(const WorkflowTaskRow& task, const Workflo
   std::lock_guard<std::mutex> lock(mu_);
   if (!db_ || task.status != "error" || task.attempt >= 1000000 ||
       (effect.state != "unknown" && effect.state != "dispatching") ||
-      effect.workflow_id != task.workflow_id || effect.task_id != task.task_id || resolver.empty()) {
+      effect.workflow_id != task.workflow_id || effect.task_id != task.task_id || (effect.effect_id.rfind("afx_", 0) == 0 ? !resolver.empty() || !effect.reconcile_url.empty() : resolver.empty())) {
     if (error) *error = "only a failed uncertain effect with a receipt endpoint can be reconciled";
     return false;
   }

@@ -514,15 +514,18 @@ class AgentDb {
     std::string receipt_json;
     std::string reconcile_url;
   };
+  // Stable random namespace distinguishes independent parent databases, even
+  // when clients choose identical workflow/task names.
+  bool workflow_remote_namespace(std::string* out, std::string* error);
   bool get_workflow_effect(const std::string& effect_id, WorkflowEffectRow* out, bool* found, std::string* error);
   bool prepare_workflow_effect(const WorkflowEffectRow& definition, WorkflowEffectRow* out, std::string* error);
   bool transition_workflow_effect(const WorkflowEffectRow& expected, const std::string& state,
                                   const std::string& receipt_json, WorkflowEffectRow* out, std::string* error,
                                   const SessionFence* session = nullptr,
                                   const std::vector<MessageRow>* session_messages = nullptr);
-  // Internal model transcript CAS. A fresh tool admission checks owner stop and
+  // Internal model/remote transcript CAS. Fresh dispatch checks owner stop and
   // deadline; saving a receipt after a stop is still allowed. Never redispatches.
-  bool checkpoint_workflow_model_effect(const WorkflowEffectRow& expected, const std::string& receipt_json,
+  bool checkpoint_workflow_effect(const WorkflowEffectRow& expected, const std::string& receipt_json,
                                         bool admitting_tool, WorkflowEffectRow* out, std::string* error,
                                         const SessionFence* session = nullptr);
   bool list_workflow_effects(const std::string& workflow_id, std::vector<WorkflowEffectRow>* out, std::string* error);

@@ -10,6 +10,8 @@ production services were restarted.
 
 - **Requirement-driven broker goals:** explicit agent/deployment/session binding keeps the host ledger authoritative. Success requires evidence-bearing completed requirements, independent work continues past scoped blockers, changed revisions wake managed waits and unchanged progress stops. Single-use admission and exact control CAS prevent duplicate/stale launches. Immutable broker receipts recover the original persisted team run after response loss or restart, never by resending it. Unrecorded host outcomes remain pending, mismatches stop recovery and owner controls are preserved. UI setup, progress and receipt states are included. Managed requirement waits now use bounded server-notified long polling with ordinary reconciliation fallback, coalesced hints, explicit watch caps and cancellation. Every hint triggers fresh goal/ledger checks, not dispatch permission. This remains single-authority coordination, not a durable event stream or reconstruction of an unknown host outcome. See [goal ledger contract](GOAL_WORK_LEDGER.md).
 
+- **Native remote workflow recovery (source only):** `agentd_call` saves a parent-owned admission before one remote POST, uses a database-scoped server-owned key and resumes only authenticated original-workflow reads. Exact identity/state checks pin the returned workflow; completed receipts save before parent settlement and replay without fresh network grants. Missing/corrupt outcomes remain scoped blockers; API/UI checks cannot replace the target, bypass budgets or revive owner stops. Direct and broker proxy fixtures use real temporary daemons and no provider. See [remote admission](WORKFLOW_EFFECTS.md#durable-remote-workflow-admission).
+
 - **Model task continuity:** ordinary workflow/SOP host-model tasks have a durable effect guard. Ephemeral and session-backed tasks save exact bounded image-preparation/provider/tool transcripts and resume verified progress after provider failure or restart without repeating or recharging cached host calls. Current policy, fresh-call grants and owner stops still apply; pending/unusable receipts remain blocked. Saved-progress UI differs from unknown effects and adds no manual resume control. Persistent sessions pin a durable conversation generation and atomically publish final messages with the model receipt. Changed conversations stop without overwriting newer edits; the UI explains the conflict. The existing image-description prefetch is restored exactly instead of reinterpreting images on retry; fresh analysis shares provider-step/token accounting and cached analysis is free. Sequential delegated host-model children use distinct parent-owned journals, shared-session fences and free completed-prefix replay. Verified partial children can traverse cached records with exhausted tool/step grants while every new call remains grant-gated; elapsed/token admission and conservative lost charges are unchanged. Other uninstrumented preparation and parallel macro semantics remain excluded. See [delegated continuation](DELEGATED_CONTINUATION_DESIGN.md). See [model effect contract](WORKFLOW_EFFECTS.md#model-selected-host-tools).
 - **Deterministic host actions:** `host_tool` workflows and SOP actions reuse daemon policy/explicit approvals, persist original intent/results, reject changed identities and never blindly repeat an interrupted effect. Saved results need no new tool charge or execution approval. Independent work continues; the UI explains unresolved host outcomes without offering an unsupported HTTP resolver. See [host effect contract](WORKFLOW_EFFECTS.md#deterministic-host-tools).
 
@@ -72,35 +74,39 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The canonical verifier includes CLI session-store preservation, native session
-paging and durable job admission/lookup/cancellation, alongside browser context
-paging, chat/workflow submission recovery and job-watcher regressions. On
-2026-11-20 the current source passed **49 native/CLI/API checks**, all Go
+The canonical provider-free lane passed **53 native/CLI/API checks**, all Go
 broker/gateway packages, generated OpenAPI/type checks, the production UI build
-and **141 browser checks**. Repository guards, changed-document local links/
-anchors and whitespace checks passed. No production service or real provider
-was exercised.
+and **141 browser checks** on 2026-11-20. The new remote-call controller,
+real-process recovery fixture and existing direct/broker proxy tests are now
+included in that lane. Repository guards, changed-document links/anchors and
+whitespace checks also passed. Production services were not exercised.
 
-Eleven added browser cases combine the actual watch-state, dispatch and native
-stream hooks. They cover delayed future-dated preferences in direct and broker
-modes, reload of old accepted jobs without another execution POST, queue release
-only after exact-job retirement, independent scopes, stripped remote authority
-tags, bounded retention/capacity, invalid/unavailable storage, late authorization
-responses, serialized metadata writes after clock rollback and failed completion
-storage followed by read-only recovery. Existing recovery, captured-output,
-responsive layout and voice fixtures remain in the same lane.
+The real-process fixture proves one original remote host action after lost
+acceptance or parent death, pinned identities after restart, saved terminal
+receipts before task settlement, cached recovery without another network grant,
+strict missing/mismatched/oversized receipts, original-target reconciliation,
+owner-stop preservation and one-worker independent progress. The controller
+also checks cross-database namespaces, corrupt records, stale runners, storage
+failures and unrecorded earlier-attempt refusal. The existing browser detail
+fixture checks the URL-free recovery control and mobile overflow.
 
-Current local receipts: `build/watch_identity_snapshot_20261120.log`,
-`build/watch_identity_repo_guards.log` and
-`build/watch_identity_documentation.log`. The current
-[source qualification receipt](verification/run-watch-identity-20261120.json)
-pins implementation `675cbab`, its checked artifacts and the bounded contract.
-The previous consolidation's separate
-core-only Debug lane and five repeated session-store tests passed at source
-`a575cf4`; those extra lanes were not repeated for this client-only change.
-Their [dated qualification receipt](verification/consolidation-20261120.json)
-retains actual native/UI hashes and the original 130-browser result. That older
-receipt is not qualification of the current watch-state implementation.
+A final source review tightened empty-session type validation and zero-I/O
+validation-failure accounting. After rebuilding, the complete canonical **53-test
+native selection passed again in 95.43 seconds**; the browser/OpenAPI/Go/UI results
+remain from the complete canonical run. These are local fixture timings, not a
+production recovery SLO. Local receipts:
+`build/remote_workflow_snapshot_complete_20261120.log`,
+`build/remote_workflow_native_final.log`,
+`build/remote_workflow_repo_guards.log` and
+`build/remote_workflow_documentation.log`.
+
+The previous [watch-state receipt](verification/run-watch-identity-20261120.json)
+pins `675cbab` and its 49-native/141-browser result, including the eleven combined
+watch/dispatch/stream cases. The earlier
+[consolidation receipt](verification/consolidation-20261120.json) retains the
+separate core-only Debug lane and five repeated session-store checks at `a575cf4`.
+Those extra lanes were not repeated here; the core test remains in the current
+host lane. Earlier artifact hashes do not qualify the new remote-call runtime.
 
 Earlier milestone counts and fault-injection narratives are retained in
 [the dated qualification archive](reports/qualification-through-20261118.md).
@@ -108,6 +114,14 @@ They are not substitutes for checking the current revision. Linux host/browser
 checks do not establish a hosted CI matrix, MCU boot or live-provider behavior.
 
 ## Boundaries and next work
+
+The next owner priority is memory authority and evidence correctness, followed by a
+bounded lexical multi-hop retrieval experiment with the unchanged 4B answerer.
+The [architecture evaluation gate](ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
+records the canary/pilot caps and promotion criteria. TypeSafe endpoint/key use,
+model/pricing verification and measured retrieval quality remain pending; no paid
+provider evaluation was performed for this remote-call source milestone.
+
 
 This is a coherent implemented slice, not a claim that every item in the architecture is shipped. Current workflows retain single-daemon, at-least-once task recovery. The new effect protocol protects deterministic HTTP POST tasks under its destination/receipt contracts. Submit dedupe and SOP hashes alone still do not prevent duplicate external writes. Device assignment publication is atomic. Ordinary workflow host-model transcripts, session fences, image preparation and sequential delegated children have bounded recovery contracts. Uninstrumented preparation/tool paths, trusted receipt resolvers, additional device adapters, physical execution guarantees and strict provider/adapter resource metering remain correctness work. Workflow reservation/settlement is now atomic, with observed usage and conservative uncertainty kept distinct.
 

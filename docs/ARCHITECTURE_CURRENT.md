@@ -1,6 +1,6 @@
 # Agent-C architecture: embedded execution, SOP workflows, and autonomy
 
-Decision date: 2026-11-10. This is the current architectural direction. [Current snapshot](CURRENT_SNAPSHOT.md) distinguishes implemented behavior from the design backlog. [Research and primary sources](research/agent-systems-20261110.md) document the upstream basis. Older design/spec documents remain useful descriptions of their individual subsystems; this document takes precedence on product direction.
+Rolling direction updated 2026-11-20; initial decision 2026-11-10. This is the current architectural direction. [Current snapshot](CURRENT_SNAPSHOT.md) distinguishes implemented behavior from the design backlog. [Research and primary sources](research/agent-systems-20261110.md) document the upstream basis. Older design/spec documents remain useful descriptions of their individual subsystems; this document takes precedence on product direction.
 
 This is a rolling project with no compatibility requirement. Prefer coherent refactoring and fresh deployment over migration or compatibility layers. Keep producers, consumers, deployment and verification aligned in one current snapshot. Active process version pinning remains a correctness property within a running deployment; it does not require an upgrade/migration product.
 
@@ -27,7 +27,7 @@ A human-action blocker is a durable fact about an external prerequisite, with ob
 | Workflow engine | `daemon/src/workflow_engine.h` explicitly documents single-daemon DB ownership and at-least-once task recovery. Submit dedupe, retries, budgets, dataflow and deterministic checks are implemented. | Deterministic HTTP POSTs now have a journal/receipt boundary; device assignment/outbox publication is atomic; deterministic host actions now retain guarded intent/results, and ordinary model-driven host tasks guard incomplete effects. Ephemeral and session-backed ordinary host-model tasks can replay bounded image preparation and verified provider/tool transcripts after provider failure or restart. Sequential delegated host-model children have distinct parent-owned journals and completed-prefix replay; verified partial checkpoints can traverse cached work with no new tool/step grants while fresh calls remain guarded. Session generations fence stale continuations; final conversation and model receipt commit atomically. Unknown host outcomes and physical device receipt guarantees still require trusted adapters. No general saga/compensation or durable arbitrary human-signal state machine is established. |
 | SOP authoring | Versioned stages/actions compile into the existing DAG. The append-only daemon-local registry enforces immutable saved versions; exact references copy verified source into a run snapshot. The composer saves and selects versions without implicit execution. Explicit decision actions persist configured continue/fail choices and release workers while waiting. | Inline SOPs remain ad hoc. Single-delivery JSON signals have exact immutable receipts and opt-in submit-time slots; early input never bypasses dependencies, conditions, expiry-at-activation or owner stops. Bounded per-action conditions compare typed prior results and retain effect-free skip evidence. Arbitrary transitions, subflows, general inbox/broadcast signals, publisher-specific authorization, compensation and active-run migrations remain future work. |
 | Autonomy | Explicit bound goals read the existing host requirement/blocker authority, continue independent work, gate completion on recorded evidence and use single-use dispatch/control CAS. Managed requirement waits use bounded server-notified long polling with periodic fallback; immutable broker admission/receipt records recover an original persisted team run after response loss, while owner stops remain authoritative. Unbound goals retain the legacy role/replanning loop. | Durable replayable event streams, multi-authority handoff and reconstruction of unrecorded host outcomes remain open. Evidence presence and drift timeouts are not semantic proof. See [bound goals](GOAL_WORK_LEDGER.md). |
-| Memory | Existing structured memory, progressive retrieval, recaps and correlation support durable knowledge. | Memory summaries and evidence hashes do not replace execution journals or independent outcome verification. |
+| Memory | Existing structured memory, lexical/progressive retrieval, recaps and correlation. The structured writer currently truncates its file and creates a later best-effort checkpoint; inactive salience receives a discount. | Next owner priority: revision-checked atomic publication, hard currentness/scope eligibility, immutable evidence references and correction/deletion invalidation. These code observations alone do not prove a production race. Retrieval quality follows authority correctness. |
 | UI/CLI | Existing clients have broad operational coverage, OpenAPI types and replay surfaces. This snapshot modernizes navigation/layout and separates new CLI command handling. | Bound-goal authority/progress UI exists; broader goal authoring, granular timeline debugging, and a completely decomposed legacy CLI remain open. |
 
 The valuable foundation is already here. Keep the C kernel and native hosts, consolidate semantics, and add missing guarantees incrementally. Avoid another parallel orchestration engine or a framework-wide rewrite based on feature checklists.
@@ -110,6 +110,72 @@ Split immutable instructions and capability declarations, current goal/state, re
 
 CLI `exec`, stdin, `resume`, `sessions`, explicit workspace/session-root selection and model-free work-state commands now share the existing executor. Versioned JSONL stdout and final-message publication are implemented in a separate output policy module; the older transcript export remains available. Live delivery continues after bounded audit capture fills, and SSE consumers drain coalesced transport batches. Further split legacy provider/config/run rendering code behind the same service interfaces used by the daemon. Ordinary workflow host-model actions now checkpoint bounded provider/tool transcripts at verified frontiers, including persistent sessions with generation fences and atomic conversation/receipt publication; sequential delegated host-model children now inherit those bounded journals and shared-session fences. Direct CLI/chat, other uninstrumented preparation, parallel macro semantics and mid-turn steering remain separate work. Do not advertise universal checkpoint or upstream-harness equivalence.
 
+## Memory authority and retrieval evaluation
+
+**Next implementation priority; no retrieval-quality result is claimed yet.**
+Revalidate all callers before changing the memory contract. The current
+`tool_memory_put` publication/checkpoint path is in
+[`cli/src/toolset_host_memory.cpp`](../cli/src/toolset_host_memory.cpp);
+[`memory_salience.cpp`](../daemon/src/memory_salience.cpp) discounts inactive
+records rather than imposing a hard current-only exclusion. These observations
+motivate authority tests; they are not proof of a production race.
+
+Establish one authoritative revision-checked atomic publication path with explicit
+expected revision/conflict handling and crash tests. Current, historical and
+evidence views must enforce record status and scope before scoring/expansion and
+again at output. A consistent read revision, or detected concurrent change, must
+cover structured search, FTS, fallback, salience and injected context. Evidence
+references bind source ID, revision/hash and span; compact state retains a way to
+retrieve the original. Correction/deletion invalidates index/cache eligibility,
+summaries and dependent conclusions according to retention policy, without
+replaying external effects. Host retrieval dependencies remain outside the C core.
+
+The [SAG2 paper v2](https://arxiv.org/html/2610.22588v2) and
+[reference implementation](https://github.com/Zleap-AI/SAG-Benchmark/tree/main/sag2)
+provide a research lead: lexical candidates are scored against the original
+question plus accumulated evidence; terms from selected passages retrieve unseen
+passages for rescoring. Retrieval recall and all-evidence success are distinct
+from supported final answers. This informs an Agent-C experiment, not an adopted
+quality claim. Pin code/corpus/chunks/scorer versions before comparison; the
+repository README and paper model pins need reconciliation. The
+[optional local-reranker guide](https://github.com/Zleap-AI/SAG-Benchmark/blob/main/sag2/docs/local-rerank.md)
+is a later comparison, not a required model installation.
+
+Use the existing lexical index and a pluggable host scorer. TypeSafe/Jev is the
+first bounded quality baseline; retain the existing **4B answerer**. No 9B
+substitution, KnowLine weight adoption or second expansion is authorized by this
+experiment. Verify the current official endpoint, authentication, model revision
+and prices before any paid request; an OpenRouter example does not establish
+that a direct TypeSafe key works there. Parse only needed dotenv entries as data,
+keep credentials out of argv, logs, artifacts and model inputs, and use only
+public/synthetic or sanitized fixtures.
+
+After one separately bounded authentication/scoring canary, freeze 20 held-out
+questions and compare A: FTS, B: identical FTS plus Jev reranking, C: identical
+scorer/prompt/selection policy plus one expansion. Hold corpus eligibility,
+chunking, final context allowance and the 4B answerer constant. Include exact
+lookup, two/three-record bridges, superseded/current/history, conflicts,
+unanswerable queries, aliases, Chinese/English and code identifiers. Keep tuning
+cases separate.
+
+Pilot caps: 20 initial candidates; at most 20 new plus 5 retained expansion
+candidates; at most 8 final records; **75 HTTP attempts and 1300 candidate
+judgments total for cloud arms**, with the canary bounded separately. Set a
+conservative token ceiling and estimated monetary ceiling from current provider
+prices before the batch. Validate typed responses, candidate IDs and finite
+bounded scores. Enforce a total deadline, cancellation, bounded retry/backoff and
+explicit incomplete/budget status with lexical fallback. Stop at the first cap,
+retain completed results, and do not replay paid calls or launch a full benchmark
+automatically. Preserve seed-ID → term → resulting-source provenance.
+
+Measure evidence recall, complete-evidence success, supported-answer correctness
+and citations, stale/scope exposure, scoring inputs/usage/cost, cold/warm time,
+p50/p95 with the small-screen caveat, RAM/VRAM and cancellation. Promote only a
+useful measured improvement over rerank-only within the operating budget and with
+no critical currentness/scope/effect regression. No TypeSafe call or pilot result
+has been recorded for this source milestone. Foreground research authorization
+does not restart production Agent-C workloads.
+
 ## UI direction
 
 The shipped shell uses a graphite/mint palette, grouped icon navigation, a real connection indicator, session context, a useful empty state, mobile horizontal navigation, keyboard focus and reduced-motion behavior. Advanced panels load on demand. Existing workflow, memory, voice, broker and approval capabilities remain reachable; there are no fabricated activity metrics.
@@ -121,7 +187,7 @@ Next make requirements and human dependencies visible beside the run timeline. S
 | Priority | Change | Release gate |
 | --- | --- | --- |
 | Delivered | SOP v1 lowering; requirement/blocker ledger; completion port; CLI entry points; modern UI shell | Local model-stub, DAG/ledger, API and desktop/mobile browser checks; generated contract check and core-only build |
-| Delivered for HTTP POST, deterministic host tools and session-fenced model transcripts; P0 for remaining adapters | Effect IDs, durable intent/receipt records, reconciliation and failure injection | Crash before dispatch/after remote commit/before local receipt produces no blind duplicate write; unknown outcomes remain explicit |
+| Delivered for HTTP POST, deterministic host tools, remote workflow admission and session-fenced model transcripts; P0 for remaining adapters | Effect IDs, durable intent/receipt records, reconciliation and failure injection | Crash before dispatch/after remote commit/before local receipt produces no blind duplicate write; unknown outcomes remain explicit |
 | Delivered for one bound authority with bounded server-notified wakeup; P0 for multi-authority handoff | Host requirement authority, broker control/receipt journal, advisory notifications plus polling fallback | Independent work continues; changed requirements wake before normal polling; stale hints, restart, unavailable watches and owner stops never authorize blind dispatch |
 | Delivered registry, decisions, bounded signals and conditional actions; P1 for richer processes | Immutable saved SOP versions, pinned snapshots, worker-free decisions/signals and typed optional actions; opt-in early signal slots; next general inbox/broadcast/identity, general transitions/loops, richer timers, role-bound approvals and compensation | Registry/input integrity, immutable delivery/races, effect-free skip receipts, repeated-source mapping, restart, expiry, stop preservation and independent progress are tested; broader event-bus and transition semantics remain outstanding |
 | P1 | Instance-scoped/pollable C runtime and embedded checkpoint port | Host compatibility plus board-level RAM/stack/power-loss/cancellation evidence |

@@ -12508,10 +12508,10 @@ export interface components {
                 /** @enum {string} */
                 mode: "guarded" | "idempotent";
                 /**
-                 * @description Model-run host-effect boundary. Ordinary host-model tasks support bounded verified preparation/provider/tool continuation, including the existing image-description prefetch. Saved preparation is replayed without reinterpreting images or consuming a fresh provider-step grant. Persistent sessions pin a conversation generation and atomically commit messages with the final receipt; changed conversations stop with model_session_changed. Uncertain calls and legacy records remain guarded. No HTTP receipt resolver is supported.
+                 * @description model_run identifies bounded verified host-model preparation/provider/tool continuation with session fences. agentd_call identifies parent-owned remote-workflow admission and exact original-workflow lookup; its reconciliation accepts no URL and never repeats submission. Neither boundary uses a generic HTTP receipt resolver.
                  * @enum {string}
                  */
-                boundary?: "model_run";
+                boundary?: "model_run" | "agentd_call";
                 /** @description The matching failed attempt retained a verified transcript frontier. Informational only; does not grant budget, revive owner stops or expose a manual resume action. */
                 resume_available?: boolean;
                 /** @enum {string} */
