@@ -1429,14 +1429,16 @@ WorkflowMemoryConsolidateSpec:
   description: |
     Deterministic memory consolidation options.
 
-    Scans bounded core, daily, session, and structured-text memory files for explicit `@mem` markers, then promotes them into
-    structured memory (`memory/STRUCTURED.md`) via host tool `memory_put(entries=[...])`. The structured-memory machine JSON
-    block is skipped, and structured-file markers use the stable source label `structured:STRUCTURED.md`.
+    Scans bounded core/daily/session notes and explicit structured user notes for `@mem` markers.
+    Facts and consumed-observation receipts publish atomically in `memory/STRUCTURED.md`.
+    Plain markers create absent keys; replacement markers require the queried per-record revision.
+    Conflicts/caps remain explicit; incomplete results retain the report and independent committed keys.
+    Native tasks return retryable=false for incomplete consolidation. See docs/MEMORY.md#durable-marker-promotion.
   properties:
     daily_days:
       type: integer
       format: int32
-      description: Number of daily memory files (days) to scan (default from daemon config; clamped >=0).
+      description: Number of daily memory files (days) to scan (default from daemon config; clamped 0..90).
     session_days:
       type: integer
       format: int32
@@ -1444,19 +1446,19 @@ WorkflowMemoryConsolidateSpec:
     keep_checkpoints:
       type: integer
       format: int32
-      description: Checkpoint pruning limit when writing structured memory (default from daemon config; clamped >=1).
+      description: Checkpoint pruning limit when writing structured memory (default from daemon config; clamped 2..1000).
     max_entries:
       type: integer
       format: int32
-      description: Maximum distinct keys to promote (default 256; clamped >=1).
+      description: Maximum distinct keys processed per call (default 256; clamped 1..1000); deferred work is explicit.
     max_file_bytes:
       type: integer
       format: int32
-      description: Maximum bytes read from each scanned file (default 1048576; clamped >=1024).
+      description: Maximum bytes per source (default 1048576; clamped 1024..8388608); oversized input fails without truncation.
     max_session_files:
       type: integer
       format: int32
-      description: Maximum newest session markdown files to scan (default 64; clamped >=0).
+      description: Maximum newest session Markdown files to scan (default 64; clamped 0..64).
     include_core:
       type: boolean
       description: Include `memory/MEMORY.md` marker scans (default true).
@@ -1468,10 +1470,10 @@ WorkflowMemoryConsolidateSpec:
       description: Include bounded `memory/sessions/**/*.md` marker scans (default true).
     include_structured:
       type: boolean
-      description: Include human-readable `memory/STRUCTURED.md` text outside the machine JSON block (default true).
+      description: Include only the explicit user-notes block in `memory/STRUCTURED.md` (default true).
     dry_run:
       type: boolean
-      description: When true, scan and report but do not write structured memory (default false).
+      description: Read-only preview; creates no facts, receipts, locks or archives (default false).
 
 
 WorkflowAggregateSpec:

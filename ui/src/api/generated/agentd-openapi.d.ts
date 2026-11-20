@@ -2993,10 +2993,10 @@ export interface paths {
         /**
          * Promote @mem markers into structured memory
          * @description Deterministic rolling consolidation:
-         *     - scans bounded core, daily, session, and structured-text memory files for explicit `@mem` markers
-         *     - skips the structured-memory machine JSON block to avoid recursively promoting existing records
-         *     - uses stable `structured:STRUCTURED.md` sources for structured-file markers
-         *     - upserts them into `memory/STRUCTURED.md`
+         *     - scans bounded core/daily/session notes and explicit structured user notes for `@mem` markers
+         *     - publishes facts and durable consumed-observation receipts atomically in `memory/STRUCTURED.md`
+         *     - requires per-record revisions for replacement intents; old observations cannot undo later corrections
+         *     - reports unresolved/conflicting/deferred input explicitly while independent keys can commit
          *     - writes a checkpoint snapshot (best-effort) when changes occur
          *     - rebuilds the correlation index (best-effort) when `dry_run=false`
          */
@@ -3045,13 +3045,19 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Invalid request or consolidation not allowed */
+                /** @description Invalid request, policy refusal, or incomplete promotion; data preserves partial commit receipts when available. */
                 400: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
+                        "application/json": {
+                            ok: boolean;
+                            error: string;
+                            data?: {
+                                [key: string]: unknown;
+                            };
+                        };
                     };
                 };
             };
@@ -11613,14 +11619,16 @@ export interface components {
         /**
          * @description Deterministic memory consolidation options.
          *
-         *     Scans bounded core, daily, session, and structured-text memory files for explicit `@mem` markers, then promotes them into
-         *     structured memory (`memory/STRUCTURED.md`) via host tool `memory_put(entries=[...])`. The structured-memory machine JSON
-         *     block is skipped, and structured-file markers use the stable source label `structured:STRUCTURED.md`.
+         *     Scans bounded core/daily/session notes and explicit structured user notes for `@mem` markers.
+         *     Facts and consumed-observation receipts publish atomically in `memory/STRUCTURED.md`.
+         *     Plain markers create absent keys; replacement markers require the queried per-record revision.
+         *     Conflicts/caps remain explicit; incomplete results retain the report and independent committed keys.
+         *     Native tasks return retryable=false for incomplete consolidation. See docs/MEMORY.md#durable-marker-promotion.
          */
         WorkflowMemoryConsolidateSpec: {
             /**
              * Format: int32
-             * @description Number of daily memory files (days) to scan (default from daemon config; clamped >=0).
+             * @description Number of daily memory files (days) to scan (default from daemon config; clamped 0..90).
              */
             daily_days?: number;
             /**
@@ -11630,22 +11638,22 @@ export interface components {
             session_days?: number;
             /**
              * Format: int32
-             * @description Checkpoint pruning limit when writing structured memory (default from daemon config; clamped >=1).
+             * @description Checkpoint pruning limit when writing structured memory (default from daemon config; clamped 2..1000).
              */
             keep_checkpoints?: number;
             /**
              * Format: int32
-             * @description Maximum distinct keys to promote (default 256; clamped >=1).
+             * @description Maximum distinct keys processed per call (default 256; clamped 1..1000); deferred work is explicit.
              */
             max_entries?: number;
             /**
              * Format: int32
-             * @description Maximum bytes read from each scanned file (default 1048576; clamped >=1024).
+             * @description Maximum bytes per source (default 1048576; clamped 1024..8388608); oversized input fails without truncation.
              */
             max_file_bytes?: number;
             /**
              * Format: int32
-             * @description Maximum newest session markdown files to scan (default 64; clamped >=0).
+             * @description Maximum newest session Markdown files to scan (default 64; clamped 0..64).
              */
             max_session_files?: number;
             /** @description Include `memory/MEMORY.md` marker scans (default true). */
@@ -11654,9 +11662,9 @@ export interface components {
             include_daily?: boolean;
             /** @description Include bounded `memory/sessions/**\/*.md` marker scans (default true). */
             include_session?: boolean;
-            /** @description Include human-readable `memory/STRUCTURED.md` text outside the machine JSON block (default true). */
+            /** @description Include only the explicit user-notes block in `memory/STRUCTURED.md` (default true). */
             include_structured?: boolean;
-            /** @description When true, scan and report but do not write structured memory (default false). */
+            /** @description Read-only preview; creates no facts, receipts, locks or archives (default false). */
             dry_run?: boolean;
         };
         WorkflowAggregateSpec: {

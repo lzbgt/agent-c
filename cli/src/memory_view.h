@@ -17,6 +17,8 @@ struct MemoryPassage {
   int line = 1, end_line = 1;
   bool historical = false;
   Json::Value record;
+  std::string record_revision, eligibility_reason;
+  Json::Value supporting_evidence{Json::arrayValue};
 };
 struct MemoryViewSnapshot {
   std::filesystem::path root;

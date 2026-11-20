@@ -10,9 +10,11 @@ production services were restarted.
 
 - **Requirement-driven broker goals:** explicit agent/deployment/session binding keeps the host ledger authoritative. Success requires evidence-bearing completed requirements, independent work continues past scoped blockers, changed revisions wake managed waits and unchanged progress stops. Single-use admission and exact control CAS prevent duplicate/stale launches. Immutable broker receipts recover the original persisted team run after response loss or restart, never by resending it. Unrecorded host outcomes remain pending, mismatches stop recovery and owner controls are preserved. UI setup, progress and receipt states are included. Managed requirement waits now use bounded server-notified long polling with ordinary reconciliation fallback, coalesced hints, explicit watch caps and cancellation. Every hint triggers fresh goal/ledger checks, not dispatch permission. This remains single-authority coordination, not a durable event stream or reconstruction of an unknown host outcome. See [goal ledger contract](GOAL_WORK_LEDGER.md).
 
-- **Atomic memory publication (source only):** memory replacement/upsert requires the exact SHA-256 revision read from the file, or explicit absence for a new source. Memory tools share a root-wide OS writer lock; required prior originals are retained before synced atomic replacement. Exact historical reads verify their content hash and never substitute current bytes. Consolidation and retention carry the snapshot they derived from; native workflow conflicts stop retry while independent work continues. Checkpoints are auxiliary immutable objects, including separate paths for updates in the same second. Scoped retrieval and original references now build on this store; general promotion/forget propagation remains open. See [memory publication](MEMORY.md#revision-checked-publication).
+- **Atomic memory publication (source only):** memory replacement/upsert requires the exact SHA-256 revision read from the file, or explicit absence for a new source. Memory tools share a root-wide OS writer lock; required prior originals are retained before synced atomic replacement. Exact historical reads verify their content hash and never substitute current bytes. Consolidation and retention carry the snapshot they derived from; native workflow conflicts stop retry while independent work continues. Checkpoints are auxiliary immutable objects, including separate paths for updates in the same second. Scoped retrieval and original references now build on this store; general correction/forget propagation remains open. See [memory publication](MEMORY.md#revision-checked-publication).
 
-- **Scoped memory views and original evidence (source only):** current/historical/evidence projection is shared by FTS, substring fallback, structured queries, salience and all context modes. Current state is filtered before scoring; only the selected scope/view enters BM25. Content revisions replace timestamp-only refresh. References bind source, revision and byte span/JSON Pointer with exact original reads and checked output frontiers. API/native current queries use the head; historical checkpoints are explicit. Current context excludes unversioned recap/assistant hints and reports unavailable retrieval; recap publication checks inputs after the provider response. See [memory views](MEMORY.md#current-views-and-original-evidence). General promotion provenance, retirement and conclusion/forget propagation remain open.
+- **Scoped memory views and original evidence (source only):** current/historical/evidence projection is shared by FTS, substring fallback, structured queries, salience and all context modes. Current state is filtered before scoring; only the selected scope/view enters BM25. Content revisions replace timestamp-only refresh. References bind source, revision and byte span/JSON Pointer with exact original reads and checked output frontiers. API/native current queries use the head; historical checkpoints are explicit. Current context excludes unversioned recap/assistant hints and reports unavailable retrieval; recap publication checks inputs after the provider response. See [memory views](MEMORY.md#current-views-and-original-evidence). General retirement and conclusion/forget propagation remain open.
+
+- **Durable marker promotion (source only):** facts and consumed-observation receipts publish atomically in the existing structured authority. Stable intent IDs prevent an old marker from undoing a later correction. Replacement markers require a per-record revision; conflicts, malformed input and capacity deferral stay explicit while independent facts can commit. Current consumers validate original marker dependencies before scoring/output; history retains provenance. Read-only preview, original archives, bounded scans and process-crash recovery reuse the store. See [marker promotion](MEMORY.md#durable-marker-promotion).
 
 - **Native remote workflow recovery (source only):** `agentd_call` saves a parent-owned admission before one remote POST, uses a database-scoped server-owned key and resumes only authenticated original-workflow reads. Exact identity/state checks pin the returned workflow; completed receipts save before parent settlement and replay without fresh network grants. Missing/corrupt outcomes remain scoped blockers; API/UI checks cannot replace the target, bypass budgets or revive owner stops. Direct and broker proxy fixtures use real temporary daemons and no provider. See [remote admission](WORKFLOW_EFFECTS.md#durable-remote-workflow-admission).
 
@@ -78,6 +80,7 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
+The preceding retrieval qualification (before the promotion increment) passed as follows.
 The provider-free canonical lane passed **72 native/CLI/API checks**, **141
 browser checks**, all Go broker/gateway packages, generated OpenAPI/type checks
 and the UI production build on 2026-11-20. A final context-failure/CLI-guidance
@@ -128,9 +131,11 @@ checks do not establish a hosted CI matrix, MCU boot or live-provider behavior.
 
 ## Boundaries and next work
 
-The next authority gate is durable promotion provenance so old `@mem` observations
-cannot undo later corrections, followed by retained-source retirement, persistent
-cache erasure, recap/conclusion validation at every consumer and bounded forgetting.
+Durable promotion provenance now prevents old `@mem` observations from undoing
+later corrections and invalidates marker-derived heads when support changes.
+The next authority gates are retained-source retirement, persistent cache erasure,
+recap/conclusion validation at every consumer and bounded forgetting. Provenance
+compaction must preserve consumed observations and the declared history policy.
 Invalidation must never replay a completed external effect. Declared currentness
 and exact references do not prove arbitrary prose or generated claims true.
 A bounded lexical multi-hop experiment follows the authority gates, with the

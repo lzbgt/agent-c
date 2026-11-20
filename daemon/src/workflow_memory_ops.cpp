@@ -320,6 +320,8 @@ Json::Value workflow_memory_consolidate_to_json(
   if (!memory_consolidate_once(cfg, opt, &report, &merr)) {
     out["ok"] = false;
     out["error"] = merr.empty() ? "memory consolidation failed" : merr;
+    out["report"] = report;
+    out["retryable"] = false; // Semantic conflicts require a new intent, never blind replay.
     return out;
   }
 

@@ -174,6 +174,7 @@ Json::Value salience_items_to_json(const std::vector<MemorySalienceItem>& items)
     row["text"] = item.text;
     row["source"] = safe_item_source(item);
     row["evidence"] = item.evidence;row["historical"] = item.historical;
+    row["supporting_evidence"] = item.supporting_evidence;
     arr.append(row);
   }
   return arr;

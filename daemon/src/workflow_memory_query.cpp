@@ -78,6 +78,8 @@ Json::Value workflow_memory_query_to_json(
   if (!memory_query["view"].isNull() && !memory_query["view"].isString()) return err_out("invalid memory view");
   if (!memory_view_mode((memory_query["view"].isNull() ? "current" : memory_query["view"].asString()), &view)) return err_out("invalid memory view");
   MemoryDocument source;Json::Value items, checkpoint;
+  MemoryViewSnapshot query_snapshot;
+  std::map<std::string, MemoryPassage> eligible;
   std::string source_path = structured_path_filter.empty() ? "STRUCTURED.md" : structured_path_filter;
   std::string pointer_prefix = "/items/", read_error;
   if (view == MemoryViewMode::Current) {
@@ -86,6 +88,13 @@ Json::Value workflow_memory_query_to_json(
     Json::Value doc;
     if (!memory_structured_parse_doc(source.text, &doc, &read_error)) return err_out(read_error);
     items = doc["items"];
+    if (!memory_view_capture(mem_root, {(mem_root / source_path).string()}, view, &query_snapshot, &read_error))
+      return err_out("memory changed or unavailable during current query: " + read_error);
+    const auto captured_source = query_snapshot.sources.find(source_path);
+    if (captured_source == query_snapshot.sources.end() || captured_source->second.revision != source.revision)
+      return err_out("memory changed or structured_path is not normalized");
+    for (const auto& passage : query_snapshot.passages)
+      if (passage.path == source_path && !passage.pointer.empty()) eligible.emplace(passage.key, passage);
   } else {
     std::vector<MemoryCheckpointMeta> rows;
     if (!memory_list_structured_checkpoints(mem_root, since_ms, until_ms, structured_path_filter, 1, &rows, &read_error) || rows.empty()) return err_out("no checkpoints in window");
@@ -110,13 +119,16 @@ Json::Value workflow_memory_query_to_json(
     if (returned >= limit) break;
     if (!key_prefix.empty() && key.rfind(key_prefix, 0) != 0) continue;
     const Json::Value rec = items[key];
-    if (!rec.isObject() || (view == MemoryViewMode::Current && !memory_record_current(rec, as_of))) continue;
+    if (!rec.isObject() || (view == MemoryViewMode::Current && !eligible.count(key))) continue;
     Json::Value row(Json::objectValue);
     row["key"] = key;
     Json::Value visible = rec;if (view == MemoryViewMode::Current) visible.removeMember("versions");
     row["record"] = visible;
     MemoryPassage passage;passage.path = source_path;passage.source_id = source.source_id;passage.revision = source.revision;
     passage.pointer = pointer_prefix + memory_pointer_token(key) + "/value";
+    if (view == MemoryViewMode::Current) passage = eligible.at(key);
+    row["record_revision"] = memory_record_revision(rec);
+    row["supporting_evidence"] = passage.supporting_evidence;
     row["evidence"] = memory_passage_evidence(passage);row["historical"] = view != MemoryViewMode::Current;
     entries.append(row);
     entries_by_key[key] = visible;
@@ -124,7 +136,7 @@ Json::Value workflow_memory_query_to_json(
   }
 
   MemoryDocument current;
-  if (memory_document_read(mem_root, source_path, &current, &read_error) != MemoryStoreStatus::Ok || current.revision != source.revision) return err_out("memory changed during query");
+  if ((view == MemoryViewMode::Current && !memory_view_validate(query_snapshot, &read_error)) || memory_document_read(mem_root, source_path, &current, &read_error) != MemoryStoreStatus::Ok || current.revision != source.revision) return err_out("memory changed during query");
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["assistant_text"] = "memory_query: ok";

@@ -1,5 +1,7 @@
 #include "memory_consolidator.h"
 #include "memory_store.h"
+#include "memory_promotion.h"
+#include "memory_structured.h"
 
 #include "daemon_auth.h"
 #include "memory_correlation_index.h"
@@ -15,7 +17,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <unordered_map>
+#include <set>
 #include <vector>
 
 namespace agentd {
@@ -57,28 +59,11 @@ static std::string trim_ascii(std::string s) {
   return s.substr(a, b - a);
 }
 
-static bool starts_with_ci(const std::string& s, const char* prefix) {
-  if (!prefix) return false;
-  const size_t n = std::strlen(prefix);
-  if (s.size() < n) return false;
-  return to_lower_ascii(s.substr(0, n)) == to_lower_ascii(prefix);
-}
-
-struct MarkerEntry {
-  std::string key;
-  std::string kind;
-  std::string value;
-  std::string status;
-  std::string source;
-};
-
 struct ConsolidateScanFile {
   std::string layer;
   std::string rel_path;
-  std::string source_prefix;
   std::filesystem::path path;
   int64_t sort_key = 0;
-  bool skip_structured_machine_block = false;
 };
 
 static int64_t file_mtime_ms(const std::filesystem::path& p) {
@@ -103,74 +88,6 @@ static bool is_markdown_file(const std::filesystem::path& p) {
   return ext == ".md" || ext == ".markdown";
 }
 
-static bool parse_mem_marker_line(const std::string& line_in, std::string* out_kind, std::string* out_status, std::string* out_key, std::string* out_value) {
-  if (out_kind) out_kind->clear();
-  if (out_status) out_status->clear();
-  if (out_key) out_key->clear();
-  if (out_value) out_value->clear();
-
-  std::string s = trim_ascii(line_in);
-  if (s.empty()) return false;
-  // Allow leading bullet markers.
-  if (s[0] == '-' || s[0] == '*' || s[0] == '+') {
-    s = trim_ascii(s.substr(1));
-  }
-  if (s.empty()) return false;
-  if (!starts_with_ci(s, "@mem") && !starts_with_ci(s, "@memory")) return false;
-
-  // Strip @mem / @memory.
-  size_t p = s.find(' ');
-  if (p == std::string::npos) return false;
-  s = trim_ascii(s.substr(p + 1));
-  if (s.empty()) return false;
-
-  // token1: kind or status
-  size_t sp = s.find(' ');
-  if (sp == std::string::npos) return false;
-  std::string t1 = trim_ascii(s.substr(0, sp));
-  std::string rest = trim_ascii(s.substr(sp + 1));
-  if (t1.empty() || rest.empty()) return false;
-
-  // Split key/value by '='
-  const size_t eq = rest.find('=');
-  if (eq == std::string::npos) return false;
-  std::string key = trim_ascii(rest.substr(0, eq));
-  std::string value = trim_ascii(rest.substr(eq + 1));
-  if (key.empty() || value.empty()) return false;
-  if (key.size() > 200) return false;
-
-  const std::string lt1 = to_lower_ascii(t1);
-  std::string kind = "fact";
-  std::string status = "active";
-  if (lt1 == "fact") kind = "fact";
-  else if (lt1 == "pref" || lt1 == "preference") kind = "preference";
-  else if (lt1 == "task") kind = "task";
-  else if (lt1 == "deprecated") {
-    kind = "fact";
-    status = "deprecated";
-  } else {
-    return false;
-  }
-
-  if (out_kind) *out_kind = kind;
-  if (out_status) *out_status = status;
-  if (out_key) *out_key = key;
-  if (out_value) *out_value = value;
-  return true;
-}
-
-static bool read_file_bounded(const std::filesystem::path& p, int max_bytes, std::string* out) {
-  if (!out) return false;
-  out->clear();
-  std::ifstream in(p, std::ios::binary);
-  if (!in.is_open()) return false;
-  std::stringstream ss;
-  ss << in.rdbuf();
-  *out = ss.str();
-  if ((int)out->size() > max_bytes) out->resize((size_t)max_bytes);
-  return true;
-}
-
 }  // namespace
 
 bool memory_consolidate_once(
@@ -187,10 +104,6 @@ bool memory_consolidate_once(
     return false;
   }
   const std::filesystem::path mem_root = std::filesystem::path(cfg.state_dir) / "memory";
-  host_tools_internal::MemoryDocument structured_snapshot;
-  if (host_tools_internal::memory_document_read(mem_root, "STRUCTURED.md", &structured_snapshot, out_err)
-      != host_tools_internal::MemoryStoreStatus::Ok) return false;
-
 
   Json::Value report(Json::objectValue);
   report["schema"] = "agentd_memory_consolidate_report_v1";
@@ -199,10 +112,10 @@ bool memory_consolidate_once(
   report["memory_root"] = mem_root.string();
   report["dry_run"] = opt.dry_run;
 
-  const int days = std::max(0, opt.daily_days);
+  const int days = std::clamp(opt.daily_days, 0, 90);
   const int session_days = std::max(0, opt.session_days);
-  const int max_session_files = std::max(0, opt.max_session_files);
-  const int max_file_bytes = std::max(1024, opt.max_file_bytes);
+  const int max_session_files = std::clamp(opt.max_session_files, 0, 64);
+  const int max_file_bytes = std::clamp(opt.max_file_bytes, 1024, int(host_tools_internal::kMemoryDocumentMaxBytes));
   report["include_core"] = opt.include_core;
   report["include_daily"] = opt.include_daily;
   report["include_session"] = opt.include_session;
@@ -219,34 +132,31 @@ bool memory_consolidate_once(
   auto add_scan_file = [&](std::string layer,
                            std::filesystem::path p,
                            std::string rel,
-                           int64_t sort_key,
-                           bool skip_structured_machine_block) {
+                           int64_t sort_key) {
     std::error_code ec;
     if (!std::filesystem::exists(p, ec) || !std::filesystem::is_regular_file(p, ec)) return;
     ConsolidateScanFile sf;
     sf.layer = std::move(layer);
     sf.path = std::move(p);
     sf.rel_path = std::move(rel);
-    sf.source_prefix = sf.layer + ":" + sf.rel_path;
     sf.sort_key = sort_key;
-    sf.skip_structured_machine_block = skip_structured_machine_block;
     files.push_back(std::move(sf));
   };
 
   if (opt.include_core) {
-    add_scan_file("core", mem_root / "MEMORY.md", "MEMORY.md", 0, false);
+    add_scan_file("core", mem_root / "MEMORY.md", "MEMORY.md", 0);
   }
   if (opt.include_structured) {
-    add_scan_file("structured", mem_root / "STRUCTURED.md", "STRUCTURED.md", 10, true);
+    add_scan_file("structured", mem_root / "STRUCTURED.md", "STRUCTURED.md", 10);
   }
   if (opt.include_daily) {
-    // Scan oldest -> newest so "last write wins" maps to newest.
+    // Date selects the scan window; conflicting observations never use file order as authority.
     for (int i = days - 1; i >= 0; i--) {
       const std::string ymd = local_date_ymd_days_ago(i);
       const std::filesystem::path p = mem_root / (ymd + ".md");
       std::error_code ec;
       if (std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec)) {
-        add_scan_file("daily", p, p.filename().string(), 1000000 + (days - i), false);
+        add_scan_file("daily", p, p.filename().string(), 1000000 + (days - i));
         daily_scanned.append(p.filename().string());
       }
     }
@@ -258,11 +168,19 @@ bool memory_consolidate_once(
     const int64_t cutoff_ms = session_days > 0
       ? unix_ms_now() - (int64_t)session_days * 24LL * 60 * 60 * 1000
       : 0;
+    if (std::filesystem::is_symlink(session_root, ec)) {
+      if (out_err) *out_err = "session memory root must not be a symlink";
+      return false;
+    }
+    ec.clear();
+    size_t visited = 0;
     if (std::filesystem::exists(session_root, ec) && std::filesystem::is_directory(session_root, ec)) {
       for (auto it = std::filesystem::recursive_directory_iterator(session_root, ec);
            !ec && it != std::filesystem::recursive_directory_iterator();
-           ++it) {
+           it.increment(ec)) {
+        if (++visited > 4096) { if (out_err) *out_err = "session memory walk exceeds 4096 entries"; return false; }
         const auto& de = *it;
+        if (de.path().filename().string().rfind(".", 0) == 0) { it.disable_recursion_pending(); continue; }
         if (de.is_symlink(ec)) continue;
         if (!de.is_regular_file(ec)) continue;
         if (!is_markdown_file(de.path())) continue;
@@ -272,12 +190,11 @@ bool memory_consolidate_once(
         sf.layer = "session";
         sf.path = de.path();
         sf.rel_path = path_rel_to(mem_root, de.path());
-        sf.source_prefix = sf.layer + ":" + sf.rel_path;
         sf.sort_key = mt;
-        sf.skip_structured_machine_block = false;
         session_files.push_back(std::move(sf));
       }
     }
+    if (ec) { if (out_err) *out_err = "cannot enumerate session memory: " + ec.message(); return false; }
     std::sort(session_files.begin(), session_files.end(), [](const ConsolidateScanFile& a, const ConsolidateScanFile& b) {
       if (a.sort_key != b.sort_key) return a.sort_key < b.sort_key;
       return a.rel_path < b.rel_path;
@@ -305,85 +222,40 @@ bool memory_consolidate_once(
   report["daily_files_scanned"] = daily_scanned;
   report["files_scanned"] = files_scanned;
 
-  std::vector<std::string> keys_in_order;
-  std::unordered_map<std::string, size_t> key_to_index;
-  std::vector<MarkerEntry> entries;
-  int marker_lines = 0;
-
-  for (const auto& sf : files) {
-    std::string content;
-    if (sf.layer == "structured") content = structured_snapshot.text;
-    else if (!read_file_bounded(sf.path, max_file_bytes, &content)) continue;
-
-    std::istringstream iss(content);
-    std::string line;
-    int line_no = 0;
-    bool in_structured_machine_block = false;
-    while (std::getline(iss, line)) {
-      line_no++;
-      if (!line.empty() && line.back() == '\r') line.pop_back();
-      if (sf.skip_structured_machine_block) {
-        if (line.find("<!-- AGENT_MEMORY_V1_BEGIN -->") != std::string::npos) {
-          in_structured_machine_block = true;
-          continue;
-        }
-        if (line.find("<!-- AGENT_MEMORY_V1_END -->") != std::string::npos) {
-          in_structured_machine_block = false;
-          continue;
-        }
-        if (in_structured_machine_block) continue;
-      }
-      std::string kind, status, key, value;
-      if (!parse_mem_marker_line(line, &kind, &status, &key, &value)) continue;
-      marker_lines++;
-
-      MarkerEntry e;
-      e.key = key;
-      e.kind = kind;
-      e.status = status;
-      e.value = value;
-      e.source = sf.layer == "structured"
-        ? sf.source_prefix
-        : sf.source_prefix + "#L" + std::to_string(line_no);
-
-      auto it = key_to_index.find(e.key);
-      if (it == key_to_index.end()) {
-        key_to_index[e.key] = entries.size();
-        keys_in_order.push_back(e.key);
-        entries.push_back(std::move(e));
-      } else {
-        entries[it->second] = std::move(e);
-      }
-      if ((int)entries.size() >= opt.max_entries) break;
-    }
-    if ((int)entries.size() >= opt.max_entries) break;
-  }
-
-  report["marker_lines_found"] = marker_lines;
-  report["distinct_keys"] = (Json::Int64)entries.size();
-
+  std::vector<std::string> paths;
+  for (const auto& file : files) paths.push_back(std::filesystem::absolute(file.path).lexically_normal().string());
+  host_tools_internal::MemoryPromotionPlan plan;
+  if (!host_tools_internal::memory_promotion_capture(mem_root, paths, size_t(max_file_bytes),
+        size_t(std::clamp(opt.max_entries, 1, 1000)), &plan, out_err)) return false;
+  plan.keep_checkpoints = std::clamp(opt.keep_checkpoints, 2, 1000);
+  report["marker_lines_found"] = Json::UInt64(plan.markers.size());
+  std::set<std::string> keys;
   Json::Value preview(Json::arrayValue);
-  for (size_t i = 0; i < entries.size() && i < 20; i++) {
-    Json::Value o(Json::objectValue);
-    o["key"] = entries[i].key;
-    o["kind"] = entries[i].kind;
-    o["status"] = entries[i].status;
-    o["value"] = entries[i].value;
-    o["source"] = entries[i].source;
-    preview.append(o);
+  for (const auto& marker : plan.markers) {
+    keys.insert(marker.key);
+    if (preview.size() >= 20) continue;
+    Json::Value entry;
+    entry["key"] = marker.key; entry["kind"] = marker.kind; entry["status"] = marker.status;
+    entry["value"] = marker.value; entry["id"] = marker.id;
+    entry["evidence"] = host_tools_internal::memory_passage_evidence(marker.source);
+    preview.append(entry);
   }
+  report["distinct_keys"] = Json::UInt64(keys.size());
   report["entries_preview"] = preview;
-
-  if (entries.empty()) {
-    report["output"] = "no @mem markers found";
-    if (out_report) *out_report = report;
-    return true;
-  }
-
   if (opt.dry_run) {
-    report["output"] = "dry_run: would apply markers into STRUCTURED.md";
+    Json::Value doc;
+    host_tools_internal::MemoryPromotionUpdate update;
+    if (!host_tools_internal::memory_structured_parse_doc(plan.snapshot.sources.at("STRUCTURED.md").text, &doc, out_err) ||
+        !host_tools_internal::memory_promotion_prepare(mem_root, doc, plan, &update, out_err, false)) return false;
+    Json::Value result;
+    result["dry_run"] = true; result["would_apply_keys"] = update.entries.size();
+    result["would_record_receipts"] = Json::UInt64(update.new_receipts);
+    result["deferred"] = Json::UInt64(update.deferred); result["errors"] = plan.errors;
+    result["decisions"] = update.ledger["receipts"];
+    report["promotion_preview"] = result;
+    report["output"] = "dry_run: preview only; no facts or receipts published";
     if (out_report) *out_report = report;
-    return true;
+    return host_tools_internal::memory_view_validate(plan.snapshot, out_err);
   }
 
   if (to_lower_ascii(trim_ascii(cfg.tools)) != "host") {
@@ -403,65 +275,16 @@ bool memory_consolidate_once(
   hcfg.sessions_root_dir = cfg.sessions_root_dir;
   hcfg.session_id = "";
 
-  agent_tool_registry_t* reg = nullptr;
-  agent_tool_executor_t exec{};
-  const agent_status_t st = toolset_host_create(hcfg, &reg, &exec);
-  if (st != AGENT_OK || !reg || !exec.execute) {
-    if (reg) agent_tool_registry_destroy(reg);
-    toolset_host_destroy(&exec);
-    if (out_err) *out_err = "failed to create host toolset";
-    return false;
-  }
-
-  Json::Value args(Json::objectValue);
-  args["path"] = "STRUCTURED.md";
-  args["expected_revision"] = structured_snapshot.revision;
-  Json::Value arr(Json::arrayValue);
-  for (const auto& e : entries) {
-    Json::Value o(Json::objectValue);
-    o["key"] = e.key;
-    o["kind"] = e.kind;
-    o["value"] = e.value;
-    o["status"] = e.status;
-    o["source"] = e.source;
-    arr.append(o);
-  }
-  args["entries"] = arr;
-  args["checkpoint"] = true;
-  args["keep_checkpoints"] = std::max(1, opt.keep_checkpoints);
-
-  Json::StreamWriterBuilder wb;
-  wb["indentation"] = "";
-  const std::string req = Json::writeString(wb, args);
-
-  agent_string_t out{};
-  const agent_status_t est = exec.execute(exec.ctx, "memory_put", req.c_str(), &out);
-  const std::string resp_s = (out.data && out.len) ? std::string(out.data, out.len) : std::string();
-  agent_string_free(&out);
-
-  agent_tool_registry_destroy(reg);
-  toolset_host_destroy(&exec);
-
-  if (est != AGENT_OK) {
-    if (out_err) *out_err = "memory_put failed";
-    return false;
-  }
-
-  Json::Value resp(Json::objectValue);
-  {
-    Json::CharReaderBuilder rb;
-    std::string perr;
-    std::istringstream iss(resp_s);
-    if (!Json::parseFromStream(rb, iss, &resp, &perr)) {
-      if (out_err) *out_err = "failed to parse memory_put response: " + perr;
-      return false;
-    }
-  }
-
+  Json::Value resp;
+  const auto status = host_tools_internal::memory_promote(hcfg, plan, &resp, out_err);
   report["memory_put_response"] = resp;
-  if (!resp.get("ok", false).asBool()) {
+  if (out_report) *out_report = report;
+  if (status != AGENT_OK || !resp.get("ok", false).asBool()) return false;
+  report["promotion"] = resp["data"]["promotion"];
+  if (!report["promotion"].get("complete", false).asBool()) {
+    report["output"] = "promotion incomplete: inspect unresolved, deferred and parse errors; independent facts may be committed";
     if (out_report) *out_report = report;
-    if (out_err) *out_err = resp.get("error", "memory_put rejected consolidation").asString();
+    if (out_err) *out_err = report["output"].asString();
     return false;
   }
   report["output"] = "consolidated @mem markers into STRUCTURED.md";

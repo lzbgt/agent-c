@@ -663,10 +663,9 @@ Workflows can trigger the same explicit-marker promotion as `POST /api/v1/memory
 
 Semantics:
 - Requires the daemon to run with `--tools host --host-policy full` (this task writes structured memory through `memory_put`).
-- By default it scans core memory, recent daily logs, bounded session notes, and human-readable structured-memory text for
-  explicit `@mem` markers, then promotes them into `memory/STRUCTURED.md`.
-- It skips the structured-memory machine JSON block so existing records are not recursively parsed as markers. Structured-file
-  markers use the stable source label `structured:STRUCTURED.md`, so repeated runs remain idempotent after `memory_put` re-renders the file.
+- It scans selected core/daily/session notes and only the explicit user-notes block in structured files. Facts and durable consumed-marker receipts publish together in `memory/STRUCTURED.md`.
+- Plain markers create missing keys; replacement markers require the queried per-record revision. Old observations cannot undo later corrections. Conflicting observations do not use last-write-wins.
+- Incomplete promotion returns `ok=false`, `retryable=false` and the full `report`. Independent keys may already have committed; inspect their receipts before recovery. Independent requirements continue. See [durable marker promotion](MEMORY.md#durable-marker-promotion) for syntax, budgets, partial outcomes and reproduction.
 - `session_days` defaults to `daily_days`; `max_session_files` bounds the newest session files by modification time.
 - The task does not call an LLM/provider and surfaces the consolidation `report` for deterministic `expect` checks.
 

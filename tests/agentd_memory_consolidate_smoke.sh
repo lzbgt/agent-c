@@ -114,7 +114,7 @@ if "structured.block.promoted" in items:
   print("structured machine block marker was promoted", items["structured.block.promoted"], file=sys.stderr)
   raise SystemExit(1)
 sources = items["structured.notes.test"].get("sources") or []
-if "structured:STRUCTURED.md" not in sources:
+if not any(s.startswith("marker:") for s in sources) or not any(s.startswith("STRUCTURED.md#L") for s in sources):
   print("expected stable structured source for structured notes marker", sources, file=sys.stderr)
   raise SystemExit(1)
 PY
@@ -154,5 +154,35 @@ if [[ "${ck_count_2}" != "${ck_count_1}" ]]; then
   echo "expected checkpoint count stable (idempotent), was ${ck_count_1} now ${ck_count_2}" >&2
   exit 1
 fi
+
+# A new unanchored replacement is rejected while an independent key commits.
+cat >> "${mem_root}/${today}.md" <<'EOF'
+- @mem fact ui.rendering = Unanchored stale replacement must not apply
+- @mem fact independent.partial = Independent facts remain runnable
+EOF
+partial_file="${LOG_DIR}/${NAME}_${PORT}.partial.json"
+status="$(curl -sS --noproxy "*" --max-time 5 -o "${partial_file}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+  -d '{"daily_days":1,"include_session":false,"max_entries":64}' \
+  "${DAEMON_URL}/api/v1/memory/consolidate")"
+if [[ "${status}" != 400 ]]; then
+  echo "expected partial promotion to report HTTP 400, got ${status}" >&2
+  exit 1
+fi
+PARTIAL="${partial_file}" STRUCTURED="${mem_root}/STRUCTURED.md" python3 - <<'PYVERIFY'
+import json, os, re
+response = json.load(open(os.environ["PARTIAL"], encoding="utf-8"))
+report = response["data"]
+assert response["ok"] is False
+assert report["promotion"]["complete"] is False
+assert report["promotion"]["unresolved"] == 1
+assert report["memory_put_response"]["data"]["commit_state"] == "committed"
+text = open(os.environ["STRUCTURED"], encoding="utf-8").read()
+doc = json.loads(re.search(r"<!-- AGENT_MEMORY_V1_BEGIN -->\n(.*?)\n<!-- AGENT_MEMORY_V1_END -->", text, re.S).group(1))
+assert doc["items"]["ui.rendering"]["value"] == "Scene rendering must survive refresh + restart"
+assert doc["items"]["independent.partial"]["value"] == "Independent facts remain runnable"
+assert any(r["outcome"] == "rejected" and r["reason"] == "unanchored_replacement"
+           for r in doc["promotion_ledger"]["receipts"].values())
+PYVERIFY
 
 echo "agentd_memory_consolidate_smoke OK"

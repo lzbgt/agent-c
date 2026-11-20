@@ -118,9 +118,12 @@ hash. Retrieval now adds source/revision/span references as described below.
 Original availability is bounded by retention; an immutable identifier does not
 promise indefinite storage or prove that a claim is true.
 
-Consolidation captures the structured head before deriving updates and publishes
-against that revision. It checks the tool's `ok` envelope, not only executor
-success. Other scanned inputs are not yet one multi-file transaction. Retention
+Consolidation captures all selected originals and the structured head, then
+revalidates them under the same root writer lock. Facts and durable promotion
+receipts share one structured publication. This serializes cooperating memory
+writers; it does not turn arbitrary filesystem writes into a multi-file transaction.
+It checks the tool's `ok` envelope and promotion completion separately. See
+[durable marker promotion](#durable-marker-promotion). Retention
 derives deprecations from the current `STRUCTURED.md`, rather than the newest
 checkpoint, and carries the same captured revision into its write. It reports
 failed writes instead of counting them as successful deprecations.
@@ -403,46 +406,140 @@ Bounds (to keep files small):
 - `sources[]` capped (oldest dropped)
 - `versions[]` capped (oldest dropped)
 
-### Deterministic promotion via `@mem` markers (rolling consolidation v2.1+)
+### Durable marker promotion
 
-To enable **deterministic** rolling consolidation (no LLM required), you can write explicit markers into bounded memory layers.
-The daemon can then promote them into `STRUCTURED.md`:
+This host-only operation promotes explicit observations into `STRUCTURED.md`
+without a model call. It uses the existing consolidation engine and atomic writer,
+not another scheduler or database. The source is
+[`memory_promotion.cpp`](../cli/src/memory_promotion.cpp); daemon selection is in
+[`memory_consolidator.cpp`](../daemon/src/memory_consolidator.cpp).
 
-Marker syntax (one per line, optional bullet prefix):
+An old observation must not become a new correction merely because consolidation
+reads it again. The machine block therefore contains `promotion_ledger`, schema
+`agent.memory.promotion.v1`, with up to **4,096 immutable decision receipts**.
+Accepted facts and their receipts are published in the same atomic document.
+A process interrupted before replacement leaves neither; after replacement both
+are present. Retrying the scan recognizes the consumed observation. This is
+process-crash qualification, not proof against storage power loss.
 
-```text
-@mem fact <key> = <value>
-@mem pref <key> = <value>
-@mem task <key> = <value>
-@mem deprecated <key> = <value>
+Use this sequence to create or replace a fact:
+
+1. For a new key, append one marker to core, daily or session Markdown using
+   `memory_write`. These are illustrative tool payload lines, not shell commands:
+
+   ```text
+   @mem fact ui.rendering = Keep primary output visible
+   @mem pref response.language = Chinese
+   @mem task release.check = Run the canonical verification lane
+   @mem deprecated feature.a = Retired feature
+   ```
+
+   Plain markers can create a missing key. They cannot replace an existing key,
+   even with an identical value. Equivalent new observations from several sources
+   can create one fact with several source references. Differing observations for
+   one key are rejected as `competing_observations`; file order and modification
+   time do not choose a winner.
+2. To replace an existing key, read it through `memory_structured_query` and copy
+   the row's `record_revision`. This is SHA-256 of compact JsonCpp serialization
+   of the complete normalized record, including its history and provenance.
+   It differs from the raw file's `data.revision`; another key's change does not
+   invalidate it. For an inactive head use an explicit historical/evidence query.
+   Create a new JSON marker on one line:
+
+   ```text
+   @mem {"key":"ui.rendering","kind":"fact","value":"Use the revised layout","expected_record_revision":"sha256:<64 lowercase hexadecimal digits copied from the row>"}
+   ```
+
+   The placeholder is illustrative and must be replaced with an actual returned
+   hash. `expected_record_revision="absent"` explicitly binds a new key. Unknown
+   JSON fields, wrong types and malformed revisions are reported. No permission
+   prompt is added: the agent can inspect and issue a new justified intent within
+   its authorized task. A revision conflict requires reconsideration, never an
+   automatic refresh of the hash for the old value.
+3. Call authenticated `POST /api/v1/memory/consolidate`, or use the native
+   `memory_consolidate` workflow task. Both use the same operation. Inspect
+   `memory_put_response` for actual publication and `promotion.complete` for
+   semantic completion. A rejected observation is also consumed durably, so it
+   cannot become effective later when the head changes back. Original rejection
+   receipts remain unchanged; an observation reports `unresolved=true` while the
+   current record still matches the head against which it was rejected.
+4. On incomplete promotion, inspect `promotion.decisions`, `errors`, `unresolved`
+   and `deferred`. HTTP returns `400` with the full `data` report; native tasks
+   return `retryable=false` with `report`. **Independent accepted keys may already
+   be committed.** Read their original receipt before recovery. Resolve the cause
+   or issue a new bound intent; do not roll back or blindly replay a partial result.
+
+A marker identity is `marker:` plus SHA-256 of compact JSON containing schema
+`agent.memory.marker.v1`, physical `source_id`, normalized key/kind/status/value
+and optional expected record revision. Its identity excludes line number and
+whole-file hash: moving a line or appending unrelated text does not refresh an
+old intent. Each receipt independently retains an original evidence reference
+with source, raw-byte revision and exact line byte span `[begin,end)`. Required
+captured originals are synced into the existing revision archive before fact
+publication. Original availability still follows the store's retention policy;
+references do not promise indefinite storage.
+
+A promoted head carries `derivation` (`agent.memory.marker_derivation.v1`).
+Current retrieval checks that every supporting marker still exists, remains
+eligible and agrees with the promoted key/value/kind/status. The dependency
+heads participate in the revision fence and cache signature. Unrelated text
+edits refresh supporting byte references without creating a new observation.
+Changed, removed or historical markers exclude the derived head before FTS,
+fallback, salience, structured/API/native queries or context injection. Broad
+views retain the head with `historical=true` and
+`eligibility_reason="promotion_source_changed_or_unavailable"`, plus the original
+provenance. A direct core correction preserves the previous derivation in history
+and removes it from the new head. These reads never dispatch or replay effects.
+
+Selection and limits are explicit:
+
+- `include_core`, `include_daily`, `include_session`, `include_structured` default
+  true. Structured machine files contribute only their explicit
+  `AGENT_MEMORY_V1_NOTES_BEGIN` / `AGENT_MEMORY_V1_NOTES_END` block. Generated
+  Markdown, JSON, code fences, indented code and historical sections are excluded.
+  Converting plain Markdown to a structured document preserves it in that notes block.
+- `daily_days` defaults from daemon configuration and is clamped to 0–90.
+  `session_days` selects a time window; `max_session_files` selects at most 64
+  recent files by modification time. Session traversal fails past 4,096 entries.
+  These timestamps select files, not authoritative values. Hidden session paths
+  are skipped; linked sources fail validation. Both `.md` and `.markdown` are supported.
+- At most 128 captured sources including the structured dependency, 64 MiB total,
+  8 MiB per document, 20,000 lines per source, 4,096 observations and 64 parse
+  errors. Dependency validation allows at most 20,000 references. Exceeding a hard
+  capture budget fails explicitly; input is never silently truncated.
+- `max_file_bytes` defaults to 1 MiB, is at least 1,024 bytes and cannot exceed
+  the store's 8 MiB read limit. `max_entries` limits keys per invocation to
+  1–1,000 (default 256); unprocessed observations report `deferred` and remain
+  eligible for a later bounded scan. At ledger capacity, new observations remain
+  deferred. Do not delete or reset receipts to make room; bounded provenance
+  compaction/forget policy remains future work. Direct authorized upserts and
+  independent workflow requirements remain available.
+- `dry_run=true` only reads sources and reports `promotion_preview` with proposed
+  decisions. It does not create locks, archives, facts or receipts. Actual
+  execution rechecks the sources; preview is not a publication receipt.
+- Full-text `memory_put` replacement of an existing machine document is rejected.
+  Use `entries` so the ledger survives ordinary corrections. A malformed ledger
+  stops publication; restore a verified original and reconcile later edits instead
+  of resetting the ledger. Privileged out-of-protocol replacement remains outside
+  the writer contract.
+
+From the repository root on the Linux host, with the earlier host prerequisites:
+
+```sh
+cmake --build build-snapshot --target memory_promotion_tests memory_view_tests host_toolset_tests agentd -j4
+ctest --test-dir build-snapshot -R '^(memory_promotion_tests|memory_view_tests|host_toolset_tests|agentd_memory_consolidate_smoke|agentd_workflow_memory_consolidate_smoke)$' --output-on-failure
 ```
 
-Example:
-
-```text
-- @mem fact ui.rendering = Scene rendering must survive refresh + restart
-- @mem deprecated feature.a = Feature set A
-```
-
-On demand, call:
-
-- `POST /api/v1/memory/consolidate` (auth required when daemon auth is enabled)
-
-The on-demand endpoint scans core (`memory/MEMORY.md`), recent daily logs (`memory/YYYY-MM-DD.md`), bounded session notes
-(`memory/sessions/**/*.md`), and human-readable structured-memory text by default. The structured-memory machine JSON block
-between `AGENT_MEMORY_V1_BEGIN` / `AGENT_MEMORY_V1_END` is skipped so existing records are not recursively re-promoted; notes
-outside that block can still carry explicit markers. Structured-file markers use the stable source label
-`structured:STRUCTURED.md`, rather than line numbers, so repeated consolidation remains idempotent after `memory_put`
-re-renders the file.
-
-Useful request knobs:
-
-- `include_core`, `include_daily`, `include_session`, `include_structured` (all default true)
-- `daily_days` (default from daemon config)
-- `session_days` (default follows `daily_days`)
-- `max_session_files` (default 64; newest files by modification time)
-- `max_file_bytes` (default 1 MiB per scanned file; clamped to at least 1024)
-- `max_entries`, `dry_run`, and `keep_checkpoints`
+Pass requires all selected checks to succeed. Synthetic fixtures cover later
+corrections beyond the 20-version window, line movement, anchored updates,
+conflicting/malformed observations, independent partial commits, rejected-intent
+recovery, original retrieval after edits/deletion, every current consumer, stale
+snapshots, read-only policy, cancellation, archive failure, byte/key/ledger caps,
+notes conversion and real `SIGKILL` immediately before/after replacement. The
+HTTP fixture checks the incomplete result and committed independent fact. No
+production service, live provider, paid scorer, filesystem power cut or MCU is
+exercised. On another filesystem, repeat the same failure cases and qualify its
+sync/rename semantics before extending the durability claim.
 
 To run periodically, start `agentd` with:
 
@@ -598,10 +695,9 @@ Durable workflows can query memory without invoking an LLM:
 
 ## Remaining authority work
 
-The current view removes explicitly stale candidates and derived cache exposure;
-it does not finish general correction/forget semantics. Automatic consolidation
-still needs durable observation/provenance receipts to prevent an older `@mem`
-marker from being promoted again after a later correction. Daily-file retirement
+The current view removes explicitly stale candidates and invalidated marker-derived
+heads; durable promotion receipts prevent old observations from undoing later
+corrections. This does not finish general correction/forget semantics. Daily-file retirement
 must retain required originals under a declared policy. Persistent cache erasure,
 recap/conclusion invalidation at every consumer, bounded hard forgetting and
 provenance-preserving handoffs remain open. Invalidating evidence must never

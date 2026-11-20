@@ -50,6 +50,11 @@ std::string reference(const Json::Value &evidence) {
   writer["indentation"] = "";
   return Json::writeString(writer, evidence);
 }
+std::string references(const Json::Value& evidence, const Json::Value& supports) {
+  std::string out = reference(evidence);
+  for (const auto& support : supports) out += "\n" + reference(support);
+  return out;
+}
 } // namespace
 bool build_memory_context_text(const std::string &root_raw, const std::string &state,
                                const std::string &session, const MemoryContextPolicy &policy,
@@ -111,12 +116,12 @@ bool build_memory_context_text(const std::string &root_raw, const std::string &s
     for (const auto *items : {&report.structured_items, &report.daily_items})
       for (const auto &item : *items)
         blocks.push_back("[" + item.tier + " " + item.path + ":" + std::to_string(item.line) + "] " +
-                         item.key + " " + item.text + "\n" + reference(item.evidence) + "\n");
+                         item.key + " " + item.text + "\n" + references(item.evidence, item.supporting_evidence) + "\n");
     for (const auto &passage : snapshot.passages)
       if (tier(passage.path) == "core" || tier(passage.path) == "session")
         blocks.push_back("[" + tier(passage.path) + " " + passage.path + ":" + std::to_string(passage.line) +
                          "]\n" + memory_view_clip(passage.text, 1200) + "\n" +
-                         reference(memory_passage_evidence(passage)) + "\n");
+                         references(memory_passage_evidence(passage), passage.supporting_evidence) + "\n");
   } else {
     std::vector<MemorySearchHit> hits;
     if (policy.mode == MemoryContextMode::Search) {
@@ -157,7 +162,7 @@ bool build_memory_context_text(const std::string &root_raw, const std::string &s
     }
     for (const auto &hit : hits)
       blocks.push_back("[" + tier(hit.path) + " " + hit.path + ":" + std::to_string(hit.line) + "]\n" +
-                       hit.snippet + "\n" + reference(memory_passage_evidence(hit.passage)) + "\n");
+                       hit.snippet + "\n" + references(memory_passage_evidence(hit.passage), hit.passage.supporting_evidence) + "\n");
   }
   // Whole evidence blocks fit or are omitted. Never cut a reference in half.
   std::string result = header;

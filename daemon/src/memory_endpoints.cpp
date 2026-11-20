@@ -159,6 +159,7 @@ void handle_memory_consolidate_endpoint(
     Json::Value o(Json::objectValue);
     o["ok"] = false;
     o["error"] = err.empty() ? "memory consolidation failed" : err;
+    o["data"] = report;
     resp->body = json_stringify(o);
     return;
   }
@@ -921,6 +922,7 @@ void handle_memory_salience_endpoint(
     row["value"] = item.text;
     row["score"] = item.score;
     row["evidence"] = item.evidence;row["historical"] = item.historical;
+    row["supporting_evidence"] = item.supporting_evidence;
     structured.append(row);
   }
   Json::Value daily(Json::arrayValue);
@@ -931,6 +933,7 @@ void handle_memory_salience_endpoint(
     row["text"] = item.text;
     row["score"] = item.score;
     row["evidence"] = item.evidence;row["historical"] = item.historical;
+    row["supporting_evidence"] = item.supporting_evidence;
     if (!item.ts_utc.empty()) row["ts_utc"] = item.ts_utc;
     if (item.importance >= 0) row["importance"] = item.importance;
     daily.append(row);

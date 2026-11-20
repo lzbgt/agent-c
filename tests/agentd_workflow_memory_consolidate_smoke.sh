@@ -176,7 +176,7 @@ if "wf.structured.machine.promoted" in items:
   print("structured machine block marker was promoted", items["wf.structured.machine.promoted"], file=sys.stderr)
   raise SystemExit(1)
 sources = (items.get("wf.consolidate.structured") or {}).get("sources") or []
-if "structured:STRUCTURED.md" not in sources:
+if not any(s.startswith("marker:") for s in sources) or not any(s.startswith("STRUCTURED.md#L") for s in sources):
   print("expected stable structured source for workflow structured marker", sources, file=sys.stderr)
   raise SystemExit(1)
 PY

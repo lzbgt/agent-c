@@ -19,6 +19,9 @@ struct MemoryDocument {
 };
 
 bool memory_revision_valid(const std::string& revision);
+// Retain a verified actual source head while holding the memory-root writer lock.
+bool memory_document_retain(const std::filesystem::path& root, const std::string& path,
+  const MemoryDocument& document, std::string* error);
 // Immutable auxiliary receipt. Caller holds the memory root's writer transaction.
 bool memory_document_publish_immutable(const std::filesystem::path& root, const std::string& relative,
   const std::string& text, std::string* error);

@@ -1761,10 +1761,10 @@
     summary: Promote @mem markers into structured memory
     description: |
       Deterministic rolling consolidation:
-      - scans bounded core, daily, session, and structured-text memory files for explicit `@mem` markers
-      - skips the structured-memory machine JSON block to avoid recursively promoting existing records
-      - uses stable `structured:STRUCTURED.md` sources for structured-file markers
-      - upserts them into `memory/STRUCTURED.md`
+      - scans bounded core/daily/session notes and explicit structured user notes for `@mem` markers
+      - publishes facts and durable consumed-observation receipts atomically in `memory/STRUCTURED.md`
+      - requires per-record revisions for replacement intents; old observations cannot undo later corrections
+      - reports unresolved/conflicting/deferred input explicitly while independent keys can commit
       - writes a checkpoint snapshot (best-effort) when changes occur
       - rebuilds the correlation index (best-effort) when `dry_run=false`
     requestBody:
@@ -1799,11 +1799,18 @@
                   type: object
                   additionalProperties: true
       "400":
-        description: Invalid request or consolidation not allowed
+        description: Invalid request, policy refusal, or incomplete promotion; data preserves partial commit receipts when available.
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ErrorResponse"
+              type: object
+              required: [ok, error]
+              properties:
+                ok: { type: boolean }
+                error: { type: string }
+                data:
+                  type: object
+                  additionalProperties: true
 
 /api/v1/memory/retention/enforce:
   post:

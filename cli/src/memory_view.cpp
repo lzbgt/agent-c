@@ -1,6 +1,7 @@
 #if defined(AGENT_HAVE_JSONCPP)
 #include "memory_view.h"
 #include "memory_structured.h"
+#include "memory_promotion.h"
 #include "agent_sha256.h"
 #include <algorithm>
 #include <chrono>
@@ -79,17 +80,16 @@ MemoryPassage base(const std::string &path, const MemoryDocument &doc) {
   return out;
 }
 void observation(MemoryPassage *passage) {
-  const auto marker = passage->text.find("@mem ");
-  if (marker != std::string::npos) {
-    std::istringstream input(passage->text.substr(marker + 5));
-    std::string kind, key, equals;
-    if (input >> kind >> key >> equals && equals == "=") {
-      std::string value;
-      std::getline(input, value);
-      passage->key = key;
-      passage->kind = kind;
-      passage->record["value"] = trim(value);
-    }
+  MemoryMarker marker;
+  std::string reason;
+  std::istringstream marker_lines(passage->text);
+  std::string first_line;
+  if (std::getline(marker_lines, first_line) && memory_marker_fields(first_line, &marker, &reason)) {
+    passage->key = marker.key; passage->kind = marker.kind;
+    passage->record["value"] = marker.value; passage->record["status"] = marker.status;
+    if (marker.status != "active") { passage->historical = true; passage->status = marker.status; }
+  } else if (!reason.empty()) {
+    passage->historical = true; passage->eligibility_reason = "invalid_marker";
   }
   const auto content = trim(passage->text);
   if (content.rfind("- @obs ", 0) != 0 && content.rfind("* @obs ", 0) != 0)
@@ -126,7 +126,7 @@ void raw_passages(const std::string &path, const MemoryDocument &doc, MemoryView
     if (!trim(current.text).empty()) {
       if (current.kind != "code")
         observation(&current);
-      out->push_back(std::move(current));
+      if (mode != MemoryViewMode::Current || !current.historical) out->push_back(std::move(current));
     }
     current = base(path, doc);
   };
@@ -145,9 +145,12 @@ void raw_passages(const std::string &path, const MemoryDocument &doc, MemoryView
       excluded_level = 0;
     if (level && historical_heading(line.text.substr(size_t(level))))
       excluded_level = level;
+    MemoryMarker marker;
+    std::string marker_error;
+    const bool marker_line = !code && (memory_marker_fields(line.text, &marker, &marker_error) || !marker_error.empty());
     const bool continuation = !line.text.empty() && doc.text[line.begin] == ' ';
     if (!continuation && !code)
-      marker_excluded = inactive_marker(line.text);
+      marker_excluded = inactive_marker(line.text) || (marker_line && (marker.status != "active" || !marker_error.empty()));
     const bool historical = excluded_level || marker_excluded;
     if (mode == MemoryViewMode::Current && historical) {
       flush();
@@ -155,7 +158,7 @@ void raw_passages(const std::string &path, const MemoryDocument &doc, MemoryView
     }
     const bool boundary = line.text.empty() || level ||
                           (!code && (line.text.find("@obs ") != std::string::npos ||
-                                     line.text.find("@mem ") != std::string::npos));
+                                     marker_line));
     if (boundary ||
         (!current.text.empty() && (current.historical != historical || (current.kind == "code") != code ||
                                    current.text.size() + line.end - line.begin > 1600)))
@@ -327,6 +330,7 @@ bool memory_view_project(const std::string &path, const MemoryDocument &doc, Mem
       passage.line = 1 + int(std::count(doc.text.begin(), doc.text.begin() + begin, '\n'));
       passage.end_line = passage.line;
       passage.text = key + " = " + value_text(value["value"]);
+      passage.record_revision = memory_record_revision(value);
       passage.record = value;
       passage.record.removeMember("versions");
       out->push_back(std::move(passage));
@@ -406,6 +410,7 @@ bool memory_view_capture(const std::filesystem::path &input, const std::vector<s
       passage.status = "superseded_marker";
     }
   }
+  if (!memory_promotion_validate_dependencies(snapshot, error)) return false;
   if (mode == MemoryViewMode::Current)
     passages.erase(std::remove_if(passages.begin(), passages.end(),
                                   [](const auto &passage) { return passage.historical; }),
@@ -453,7 +458,8 @@ bool memory_evidence_read(const std::filesystem::path &root, const Json::Value &
       !ref["span"].isObject())
     return reject(error, "invalid memory evidence reference");
   const auto path = ref["path"].asString();
-  const bool markdown = path.size() >= 3 && path.substr(path.size() - 3) == ".md";
+  const auto extension = lower(std::filesystem::path(path).extension().string());
+  const bool markdown = extension == ".md" || extension == ".markdown";
   const bool artifact =
       path.size() >= 5 && path.substr(path.size() - 5) == ".json" &&
       (path.rfind("checkpoints/structured_", 0) == 0 || path.rfind("recaps/recap_", 0) == 0);

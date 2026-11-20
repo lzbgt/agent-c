@@ -73,9 +73,10 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
 ## Continue the next concrete requirement
 
 1. Continue general correction/forget propagation after the [shared memory view contract](docs/MEMORY.md#current-views-and-original-evidence).
-   Reuse the store, projector, exact original reader and revision checks. Add
-   durable observation/promotion provenance so an old marker cannot undo a later
-   correction during consolidation. Then close retained-source retirement,
+   Reuse the store, projector, exact original reader and revision checks. Durable
+   [marker promotion](docs/MEMORY.md#durable-marker-promotion) now atomically records
+   consumed observations and fences replacements; current consumers invalidate
+   changed marker derivations. Next close retained-source retirement,
    persistent cache erasure and recap/conclusion validation at every consumer.
    Keep history/forget policy explicit; invalidation never replays an external
    effect. Linux fixtures do not qualify Windows runtime or storage power loss.

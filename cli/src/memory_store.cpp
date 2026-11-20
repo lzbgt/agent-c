@@ -256,6 +256,16 @@ bool memory_document_publish_immutable(const fs::path& input, const std::string&
   StagedFile staged;
   return staged.prepare(path, text) && staged.publish(path, false) && sync_directory(path.parent_path());
 }
+bool memory_document_retain(const fs::path& input, const std::string& name, const MemoryDocument& document, std::string* error) {
+  fs::path root, path;MemoryDocument current;
+  if (!resolve(input, name, &root, &path) || read(path, source_id(root, name), &current, error) != Status::Ok ||
+      current.revision != document.revision || current.source_id != document.source_id || current.text != document.text) {
+    if (error && error->empty()) *error = "promotion evidence changed before retention";
+    return false;
+  }
+  if (!retain(root, name, document)) { if(error)*error="cannot retain original promotion evidence";return false; }
+  return true;
+}
 MemoryStoreStatus memory_document_read(const fs::path& input, const std::string& name, MemoryDocument* out, std::string* error) {
   if (error) error->clear();fs::path root, path;
   if (!resolve(input, name, &root, &path)) return fail(Status::Invalid, "invalid or linked memory source path", error);

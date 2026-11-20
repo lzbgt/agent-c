@@ -21,7 +21,7 @@ struct MemorySalienceItem {
   int importance = -1;
   std::string key, kind, status;
   bool historical = false;
-  Json::Value evidence;
+  Json::Value evidence, supporting_evidence;
 };
 struct MemorySalienceReport {
   int64_t generated_utc_ms = 0;

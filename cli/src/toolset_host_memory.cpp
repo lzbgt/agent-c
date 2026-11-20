@@ -8,6 +8,7 @@
 #include <json/json.h>
 #include "memory_structured.h"
 #include "memory_view.h"
+#include "memory_promotion.h"
 #endif
 
 #include <algorithm>
@@ -130,7 +131,7 @@ static void apply_timeline_order(Json::Value* results, const std::string& order)
   }
 }
 
-static std::string strip_private_blocks(const std::string& input, int* out_stripped_bytes) {
+std::string memory_strip_private_blocks(const std::string& input, int* out_stripped_bytes) {
   if (out_stripped_bytes) *out_stripped_bytes = 0;
   if (input.empty()) return input;
   const std::string lower = to_lower_ascii(input);
@@ -642,7 +643,7 @@ agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, a
   }
   const std::string raw_text = args.isMember("text") && args["text"].isString() ? args["text"].asString() : "";
   int private_bytes_stripped = 0;
-  const std::string text = strip_private_blocks(raw_text, &private_bytes_stripped);
+  const std::string text = memory_strip_private_blocks(raw_text, &private_bytes_stripped);
   if (trim_ascii(raw_text).empty()) {
     return write_envelope(out_result, false, "missing string field 'text'", Json::Value(Json::objectValue));
   }
@@ -733,7 +734,7 @@ agent_status_t tool_memory_observe(HostToolCtx* ctx, const char* arguments_json,
 
   const std::string raw_text = args.isMember("text") && args["text"].isString() ? args["text"].asString() : "";
   int private_bytes_stripped = 0;
-  const std::string text = strip_private_blocks(raw_text, &private_bytes_stripped);
+  const std::string text = memory_strip_private_blocks(raw_text, &private_bytes_stripped);
   if (trim_ascii(raw_text).empty()) {
     return write_envelope(out_result, false, "missing string field 'text'", Json::Value(Json::objectValue));
   }
@@ -905,7 +906,7 @@ agent_status_t tool_memory_get(HostToolCtx* ctx, const char* arguments_json, age
   return write_envelope(out_result, true, "", data);
 }
 
-agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+static agent_status_t memory_put_impl(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result, const MemoryPromotionPlan* promotion) {
   if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
   if (is_cancelled(ctx)) return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
   if (ctx->policy != HostToolsetPolicyMode::Full) {
@@ -934,7 +935,7 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   int private_bytes_stripped = 0;
   int private_entries_skipped = 0;
   const std::string raw_text = (!structured && args.isMember("text") && args["text"].isString()) ? args["text"].asString() : "";
-  const std::string text = structured ? "" : strip_private_blocks(raw_text, &private_bytes_stripped);
+  const std::string text = structured ? "" : memory_strip_private_blocks(raw_text, &private_bytes_stripped);
   // Legacy mode: allow empty text (truncate file to empty), but require the field.
   if (!structured && (!args.isMember("text") || !args["text"].isString())) {
     return write_envelope(out_result, false, "missing string field 'text'", Json::Value(Json::objectValue));
@@ -968,6 +969,10 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   auto store_status = transaction.begin(mem_root, rel_path, expected_revision, [ctx] { return is_cancelled(ctx); }, &store_error);
   if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_put", store_status, store_error, transaction.document(), expected_revision);
 
+  if (!structured && transaction.document().text.find("<!-- AGENT_MEMORY_V1_BEGIN -->") != std::string::npos)
+    return write_envelope(out_result, false, "structured sources require entries; full-text replacement could erase durable receipts", Json::Value(Json::objectValue));
+  MemoryPromotionUpdate promotion_update;
+  bool metadata_changed = false;
   std::string out_text;
   Json::Value structured_doc_for_checkpoint(Json::objectValue);
   bool structured_doc_present = false;
@@ -985,9 +990,15 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       return write_envelope(out_result, false, std::string("failed to parse structured memory doc: ") + derr, Json::Value(Json::objectValue));
     }
 
-    const std::string user_notes = extract_user_notes_md(existing);
-    const auto& entries = args["entries"];
-    if (!entries.isArray() || entries.empty()) {
+    if (!memory_promotion_ledger_valid(doc, &derr))
+      return write_envelope(out_result, false, derr, Json::Value(Json::objectValue));
+    if (promotion && !memory_promotion_prepare(mem_root, doc, *promotion, &promotion_update, &derr))
+      return write_envelope(out_result, false, derr, Json::Value(Json::objectValue));
+    // Preserve observations when converting an ordinary Markdown source.
+    const std::string user_notes = existing.find("<!-- AGENT_MEMORY_V1_BEGIN -->") == std::string::npos
+      ? existing : extract_user_notes_md(existing);
+    const auto& entries = promotion ? promotion_update.entries : args["entries"];
+    if (!entries.isArray() || (entries.empty() && !promotion)) {
       return write_envelope(out_result, false, "entries must be a non-empty array", Json::Value(Json::objectValue));
     }
 
@@ -1000,7 +1011,7 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       const std::string kind = e.isMember("kind") && e["kind"].isString() ? trim_ascii(e["kind"].asString()) : "fact";
       const std::string raw_value = e.isMember("value") && e["value"].isString() ? e["value"].asString() : "";
       int stripped = 0;
-      const std::string value = strip_private_blocks(raw_value, &stripped);
+      const std::string value = memory_strip_private_blocks(raw_value, &stripped);
       if (stripped > 0) private_bytes_stripped += stripped;
       if (!trim_ascii(raw_value).empty() && trim_ascii(value).empty()) {
         private_entries_skipped++;
@@ -1126,6 +1137,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       if (cur.isMember("valid_from")) prev["valid_from"] = cur["valid_from"];
       if (cur.isMember("supersedes")) prev["supersedes"] = cur["supersedes"];
       if (cur.isMember("sources") && cur["sources"].isArray()) prev["sources"] = cur["sources"];
+      if (cur.isMember("derivation")) prev["derivation"] = cur["derivation"];
+      cur.removeMember("derivation");
       prev["superseded_utc"] = now_utc;
 
       Json::Value& vers = cur["versions"];
@@ -1148,10 +1161,12 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       structured_entries_superseded++;
       structured_entries_changed++;
     }
-    if (structured_entries_valid == 0) {
+    if (promotion && !memory_promotion_finish(&doc, *promotion, &promotion_update, &metadata_changed, &derr))
+      return write_envelope(out_result, false, derr, Json::Value(Json::objectValue));
+    if (structured_entries_valid == 0 && !promotion) {
       return write_envelope(out_result, false, "no valid entries applied (each entry requires key + value)", Json::Value(Json::objectValue));
     }
-    if (structured_entries_changed == 0) {
+    if (structured_entries_changed == 0 && !metadata_changed) {
       Json::Value data(Json::objectValue);
       data["tool"] = "memory_put";
       data["memory_root"] = to_generic_string(mem_root);
@@ -1159,6 +1174,7 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       data["abs_path"] = to_generic_string(abs);
       data["structured"] = true;
       data["no_changes"] = true;
+      if (promotion) data["promotion"] = promotion_update.report;
       data["previous_revision"] = expected_revision;data["revision"] = transaction.document().revision;
       data["source_id"] = transaction.document().source_id;
       data["entries_valid"] = structured_entries_valid;
@@ -1182,13 +1198,13 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
 
   bool wrote_file = false;
   if (structured) {
-    wrote_file = structured_entries_changed > 0;
+    wrote_file = structured_entries_changed > 0 || metadata_changed;
   } else {
     wrote_file = true;
   }
   if (wrote_file) {
     const auto keep = args["keep_checkpoints"].isInt() ? std::clamp(args["keep_checkpoints"].asInt(), 2, 1000) : 100;
-    store_status = transaction.commit(out_text, &store_error, size_t(keep));
+    store_status = transaction.commit(out_text, &store_error, size_t(keep), promotion ? promotion->publish_observer : std::function<void(MemoryPublishPhase)>{});
     if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_put", store_status, store_error, transaction.document(), expected_revision);
   }
 
@@ -1291,8 +1307,42 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     }
   }
   data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
+  if (promotion) data["promotion"] = promotion_update.report;
   data["output"] = "memory_put: wrote " + rel_path;
   return write_envelope(out_result, true, "", data);
+}
+
+agent_status_t tool_memory_put(HostToolCtx* ctx, const char* args, agent_string_t* out) {
+  return memory_put_impl(ctx, args, out, nullptr);
+}
+
+agent_status_t memory_promote(const HostToolsetConfig& config, const MemoryPromotionPlan& plan,
+                             Json::Value* receipt, std::string* error) {
+  if (!receipt || !plan.snapshot.sources.count("STRUCTURED.md")) return AGENT_ERR_INVALID_ARGUMENT;
+  agent_tool_registry_t* registry = nullptr;
+  agent_tool_executor_t executor{};
+  auto status = toolset_host_create(config, &registry, &executor);
+  if (status != AGENT_OK) { if (error) *error = "failed to create host toolset"; return status; }
+  Json::Value args;
+  args["path"] = "STRUCTURED.md";
+  args["expected_revision"] = plan.snapshot.sources.at("STRUCTURED.md").revision;
+  args["entries"] = Json::Value(Json::arrayValue);
+  args["keep_checkpoints"] = plan.keep_checkpoints;
+  agent_string_t result{};
+  status = memory_put_impl(static_cast<HostToolCtx*>(executor.ctx), json_stringify_compact(args).c_str(), &result, &plan);
+  const std::string text = result.data ? std::string(result.data, result.len) : "";
+  agent_string_free(&result);
+  agent_tool_registry_destroy(registry);
+  toolset_host_destroy(&executor);
+  Json::CharReaderBuilder reader;
+  std::istringstream input(text);
+  std::string parse_error;
+  if (!Json::parseFromStream(reader, input, receipt, &parse_error)) {
+    if (error) *error = "invalid native promotion response";
+    return AGENT_ERR_INTERNAL;
+  }
+  if (!(*receipt).get("ok", false).asBool() && error) *error = (*receipt).get("error", "memory promotion failed").asString();
+  return status;
 }
 
 struct MemoryCandidate {
@@ -1487,6 +1537,9 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
     row["tier"] = tier_for_rel(hit.path);row["citation"] = hit.path + ":" + std::to_string(hit.line);
     row["view"] = memory_view_name(view);row["historical"] = hit.passage.historical;
     row["evidence"] = memory_passage_evidence(hit.passage);
+    row["supporting_evidence"] = hit.passage.supporting_evidence;
+    if (!hit.passage.record_revision.empty()) row["record_revision"] = hit.passage.record_revision;
+    if (!hit.passage.eligibility_reason.empty()) row["eligibility_reason"] = hit.passage.eligibility_reason;
     results.append(row);record_tier(row["tier"].asString(), row);
   }
   if (order != "ranked") {
@@ -1813,11 +1866,15 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
   std::vector<Match> matches;
   matches.reserve(128);
 
-  std::vector<MemoryPassage> eligible;
-  const auto as_of = memory_view_now_utc();
-  if (!memory_view_project(rel_path, snapshot, view, as_of, &eligible, &derr)) return write_envelope(out_result, false, derr, Json::Value(Json::objectValue));
-  for (const auto& passage : eligible) {
-    if (passage.pointer.empty() || (!include_versions && passage.pointer.find("/versions/") != std::string::npos)) continue;
+  MemoryViewSnapshot query_snapshot;
+  if (!memory_view_capture(mem_root, {abs.string()}, view, &query_snapshot, &derr))
+    return write_envelope(out_result, false, derr, Json::Value(Json::objectValue));
+  const auto captured_source = query_snapshot.sources.find(rel_path);
+  if (captured_source == query_snapshot.sources.end() || captured_source->second.revision != snapshot.revision)
+    return write_envelope(out_result, false, "memory changed or source path is not normalized", Json::Value(Json::objectValue));
+  const auto as_of = query_snapshot.as_of_utc;
+  for (const auto& passage : query_snapshot.passages) {
+    if (passage.path != rel_path || passage.pointer.empty() || (!include_versions && passage.pointer.find("/versions/") != std::string::npos)) continue;
     const auto& k = passage.key;
 
     if (!key_n.empty()) {
@@ -1889,12 +1946,15 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     row["key"] = m.key;
     row["record"] = out_rec;
     row["historical"] = m.passage.historical;row["evidence"] = memory_passage_evidence(m.passage);
+    row["record_revision"] = m.passage.record_revision;
+    row["supporting_evidence"] = m.passage.supporting_evidence;
+    if (!m.passage.eligibility_reason.empty()) row["eligibility_reason"] = m.passage.eligibility_reason;
     results.append(row);
     matched++;
   }
 
   MemoryDocument current;
-  if (memory_document_read(mem_root, rel_path, &current, &derr) != MemoryStoreStatus::Ok || current.revision != snapshot.revision)
+  if (!memory_view_validate(query_snapshot, &derr) || memory_document_read(mem_root, rel_path, &current, &derr) != MemoryStoreStatus::Ok || current.revision != snapshot.revision)
     return write_envelope(out_result, false, "memory changed during structured retrieval; reread", Json::Value(Json::objectValue));
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_structured_query";

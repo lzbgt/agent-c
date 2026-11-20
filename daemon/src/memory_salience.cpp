@@ -48,6 +48,7 @@ void memory_salience_rank(const host_tools_internal::MemoryViewSnapshot &snapsho
     item.status = passage.status;
     item.historical = passage.historical;
     item.evidence = memory_passage_evidence(passage);
+    item.supporting_evidence = passage.supporting_evidence;
     const auto &rec = passage.record;
     item.text = rec["value"].isString() ? memory_view_clip(rec["value"].asString(), 240)
                                         : memory_view_clip(passage.text, 240);
