@@ -89,6 +89,11 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
    not replay an uncertain paid call into a new output path.
    The [architecture evaluation gate](docs/ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
    records the owner-authorized TypeSafe/Jev canary and 20-question pilot bounds.
+   The original canary stopped on HTTP 451 during discovery, with no scoring
+   POST. Public API checks explicitly report region unavailability. Keep this
+   owner dependency scoped to evaluation and continue local corpus/validator
+   work. After supported access becomes available, inspect the retained receipt
+   and remaining budget before any scoring continuation; do not reset it.
    Retain the existing 4B answerer; no 9B substitution. Production remains stopped.
 3. Extend uncovered preparation/native-tool continuity and trusted receipt
    resolvers. Native remote workflow calls now use a durable admission and

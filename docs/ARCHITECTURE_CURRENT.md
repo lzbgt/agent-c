@@ -223,6 +223,13 @@ memory search/context defaults remain lexical; the portable C core is unchanged.
 See [the research procedure](MEMORY.md#bounded-evidence-retrieval). Account
 canary, held-out evidence metrics and unchanged-4B answer/citation evaluation
 remain separate evidence gates; source tests do not promote retrieval quality.
+The 2026-11-21 canary stopped at its first authenticated model-discovery GET
+with HTTP 451, before any scoring POST. Two direct unauthenticated checks of
+`/v1/models` and `/openapi.json` returned the explicit region-unavailable message.
+Key validity, account models and scoring quality remain unverified. Supported
+provider access is an operation-scoped owner dependency; local reliability,
+corpus preparation and other project work continue. No regional bypass, paid
+replay, automatic large screen or production restart was attempted.
 
 Public provider capability check on **2026-11-20**: TypeSafe's official
 [System One contract](https://docs.typesafe.ai/api/system-one.md) specifies
@@ -269,8 +276,8 @@ Measure evidence recall, complete-evidence success, supported-answer correctness
 and citations, stale/scope exposure, scoring inputs/usage/cost, cold/warm time,
 p50/p95 with the small-screen caveat, RAM/VRAM and cancellation. Promote only a
 useful measured improvement over rerank-only within the operating budget and with
-no critical currentness/scope/effect regression. No TypeSafe call or pilot result
-has been recorded for this source milestone. Foreground research authorization
+no critical currentness/scope/effect regression. The discovery-only canary above
+is not a scoring or pilot result. Foreground research authorization
 does not restart production Agent-C workloads.
 
 ## UI direction

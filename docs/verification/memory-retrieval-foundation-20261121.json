@@ -1,0 +1,304 @@
+{
+  "checked_at": "2026-11-20T16:42:43.841485+00:00",
+  "source_revision": "f32f8c2fec64fe0f37c270951e2f3f41a4f297cd",
+  "scope": "Foreground bounded lexical/rerank/one-expansion evidence retrieval, pluggable typed scorer, direct TypeSafe adapter and durable bounded research command; normal memory search/context defaults remain lexical",
+  "source_qualification": "Canonical local source verification passed. The authorized canary stopped during account discovery with region HTTP 451 before scoring. No held-out quality, final 4B answer evaluation or production rollout is claimed.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "cxx": "c++ (GCC) 16.2.1 20260810",
+    "jsoncpp": "1.9.8",
+    "sqlite3": "3.54.0",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "Version 1.58.0"
+  },
+  "commands": [
+    "cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON",
+    "cmake --build build-snapshot --target agent-memory-retrieve memory_retrieval_tests typesafe_scorer_tests memory_view_tests memory_cache_tests host_toolset_tests agentd -j6",
+    "ctest --test-dir build-snapshot -R '^(memory_retrieval_tests|typesafe_scorer_tests|memory_retrieval_research_smoke|memory_view_tests|memory_cache_tests|host_toolset_tests|memory_retrieval_smoke)$' --output-on-failure",
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "build-snapshot/agent-memory-retrieve --canary --typesafe-env /home/bruce/.env --output build/retrieval-canary-20261121.json (already attempted once; reconcile this receipt, do not blindly replay)",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "native_cli_api_checks": 79,
+    "browser_checks": 144,
+    "go_packages": "all canonical packages passed (cached where eligible); packages without tests compiled; environment-gated integrations are separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "document_links_and_anchors": 183,
+    "authenticated_provider_discovery_requests": 1,
+    "external_scoring_requests": 0,
+    "candidate_judgments_on_real_provider": 0,
+    "unauthenticated_provider_diagnostics": 2,
+    "held_out_screen": "not run; dataset freeze and supported provider access pending",
+    "supported_4b_answer_accuracy_and_citations": "not evaluated; existing answerer unchanged"
+  },
+  "local_fixture_timings_seconds": {
+    "canonical_native": 159.12,
+    "focused_seven": 4.01,
+    "focused_final_three": 2.02
+  },
+  "one_small_synthetic_resource_run": {
+    "elapsed_seconds": 0.044712,
+    "max_rss_kib": 12788,
+    "measurement": "One Linux child running the small synthetic local retrieval fixture, including mock-score delay/cancellation, typed-result and context-budget cases. No public provider call. Not aggregate RAM, full 64-MiB corpus capacity, model/VRAM/MCU qualification or a latency SLO."
+  },
+  "resource_reproduction": [
+    "python3",
+    "-c",
+    "import resource,subprocess,time; start=time.perf_counter(); subprocess.run([\"build-snapshot/memory_retrieval_tests\"],check=True); print({\"elapsed_seconds\":time.perf_counter()-start,\"max_rss_kib\":resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss})"
+  ],
+  "research_defaults": {
+    "initial_candidates": 20,
+    "new_candidates": 20,
+    "retained_candidates": 5,
+    "final_records": 8,
+    "expansions": 1,
+    "expansion_terms": 8,
+    "expansion_term_hard_max": 20,
+    "question_term_max": 32,
+    "snippet_bytes": 600,
+    "context_compact_json_bytes": 16000,
+    "scoring_payload_bytes": 24000,
+    "query_timeout_ms": 20000,
+    "seed_threshold": 0.5,
+    "lexical_query_policy": "question_terms_v1"
+  },
+  "cloud_batch_caps": {
+    "http_attempts": 75,
+    "candidate_judgments_including_retry": 1300,
+    "input_token_ceiling": 4915200,
+    "conservative_tokens_reserved_per_attempt": 65536,
+    "estimated_usd_ceiling_at_listed_price": 0.2064384,
+    "request_body_bytes": 32768,
+    "response_body_bytes": 65536,
+    "request_timeout_ms": 15000,
+    "total_timeout_ms": 600000,
+    "attempts_per_call": 2,
+    "retry_only_statuses": [
+      429,
+      529
+    ],
+    "backoff_ms_range": [
+      250,
+      2000
+    ],
+    "long_context_header": false
+  },
+  "canary": {
+    "admission": {
+      "source_revision": "f32f8c2fec64fe0f37c270951e2f3f41a4f297cd",
+      "binary_sha256": "1e5863928e007cb0ce990a2068a8724817c85405c39089dd395a4c1eb9c1c16f",
+      "binary_bytes": 12908264,
+      "checked_at": "2026-11-20T16:29:00.334313+00:00",
+      "http_attempt_cap": 2,
+      "candidate_judgment_cap": 2,
+      "accounted_input_token_cap": 65536,
+      "estimated_usd_ceiling": 0.002752512
+    },
+    "result": "incomplete at discovery; no scoring POST",
+    "http_attempts": 1,
+    "candidate_judgments": 0,
+    "known_model_input_tokens": 0,
+    "configured_model_pin": "jev-1.14.0",
+    "returned_model": null,
+    "authentication_key_validity": "not verified because region gate precedes usable model discovery",
+    "receipt_attempts": [
+      {
+        "cancelled": false,
+        "http_attempt": 1,
+        "http_status": 451,
+        "input_token_reserve": 0,
+        "judgments": 0,
+        "request_bytes": 0,
+        "response_too_large": false,
+        "status": "incomplete",
+        "timed_out": false
+      }
+    ],
+    "canary_caps": {
+      "http_attempts": 2,
+      "candidate_judgments": 2,
+      "input_tokens": 65536,
+      "estimated_usd_ceiling": 0.002752512,
+      "automatic_retry": false
+    }
+  },
+  "public_access_diagnostic": {
+    "checked_at": "2026-11-20T16:30:28.241512+00:00",
+    "authenticated": false,
+    "environment_proxy": false,
+    "results": [
+      {
+        "path": "/v1/models",
+        "status": 451,
+        "content_type": "application/json",
+        "public_body_excerpt": "{\"title\":\"Typesafe is not available in your region.\",\"status\":451}",
+        "captured_bytes": 66,
+        "sha256_of_captured_bytes": "9aad89d541d3f6208b641cf6811714e94b4e9557cf2c3b74dcdb2d17fbe4b122"
+      },
+      {
+        "path": "/openapi.json",
+        "status": 451,
+        "content_type": "application/json",
+        "public_body_excerpt": "{\"title\":\"Typesafe is not available in your region.\",\"status\":451}",
+        "captured_bytes": 66,
+        "sha256_of_captured_bytes": "9aad89d541d3f6208b641cf6811714e94b4e9557cf2c3b74dcdb2d17fbe4b122"
+      }
+    ]
+  },
+  "owner_dependency": {
+    "key": "typesafe-region-access",
+    "state": "open",
+    "blocking_scope": "operation",
+    "action": "Obtain supported provider access for this account/host or specify an authorized available scorer route. No regional bypass or credential sharing.",
+    "independent_work": "Local corpus/validator preparation, reliability implementation, source verification and GitHub-only publication continue; production stays stopped."
+  },
+  "coverage": [
+    "A real FTS unseen-record bridge uses one scoring pass, literal source terms and one bounded expansion; original evidence reads and seed-text byte-span trace are checked.",
+    "Current/historical scope and stale-source fences prevent ineligible scoring/output; mixed Chinese/code question fallback works without an index. Direct lookup syntax is preserved.",
+    "Missing/duplicate/foreign IDs, NaN/infinite/out-of-range scores, absent model identity and thrown scorer exceptions produce one explicit lexical fallback without retries.",
+    "Failed second scoring preserves completed first-stage inputs/scores in the report and never returns unscored expanded evidence as a completed result.",
+    "Question/input/context caps and pre/post-callback cancellation/deadline are explicit; whole evidence references remain intact. Source correction clears final context.",
+    "TypeSafe synthetic tests check pinned official origin, no redirects/environment proxies, named typed payloads, finite probabilities, model/usage bounds, attempt/judgment/token admission, unknown reservations, 499 no-retry, bounded 429 retry and auth latch.",
+    "The loopback adapter exercises actual HTTP success, 65536-byte response overflow, timeout and cancellation with synthetic credentials; error bodies and key-bearing diagnostics never enter results.",
+    "Literal dotenv parsing ignores unrelated values and rejects duplicate, interpolated and missing key entries. Account discovery copies only bounded model identity/date fields.",
+    "The actual command fixture retains prepared/completed original receipts, narrows explicit source scope, preserves historical classification and refuses an existing output. It sends no provider request."
+  ],
+  "limitations": [
+    "No TypeSafe scoring POST, frozen 20-question A/B/C pilot, evidence-recall/all-evidence measurement, supported 4B answer/citation study, scorer cold/warm p50/p95, server RAM/VRAM or production rollout was performed. Local fixture success is reliability evidence only.",
+    "Direct official API returned HTTP 451 before usable account discovery; unauthenticated diagnostics confirm explicit region unavailability. Key validity, account balance and actual available scorer revision are unverified. Supported access is an operation-scoped owner dependency, not a whole-Goal pause.",
+    "One serial foreground client owns in-process batch budgets. Prepared/per-arm receipts prevent automatic restart into an existing output; no automatic paid resume is implemented. Direct research-command SIGKILL recovery was not independently tested; it reuses the separately process-crash-tested store.",
+    "Token reservations use the advertised default 64k provider request context, conservatively interpreted as 65536, with no long-context header. Charges are estimates/provider-reported usage rather than billing proof; unknown outcomes retain their reserve and out-of-range usage disables scoring.",
+    "The research baseline uses fixed question_terms_v1 policy for all arms. Existing direct FTS callers keep their syntax. Unicode word segmentation is absent; mixed Chinese/code lookup tests do not establish arbitrary Chinese retrieval quality.",
+    "Host callback cancellation and I/O are cooperative. Arbitrary blocking callbacks, storage power loss, Windows runtime, full-corpus RAM, hardware/MCU execution and forensic erasure are not qualified. Portable C is unchanged; core-only verification was not repeated.",
+    "The prior blank-after-reload browser failure remains unresolved historical evidence. A clean current canonical pass does not establish a product fix.",
+    "Expiry-intent metadata/recap-head retention, generic claim/conclusion validators, direct recap admission, broader forgetting/lifecycle/handoffs and embedded ports remain open. No model substitution, production restart, region bypass or Panda publication."
+  ],
+  "credential_handling": {
+    "entry_name": "TYPESAFE_API_KEY",
+    "parsing": "needed literal dotenv entry only; file never sourced/dumped",
+    "transport": "Authorization header only to fixed official API with TLS verification, no redirects or environment proxy",
+    "values_in_argv_prompts_artifacts_logs": false
+  },
+  "production_state": {
+    "checked_at": "2026-11-20T16:37:54.833831+00:00",
+    "systemd": "ActiveState=inactive\nUnitFileState=disabled\n\nActiveState=inactive\nUnitFileState=disabled\n",
+    "postgres": "exited restart=no"
+  },
+  "artifacts": [
+    {
+      "path": "build-snapshot/agent",
+      "bytes": 12444040,
+      "sha256": "9060804b379b94cb78ec9e270644bf7c6ce16d5b7fb3971fb4f78c8b762da7fc"
+    },
+    {
+      "path": "build-snapshot/agentd",
+      "bytes": 67036584,
+      "sha256": "2e20730ae94cb72e8e317415972351e6c9f8d7e0a3d8c61582a11f1206d6aa30"
+    },
+    {
+      "path": "build-snapshot/agent-memory-retrieve",
+      "bytes": 12908264,
+      "sha256": "1e5863928e007cb0ce990a2068a8724817c85405c39089dd395a4c1eb9c1c16f"
+    },
+    {
+      "path": "build-snapshot/memory_retrieval_tests",
+      "bytes": 10500128,
+      "sha256": "03142a4f3f76d8454ae49a999218cd2f7ddf1c49df1b8130962a0cfffd595acf"
+    },
+    {
+      "path": "build-snapshot/typesafe_scorer_tests",
+      "bytes": 2974464,
+      "sha256": "860dca13f23e358517fd27c02dbaedbe124292d38e01b75f5fd3354dbc7314ef"
+    },
+    {
+      "path": "ui/dist/index.html",
+      "bytes": 1073,
+      "sha256": "6bb33594ba658be8804a82287dabcd372ee4ace094869d4f21588fb05d8793a2"
+    },
+    {
+      "path": "ui/dist/assets/index-Cnaezztn.js",
+      "bytes": 784942,
+      "sha256": "bd5173359dfa967e7111f397b2a876742912c43d5bc21b9251a08687842e5ef3"
+    },
+    {
+      "path": "ui/dist/assets/index-vKkktlW6.css",
+      "bytes": 65342,
+      "sha256": "cd94028e1f65b96708054e6d3cdc7b22c396cd5d303f14c6f8ea64affd588364"
+    }
+  ],
+  "logs": [
+    {
+      "path": "build/memory_retrieval_snapshot_final.log",
+      "bytes": 43516,
+      "sha256": "d77e49535764a79e6fc691a68e3216be4c5d47958daeb97c1139c6533501a384"
+    },
+    {
+      "path": "build/memory_retrieval_focused_final.log",
+      "bytes": 883,
+      "sha256": "2bd09afe579058d0cd99582dd317459976b4fc3221e103bf894ea49241942d1d"
+    },
+    {
+      "path": "build/memory_retrieval_before_commit.log",
+      "bytes": 456,
+      "sha256": "adace3e36969a3f2c539b8f60dc6cc04b767f9cd841a490388dd971c3c40926f"
+    },
+    {
+      "path": "build/memory_retrieval_resources.log",
+      "bytes": 446,
+      "sha256": "ef6a9f2fced835047964a6b56591eb1c1f36ed85e67257dadb34b42bf597c86f"
+    },
+    {
+      "path": "build/memory_retrieval_resources.json",
+      "bytes": 347,
+      "sha256": "573341ded8dadd78cc596ea17351ce793bf666a99e1d160f56b80adc535c23e9"
+    },
+    {
+      "path": "build/retrieval-canary-20261121.json",
+      "bytes": 2010,
+      "sha256": "3d6e38240f491f5a8ac56f064068946905ed3c2f10049b17ff120b2b057b94db"
+    },
+    {
+      "path": "build/memory_retrieval_canary_admission.json",
+      "bytes": 369,
+      "sha256": "8cec1a7d6850c1145d5136196a9b22e1deb54cc1efbc277783c5aff52f99e1dd"
+    },
+    {
+      "path": "build/memory_retrieval_canary_stdout.json",
+      "bytes": 2010,
+      "sha256": "3d6e38240f491f5a8ac56f064068946905ed3c2f10049b17ff120b2b057b94db"
+    },
+    {
+      "path": "build/memory_retrieval_canary_stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "build/memory_retrieval_public_access_diagnostic.json",
+      "bytes": 809,
+      "sha256": "a29c2ab952d3dd0d52b9566354683b5b1771df2a77fef604227b675034d2c3b8"
+    },
+    {
+      "path": "build/memory_retrieval_documentation.log",
+      "bytes": 58,
+      "sha256": "eaf90d29aecd914318ad07d7d94d56de91a6846c604464018b7c81116fc683df"
+    },
+    {
+      "path": "build/memory_retrieval_repo_guards.log",
+      "bytes": 4027,
+      "sha256": "f0c875ea165037ada1ae43768ca76ffe60defd281e0efbf4d78402ac1f998b4b"
+    },
+    {
+      "path": "build/memory_retrieval_production_state.json",
+      "bytes": 201,
+      "sha256": "c956f3b6cfb41b9a0303d58ad514b04553ecc50cf6ede866167b17df395e55b3"
+    }
+  ]
+}

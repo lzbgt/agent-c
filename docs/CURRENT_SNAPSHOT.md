@@ -88,64 +88,64 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The foreground retrieval foundation passed seven focused local/loopback/API
-checks in **4.01 seconds**. Final focused checks also cover the added receipt
-metadata and account-discovery fixture. A new canonical qualification is required
-for this increment; the following full-lane receipt identifies the preceding
-compaction implementation.
+On 2026-11-21 (Asia/Shanghai), implementation **`f32f8c2`** passed **79
+native/CLI/API checks in 159.12 seconds**, all canonical Go packages (cached where
+eligible), OpenAPI/type checks, the UI production build and **144 browser checks
+in 2.1 minutes** in one canonical pass. The
+[retrieval-foundation receipt](verification/memory-retrieval-foundation-20261121.json)
+pins source, commands, artifact/log SHA-256 identities, budgets, observed timings
+and limits. Repository, document-link and whitespace checks accompany the
+qualification. These are source checks, not a deployment or retrieval-quality
+promotion.
 
-On 2026-11-20, implementation **`f38cb31`** passed **76 native/CLI/API
-checks in 155.03 seconds**, all canonical Go packages (cached where eligible),
-OpenAPI/type checks, the UI production build and **144 browser checks in 2.2
-minutes** in one canonical pass. The
-[compaction receipt](verification/memory-promotion-compaction-20261120.json)
-pins source, reproducible commands, artifact/log SHA-256 hashes, observed timings
-and limits. Repository guards, changed-document links/anchors and whitespace
-checks passed. These are source checks, not a production deployment.
+The new fixtures qualify an unseen-record bridge, exact evidence reads,
+current/historical and scope restrictions, question/input/context limits,
+malformed or foreign IDs/scores, lexical fallback, source corrections and total
+cancellation/deadline. Synthetic TypeSafe tests exercise conservative unknown
+usage, bounded retry/admission, model pins and literal credential parsing.
+Loopback HTTP covers response overflow, timeout and cancellation. The actual
+foreground CLI fixture preserves prepared/completed originals, refuses an
+existing output and narrows case scope without provider access. Existing memory,
+workflow, CLI, Go and desktop/mobile browser failure cases remain in the lane.
 
-`memory_promotion_tests` sends 4,096 genuine independent markers through the real
-daemon consolidator in five bounded batches. The structured authority grows past
-1 MiB without hitting the default observation-file limit. Appending two markers
-then compacts the full receipts, keeps old/new facts eligible and reports two
-omitted duplicate details explicitly. A retry changes no source and decodes one
-anchored original table once. A separate 4,097-new-intent capture fails explicitly
-before publication. Synthetic copied-filler fixtures verify literal original
-receipts and marker bytes, active expiry pins, missing/corrupt/wrong-scope
-original refusal, rejection non-replay after head restoration, capacity,
-unsupported format, preview, cancellation and actual `SIGKILL` before/after
-compacted authority replacement. The copied fillers test structure/capacity,
-not independent factual evidence.
+One small synthetic Linux retrieval fixture took **0.044712 seconds** with
+child peak RSS **12,788 KiB** after the canonical run. This is not aggregate
+RAM, a full 64-MiB corpus test, model/VRAM/MCU qualification, an SLO or retrieval
+quality. Reproduce the [focused research checks](MEMORY.md#verify-failure-boundaries)
+or the canonical command above. Ignored logs include
+`build/memory_retrieval_snapshot_final.log`, `build/memory_retrieval_focused_final.log`,
+`build/memory_retrieval_before_commit.log`, `build/memory_retrieval_resources.log`,
+`build/memory_retrieval_documentation.log` and `build/memory_retrieval_repo_guards.log`.
 
-One Linux promotion fixture run after the canonical lane took
-**28.703800 seconds** with child peak RSS **174,424 KiB**.
-In one synthetic full-table case, the current authority changed from
-**2,880,710 to 314,773 bytes** while preserving
-4,096 consumed IDs and retrievable originals. This is not aggregate RAM,
-production/model/MCU resource qualification, retrieval quality, a latency SLO or
-a reduction of total archive storage. Reproduce the canonical command above or
-the [promotion subset](MEMORY.md#marker-identity-eligibility-and-operating-bounds).
-Ignored logs include `build/memory_compaction_snapshot_final.log`,
-`build/memory_compaction_focused_final.log`, `build/memory_compaction_before_commit.log`,
-`build/memory_compaction_resources.log`, `build/memory_compaction_documentation.log`
-and `build/memory_compaction_repo_guards.log`; the receipt preserves their identities.
+The separately authorized TypeSafe canary had a two-attempt/two-judgment ceiling
+and 65,536 reserved input-token maximum (estimated $0.002752512 at the checked
+price). It stopped on its **first authenticated discovery GET with HTTP 451**.
+**No scoring POST was sent; candidate judgments and known model-input usage are
+zero.** Two direct unauthenticated API diagnostics also returned the explicit
+region-unavailable message. The key was parsed as host-side dotenv data and used
+only in the discovery Authorization header; it was not printed, passed in argv,
+stored in artifacts or sent to a model. The exact original receipt is retained;
+no paid replay or regional bypass was attempted. Supported provider access is a
+reported operation-scoped owner dependency, while local corpus preparation,
+reliability and other authorized work continue. Account/key/model availability,
+the frozen 20-question A/B/C screen and unchanged-4B supported-answer/citation
+metrics remain pending. No quality improvement is claimed.
 
-The current v2 ledger has no automatic v1 conversion. No live memory, history or
-production configuration was converted. Current compaction preserves IDs and
-original pins; byte, source, line and anchor limits remain explicit. Expiry-intent
-metadata compaction and active recap-head retention remain separate work.
-Process-death checks do not qualify storage power loss, Windows, forensic erasure
-or MCU execution. No provider credential was discovered/read or used; public
-TypeSafe capability/model/pricing checks do not qualify account authentication or
-retrieval quality. The 4B profile is unchanged. The daemon and gateway remain
-inactive/disabled; PostgreSQL is exited with restart disabled.
+Normal memory search/context defaults remain lexical. Portable C and the 4B
+profile are unchanged. No live history, memory format or production configuration
+was changed; daemon/gateway remain inactive/disabled and PostgreSQL is exited
+with restart disabled. The separate core-only lane, MCU, storage power loss,
+Windows runtime, paid inference and direct research-command process-death recovery
+were not exercised by this qualification. The command reuses the store's
+separately tested atomic publication and refuses an existing output.
 
-The preceding [archive-expiry receipt](verification/memory-archive-expiry-20261120.json)
-pins `6c40ad9`. Its initial browser pass had 143 successes and one blank workspace
-after reload at 390 pixels; keyboard-isolation assertions had already passed.
-Six focused diagnostics and a separate full 144-check browser rerun passed.
-Root cause remains unknown. The current clean run does not establish a fix; the
-canonical verifier retains future failure traces. Archive/promotion/retirement
-failure cases remain in the current lane.
+The preceding [compaction receipt](verification/memory-promotion-compaction-20261120.json)
+pins `f38cb31` and its real 4,096-marker daemon batches, original/leaf expiry pins
+and process-crash cases. The [archive-expiry receipt](verification/memory-archive-expiry-20261120.json)
+pins `6c40ad9`; its initial blank-after-reload browser failure, focused diagnostics
+and separate passing rerun remain historical evidence. The current clean pass
+does not establish a fix for that intermittent issue. Failure tracing stays
+enabled in the canonical lane.
 
 Prior [derived-memory](verification/memory-derived-state-20261120.json) and
 [retirement](verification/memory-retirement-20261120.json) receipts pin `f17968f`
@@ -171,12 +171,13 @@ Revision-checked retirement now preserves originals and excludes removed support
 from current retrieval. Registered cache purge, live correlation and recap input validation cover those consumers. Explicit memory-root archive expiry preserves active reference pins. Promotion compaction now preserves consumed IDs, full original decisions and marker revision pins while allowing further bounded admission. The next authority gates are broader bounded forgetting, expiry-intent metadata compaction, generic conclusion/claim validation and direct recap crash admission.
 Invalidation must never replay a completed external effect. Declared currentness
 and exact references do not prove arbitrary prose or generated claims true.
-A bounded lexical multi-hop experiment follows the authority gates, with the
-unchanged 4B answerer. The
+The bounded lexical multi-hop foundation now exists for foreground research;
+quality promotion still requires the independent screen and unchanged 4B answerer. The
 [architecture evaluation gate](ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
 records the canary/pilot caps and checked public endpoint/auth/typed-response and
-listed price. Account/model discovery, private-key use and measured retrieval quality remain pending; no paid evaluation
-was performed for this source milestone.
+listed price. The discovery-only canary encountered HTTP 451 before scoring.
+Supported access, account/model verification and measured retrieval/answer quality
+remain pending; the owner dependency does not block independent local work.
 
 
 This is a coherent implemented slice, not a claim that every item in the architecture is shipped. Current workflows retain single-daemon, at-least-once task recovery. The new effect protocol protects deterministic HTTP POST tasks under its destination/receipt contracts. Submit dedupe and SOP hashes alone still do not prevent duplicate external writes. Device assignment publication is atomic. Ordinary workflow host-model transcripts, session fences, image preparation and sequential delegated children have bounded recovery contracts. Uninstrumented preparation/tool paths, trusted receipt resolvers, additional device adapters, physical execution guarantees and strict provider/adapter resource metering remain correctness work. Workflow reservation/settlement is now atomic, with observed usage and conservative uncertainty kept distinct.

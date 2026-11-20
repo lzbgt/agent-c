@@ -277,6 +277,9 @@ compact JSON** by default. References are never cut to make a record fit.
 An unavailable/failed second scorer preserves completed first-stage scores in
 the report and returns the original lexical context. The research batch stops
 at its first incomplete arm and retains preceding results.
+`complete` describes the configured retrieval procedure, not answerability or
+all-evidence success. Context scores are lexical ranking weights in lexical or
+fallback results; only validated scorer probabilities have the `[0,1]` meaning.
 
 #### Run a local lexical example
 
@@ -352,6 +355,11 @@ disables further scoring. HTTP 429/529 permit at most one retry after a bounded
 and unknown network outcomes are never automatically retried. Cancellation and
 total deadlines cover backoff and HTTP progress; arbitrary host callbacks and
 kernel I/O remain cooperative rather than hard real-time.
+
+The retrieval report's `candidate_judgments` counts logical callback inputs;
+TypeSafe `usage.candidate_judgments` counts actual HTTP admissions including
+retry and governs the batch cap. Stage usage values are cumulative client
+snapshots. Use the final top-level receipt usage for totals; do not sum snapshots.
 
 The separately authorized small canary command is:
 
