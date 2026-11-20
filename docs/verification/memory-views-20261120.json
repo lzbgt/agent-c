@@ -1,0 +1,121 @@
+{
+  "checked_at": "2026-11-20T12:15:48.121428+00:00",
+  "source_revision": "90b05f83deac7a1584b81ef00de816f24545773e",
+  "scope": "Shared scoped current/historical/evidence retrieval, source/revision/span originals, content-revision FTS eligibility, checked automatic context and recap preparation",
+  "source_qualification": "Full canonical 72-native/141-browser/Go/OpenAPI/UI lane passed. Final unavailable-context, pointer-format and CLI-guidance review was followed by rebuilding and repeating the complete same 72-native selection. UI source unchanged between those runs. Artifact hashes identify tested binaries; embedded build metadata may retain the pre-commit revision. No production deployment.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "jsoncpp": "1.9.8",
+    "sqlite3": "3.54.0",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "1.58.0"
+  },
+  "commands": [
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "cmake --build build-snapshot --target agent agentd memory_view_tests host_toolset_tests host_session_prompts_tests -j4",
+    "ctest --test-dir \"build-snapshot\" -R '^(agent_core_tests|work_ledger_tests|workflow_agentd_call_effect_tests|agentd_workflow_agentd_call_smoke|agentd_workflow_agentd_call_broker_proxy_smoke|agentd_workflow_agentd_call_recovery_smoke|agentd_session_work_smoke|agentd_session_message_pages_smoke|agentd_job_trace_lookup_smoke|agentd_job_durable_admission_smoke|agentd_job_durable_admission_stream_smoke|agentd_job_durable_cancel_smoke|workflow_durable_delay_smoke|session_store_tests|workflow_sop_tests|workflow_sop_registry_tests|agentd_workflow_sop_registry_smoke|workflow_decision_tests|agentd_workflow_decision_smoke|workflow_signal_tests|agentd_workflow_signal_smoke|workflow_condition_tests|agentd_workflow_condition_smoke|workflow_model_effect_tests|workflow_model_transcript_tests|workflow_model_session_tests|agentd_workflow_model_effect_recovery_smoke|agentd_workflow_delegate_smoke|agentd_workflow_delegate_attempt_caps_smoke|agentd_workflow_delegate_continuation_smoke|agentd_workflow_token_grant_smoke|workflow_host_tool_tests|agentd_workflow_host_tool_recovery_smoke|workflow_effect_tests|workflow_budget_tests|workflow_budget_parallel_smoke|device_assignment_tests|agent_db_tests|agentd_workflow_effect_recovery_smoke|host_session_prompts_tests|host_toolset_tests|memory_store_tests|memory_view_tests|memory_retrieval_smoke|agentd_memory_salience_smoke|agentd_memory_recaps_smoke|agentd_memory_consolidate_smoke|agentd_memory_retention_smoke|agentd_workflow_memory_put_smoke|agentd_workflow_memory_consolidate_smoke|agentd_workflow_memory_search_smoke|agentd_workflow_memory_timeline_smoke|agentd_workflow_memory_structured_query_smoke|agentd_workflow_memory_correlate_smoke|agentd_workflow_memory_query_smoke|agentd_workflow_budget_host_tool_memory_put_smoke|agentd_memory_correlate_smoke|agentd_trace_memory_correlate_smoke|agentd_workflow_stats_budget_pressure_smoke|agentd_workflow_drr_budget_pressure_mixed_fairness_smoke|docs_sanity_tests|cli_harness_smoke|cli_machine_output_smoke|agentd_workflow_sop_smoke|agent_local_stream_tool_loop_smoke|agent_local_stream_assistant_smoke|agentd_workflow_idempotency_smoke|agentd_workflow_replay_spec_smoke|agentd_workflow_http_json_smoke|agentd_workflow_http_allowlist_smoke|agentd_workflow_http_dns_pin_smoke|agentd_workflow_http_deny_cidr_smoke)$' --output-on-failure",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "canonical_native_cli_api_checks": 72,
+    "final_native_repeat": "passed",
+    "browser_checks": 141,
+    "go_packages": "all passed; optional environment-gated integrations remain separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "external_provider_calls": 0,
+    "paid_scorer_calls": 0,
+    "new_real_daemon_fixture_synthetic_loopback_provider_calls": 2,
+    "retrieval_quality_evaluation": "not run; no recall/answer-accuracy promotion, TypeSafe auth/model/pricing check or paid call",
+    "changed_document_links_and_anchors": 128
+  },
+  "local_fixture_timings_seconds": {
+    "initial_72_native_suite": 103.37,
+    "final_72_native_suite": 105.5,
+    "memory_view_tests": 0.04,
+    "memory_retrieval_smoke": 0.6,
+    "host_toolset_tests": 0.28,
+    "agentd_memory_salience_smoke": 0.36,
+    "agentd_memory_recaps_smoke": 0.42
+  },
+  "one_synthetic_unit_resource_run": {
+    "elapsed_seconds": 0.035336,
+    "max_rss_kib": 13000,
+    "measurement": "Linux child getrusage peak RSS, one synthetic memory_view_tests run; not a production or model SLO"
+  },
+  "resource_measurement_reproduction": [
+    "python3",
+    "-c",
+    "import resource,subprocess,time; start=time.perf_counter(); subprocess.run([\"build-snapshot/memory_view_tests\"],check=True); print({\"elapsed_seconds\":time.perf_counter()-start,\"max_rss_kib\":resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss})"
+  ],
+  "artifacts": {
+    "build-snapshot/agent": {
+      "bytes": 11189928,
+      "sha256": "d8ea945153372ba96040ed04c42e95304b1e7a265669aba340bfe6ed58008271"
+    },
+    "build-snapshot/agentd": {
+      "bytes": 65228264,
+      "sha256": "d9dabbb98bcf7f2fd46fbc8c90336f47ea6e5820875cccb9701278ce45df4d3c"
+    },
+    "build-snapshot/libagent_host.a": {
+      "bytes": 19533632,
+      "sha256": "01a690475827f29ec612760d7f611a3c606b5462f763a9c35ab42b5ae6ddff88"
+    },
+    "build-snapshot/memory_view_tests": {
+      "bytes": 4098176,
+      "sha256": "06ad66959f595af48f45580a539bd58a12f51d3495c6a788b01aea538a1b56ac"
+    },
+    "build-snapshot/host_toolset_tests": {
+      "bytes": 8524536,
+      "sha256": "c937110b2871fb307bdf87e5b424b2eac06cf9ad4bfb1a7cf6aa9fe82b842cb2"
+    }
+  },
+  "fixture_source_sha256": {
+    "tests/test_memory_view.cpp": "4982b512ef9f5850b6891c412daa4dbd4ae0fab414fcc294e1552407b2b23e5f",
+    "tests/memory_retrieval_smoke.py": "2f5f73e83c8c69dd5a0e6b5d25aff691c6c6f34240aad5eb86f2e40647bd88f7",
+    "tests/test_host_toolset.cpp": "e83f9bb607a0be306e2667e9d43fd804a98db3b2a1d5d95b45c183c4389cb391"
+  },
+  "ui_artifacts": {
+    "files": 18,
+    "tree_sha256": "355ddfb2692025154c905839c063d7180b44444353f2094986e9c69bd4432ba6",
+    "tree_algorithm": "SHA-256 over sorted relative file path UTF-8 + NUL + raw file SHA-256 bytes + newline for each ui/dist file",
+    "index_html_sha256": "04147feab70c10524ba7d393bad14a3bfacc1e00deb32db8c7d2d56d68022a01"
+  },
+  "local_logs": {
+    "build/memory_view_snapshot_20261120.log": "09a295e9cf05b96485fc6b11bc6501d080a088d1369a414d41eb7688247c850f",
+    "build/memory_view_native_final.log": "74c9e373ab124010e31197de796f5ccf9e29d396f6fa0ed6779504b30ba3fceb",
+    "build/memory_view_focused.log": "63a16062ea05247f5f3d3dfd2b93dd6bad279d46436fcf4dc98a49cb8a6f5e57",
+    "build/memory_view_resources.log": "21698922f0189d53c16d86c82671c22f54fd42bb94f51b2811a2a6c6fba3809f",
+    "build/memory_view_documentation.log": "e71713b897990ac194b9627ccdb38472a1dd81b164893568615e4915a1d2ac14",
+    "build/memory_view_repo_guards.log": "f6401894443d06ff1228ee1543c8c59220797cfc2b85c0f70530d2c17fe5380e"
+  },
+  "verified_failure_boundaries": [
+    "Current FTS and substring retrieval exclude deprecated/unknown/future/malformed records, embedded versions, generated duplicates, inactive raw sections/markers and explicitly superseded promotion markers before scoring/output.",
+    "A previously populated broader cache source set cannot leak rows into a narrower search. Scoped original references reject another root even when source bytes match.",
+    "A correction with the same file mtime refreshes the index by content revision. Deleted sources are absent. A changed captured revision set refuses search results rather than mixing versions.",
+    "Original references resolve escaped JSON Pointer keys and exact retained bytes; altered spans and unavailable originals fail rather than substituting latest content.",
+    "All four context modes use current eligibility and omit old recap/global assistant hints. Unreadable/malformed/budget-failed retrieval emits explicit unavailable context, not raw fallback.",
+    "A real temporary daemon defaults current API queries to the head and uses checkpoints only with explicit historical intent. A successful synthetic recap stores source revisions/evidence; a correction during the second synthetic provider response rejects publication and does not repeat the call.",
+    "Line/source selection limits fail explicitly. Existing publication, model/session/remote effect and independent-work fixtures remain passing."
+  ],
+  "preserved_boundaries": [
+    "Existing 4B answerer unchanged; no 9B substitution, private dotenv read, TypeSafe call or paid evaluator.",
+    "Production daemon/gateway inactive and disabled; dedicated PostgreSQL exited restart=no. Temporary loopback daemons/stubs were isolated and terminated.",
+    "Only GitHub publication; Panda excluded. Pre-existing docs/PUBLISHING.md and local/private configuration remain outside the commits."
+  ],
+  "remaining_requirements": [
+    "Durable observation/promotion provenance: consolidation can otherwise re-promote an older marker after a later correction. This source slice filters marker authority at retrieval, not the full producer lifecycle.",
+    "Retained-source retirement, persistent cache erasure, recap/conclusion validation at every consumer, bounded forgetting and evidence-preserving handoffs. Invalidation must never replay completed effects.",
+    "Declared currentness is not semantic truth, support for generated claims, or generic detection of factual changes in unstructured prose. Correlation/history inspection is not automatic current context.",
+    "Original availability follows retention; a stable reference does not promise indefinite storage. Root relocation changes physical source identity. Direct/in-place privileged writes are outside the cooperating store guarantee.",
+    "The checked revision frontier is not a lock held until later consumption. Long-lived conclusions and resumed consumer state require revision validation.",
+    "Linux fixtures and one 13,000-KiB RSS sample do not qualify worst-case memory/latency, VRAM, MCU boot, Windows runtime, filesystem power loss or live-provider behavior.",
+    "The bounded TypeSafe/Jev canary and frozen 20-question A/B/C screen remain gated on the authority work and official endpoint/auth/model/pricing verification; standing call/judgment/token/cost/cancellation limits remain."
+  ]
+}

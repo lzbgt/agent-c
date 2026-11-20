@@ -102,8 +102,9 @@ Reproduce with the command above or [the retrieval subset](MEMORY.md#reproduce-r
 Ignored local receipts are `build/memory_view_snapshot_20261120.log`,
 `build/memory_view_native_final.log`, `build/memory_view_focused.log`,
 `build/memory_view_resources.log`, `build/memory_view_documentation.log` and
-`build/memory_view_repo_guards.log`. These are Linux fixture checks, not a
-production SLO, MCU qualification, storage power-loss test or retrieval-quality
+`build/memory_view_repo_guards.log`. The [retrieval qualification receipt](verification/memory-views-20261120.json)
+pins implementation `90b05f8`, commands, artifact hashes and remaining requirements.
+These are Linux fixture checks, not a production SLO, MCU qualification, storage power-loss test or retrieval-quality
 benchmark. No external provider, paid scorer or 9B substitution was used.
 
 The [atomic-publication receipt](verification/memory-authority-20261120.json)
