@@ -6,6 +6,10 @@ This rolling summary covers current source. Dated deployment and earlier test
 results remain explicitly historical; the source tree does not imply that
 production services were restarted.
 
+The owner requested handoff and stop after the current frozen-screen milestone.
+The [handoff](../HANDOFF.md) records the stop boundary and remaining work; the
+broader Goal must not be marked complete or autonomously resumed.
+
 ## Implemented in this snapshot
 
 - **Requirement-driven broker goals:** explicit agent/deployment/session binding keeps the host ledger authoritative. Success requires evidence-bearing completed requirements, independent work continues past scoped blockers, changed revisions wake managed waits and unchanged progress stops. Single-use admission and exact control CAS prevent duplicate/stale launches. Immutable broker receipts recover the original persisted team run after response loss or restart, never by resending it. Unrecorded host outcomes remain pending, mismatches stop recovery and owner controls are preserved. UI setup, progress and receipt states are included. Managed requirement waits now use bounded server-notified long polling with ordinary reconciliation fallback, coalesced hints, explicit watch caps and cancellation. Every hint triggers fresh goal/ledger checks, not dispatch permission. This remains single-authority coordination, not a durable event stream or reconstruction of an unknown host outcome. See [goal ledger contract](GOAL_WORK_LEDGER.md).
@@ -23,6 +27,8 @@ production services were restarted.
 - **Explicit archive expiry (source only):** ordinary writes preserve original history. A positive `archive_max_days` cleanup policy captures active memory heads/literal revision references under the writer lock, protects matching originals, validates complete bounded inventories and persists metadata intents before unlink. Confirmed/uncertain/deferred results remain distinct through API/UI; zero preserves history. This covers memory-root retention, not external consumers without active pins, universal hard forgetting or forensic erasure. See [archive expiry](MEMORY.md#explicit-archive-expiry). Expiry-intent metadata compaction remains open.
 
 - **Bounded retrieval research (source only):** a foreground command shares captured scope/eligibility and a question-term FTS baseline across lexical, rerank and one-expansion arms. Pluggable typed scoring validates exact IDs and finite probabilities; source-grounded terms carry seed → term → resulting-evidence traces. Whole-record context limits, cancellation/source fences, conservative TypeSafe token/attempt/judgment caps and explicit lexical fallback are implemented. Prepared/per-arm receipts survive interruption and refuse paid replay into an existing output. Local/loopback tests qualify reliability; held-out retrieval and unchanged-4B supported-answer evaluation remain pending. Normal search/context defaults remain lexical. See [research contract](MEMORY.md#bounded-evidence-retrieval).
+
+- **Frozen screen and evidence metrics (source only):** 20 synthetic cases/labels were committed before measurement, with exact corpus/code/policy hashes. Offline validation checks source namespace, revision, span/JSON Pointer, original text and current/scope eligibility; incomplete and missing arms stay explicit. A recovered 26/28 records, with 90.625% macro recall and 14/16 complete evidence across 16 evidence-bearing cases. Four unanswerable cases are separate. A free cold/warm index helper checks identical evidence; no provider or answerer is called. B/C and final supported answers/citations remain pending. See [the screen runbook](MEMORY.md#frozen-20-question-screen-and-offline-metrics).
 
 - **Native remote workflow recovery (source only):** `agentd_call` saves a parent-owned admission before one remote POST, uses a database-scoped server-owned key and resumes only authenticated original-workflow reads. Exact identity/state checks pin the returned workflow; completed receipts save before parent settlement and replay without fresh network grants. Missing/corrupt outcomes remain scoped blockers; API/UI checks cannot replace the target, bypass budgets or revive owner stops. Direct and broker proxy fixtures use real temporary daemons and no provider. See [remote admission](WORKFLOW_EFFECTS.md#durable-remote-workflow-admission).
 
@@ -87,6 +93,12 @@ tools/verify_current_snapshot.sh --core-only
 The verifier configures **Debug** builds so assertion-based existing C tests execute. Do not interpret passing Release tests compiled with `NDEBUG` as equivalent coverage. Build artifacts live under ignored `build-snapshot/` and `build-snapshot-core/`; override `AGENT_SNAPSHOT_BUILD_DIR` if needed.
 
 ## Verification evidence
+
+The current frozen-screen increment passed its focused native/offline metric
+fixture in **0.74 seconds**, including seven Python checks and the real lexical
+executor. It adds exact-reference/denominator and cold/warm timing validation;
+new canonical qualification is pending for this increment. The following
+full-lane receipt identifies the preceding retrieval foundation.
 
 On 2026-11-21 (Asia/Shanghai), implementation **`f32f8c2`** passed **79
 native/CLI/API checks in 159.12 seconds**, all canonical Go packages (cached where

@@ -1,7 +1,39 @@
 # Agent-C developer handoff
 
-Updated 2026-11-21. Continue work in the existing checkout; this is a rolling
-project with no compatibility requirement.
+Updated 2026-11-21. The owner requested: **finish the current screening milestone,
+prepare this handoff and stop**. Do not continue autonomous implementation after
+delivery without a new owner instruction. The broader project is unfinished;
+the native Goal is to be paused, not marked complete. Production remains under
+its separate 2026-11-12 stop. This is a rolling project with no compatibility
+requirement.
+
+## Current handoff boundary
+
+The frozen synthetic screen is in
+[`tests/fixtures/memory_screen_v1`](tests/fixtures/memory_screen_v1/screen.json),
+committed as `c497a7f` before measurement. Retrieval/chunker defaults remain
+pinned to `f32f8c2`; no policy or corpus tuning followed the observations.
+The local A arm completed 20 cases: 26/28 evidence records, macro recall 90.625%
+and complete evidence 14/16 (87.5%). Four unanswerable cases have separate
+diagnostics. Exact original-reference/scope validation passed; B/C and final
+4B supported answers/citations are unmeasured. `q04` and `q18` retain the measured
+misses. See [the frozen-screen runbook](docs/MEMORY.md#frozen-20-question-screen-and-offline-metrics)
+for commands, definitions, timing scope and limits.
+
+Original local receipts are under ignored
+`build/memory-screen-v1-20261121/`: `admission.json`, `lexical.json`, `timing.json`,
+`metrics-final.json`, `resource.json` and `timing-resource.json`. Keep these
+originals when reproducing or auditing results. Public source/label/implementation
+hashes are in `freeze.json`; offline metric regeneration makes no provider call.
+The current snapshot owns final qualification and commit identities.
+
+The `typesafe-region-access` owner dependency remains operation-scoped. Its
+original canary is `build/retrieval-canary-20261121.json`: one discovery GET,
+HTTP 451, zero scoring POSTs. No new provider attempt was made for A. Supported
+provider access, original-receipt/budget reconciliation and actual scorer model
+verification are prerequisites to B/C. Do not bypass the region restriction,
+reset the paid admission or replace the existing 4B answerer. An access fix does
+not lift the owner's stop or authorize restarting production.
 
 ## Read the current source through its contracts
 
@@ -70,7 +102,7 @@ Panda publication remains excluded; do not recreate its Agent-C repository.
 Preserve private configuration, local host instructions, unrelated working edits
 and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedure.
 
-## Continue the next concrete requirement
+## Resume only after a new owner instruction
 
 1. Continue general correction/forget propagation after the [shared memory view contract](docs/MEMORY.md#current-views-and-original-evidence).
    Reuse the store, projector, exact original reader and revision checks. Durable
@@ -83,9 +115,10 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
    effect. Linux fixtures do not qualify Windows runtime or storage power loss.
 2. The [bounded retrieval foundation](docs/MEMORY.md#bounded-evidence-retrieval)
    now implements foreground lexical/rerank/one-expansion arms and a typed
-   TypeSafe adapter. Freeze the independent 20-question held-out corpus and
-   qualify actual evidence/answer improvement; local fixture success is not that
-   measurement. Preserve original prepared/completed research receipts and do
+   TypeSafe adapter. The independent 20-question corpus/labels and local A
+   evidence baseline are now frozen and measured. Qualify B/C and supported
+   4B answers/citations only after supported access and exact runtime/model pins;
+   A alone is not a promotion decision. Preserve original prepared/completed research receipts and do
    not replay an uncertain paid call into a new output path.
    The [architecture evaluation gate](docs/ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
    records the owner-authorized TypeSafe/Jev canary and 20-question pilot bounds.

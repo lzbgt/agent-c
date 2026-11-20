@@ -280,6 +280,22 @@ no critical currentness/scope/effect regression. The discovery-only canary above
 is not a scoring or pilot result. Foreground research authorization
 does not restart production Agent-C workloads.
 
+The independent synthetic 20-case input/label set is now frozen in commit
+`c497a7f`, with code/chunker/default-policy identities pinned to `f32f8c2` before
+measurement. The implementer authored this initial screen; it is not an
+independently adjudicated production benchmark. Local A recovered **26/28**
+required records across 16 evidence-bearing cases: **90.625% macro recall** and
+**14/16 complete evidence**. Four unanswerable cases are excluded from those
+denominators and reported separately. Original references, scope and eligibility
+validate with zero observed exposure; missing evidence in `q04` and `q18` remains
+recorded without policy/corpus changes. The offline evaluator checks forgeries,
+partial/missing arms and exact context byte accounting. A separate free helper
+measures cold-index/warm-index queries with identical evidence, leaving OS caches
+alone. See [the screen protocol and measurements](MEMORY.md#frozen-20-question-screen-and-offline-metrics).
+B/C, actual scorer identity and supported 4B answer/citation evaluation remain
+pending. No quality promotion follows from A. The owner requested handoff and
+stop after this milestone; independent work resumes only on a new instruction.
+
 ## UI direction
 
 The shipped shell uses a graphite/mint palette, grouped icon navigation, a real connection indicator, session context, a useful empty state, mobile horizontal navigation, keyboard focus and reduced-motion behavior. Advanced panels load on demand. Existing workflow, memory, voice, broker and approval capabilities remain reachable; there are no fabricated activity metrics.

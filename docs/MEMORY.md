@@ -405,6 +405,117 @@ existing output. They do not call a paid model, measure general retrieval/answer
 quality or qualify an MCU. For another scorer, implement `MemoryScorer`, obey its
 cancellation contract and repeat these failure cases before any quality study.
 
+#### Frozen 20-question screen and offline metrics
+
+The public synthetic inputs are in
+[`tests/fixtures/memory_screen_v1`](../tests/fixtures/memory_screen_v1/screen.json).
+Commit **`c497a7f`** froze all 20 questions, labels and source bytes before any
+retrieval run. The [freeze manifest](../tests/fixtures/memory_screen_v1/freeze.json)
+records full-file SHA-256 hashes and byte lengths, the initial **`f32f8c2`**
+retrieval/chunker/scorer source identities and fixed retrieval options. The
+three source files contain **8,659 bytes**, including 36 structured heads,
+one superseded version, Markdown observations and a separate-team source.
+Sixteen cases require 28 evidence records; four are explicitly unanswerable in
+their selected view/scope. Cases include two/three-record bridges, English and
+Chinese aliases, code identifiers, conflicts and historical exclusions.
+
+This is an implementer-authored initial screen with different entities from the
+unit/canary fixtures. It is not independently adjudicated or representative of
+production traffic. Do not change labels, corpus or retrieval options after
+observing these results. Use separate tuning data and a separately versioned
+study for justified future changes. The actual 4B runtime/weights identity still
+must be pinned before final-answer evaluation; no answerer is run here.
+
+The offline evaluator
+[`memory_screen_metrics.py`](../tools/memory_screen_metrics.py) verifies frozen
+bytes and the runtime corpus, physical source namespace, raw revision hash,
+evidence-ID hash and exact byte span/JSON Pointer. It checks addressed context
+text, case scope and current/historical eligibility before awarding credit.
+Generated structured JSON cannot masquerade as a raw current passage in this
+fixture. The validator is specific to this frozen corpus grammar; it is not the
+production memory authority, an execution attestation or a truth checker.
+JsonCpp's 17-significant-digit real-number encoding is reproduced for exact
+context byte accounting; Python's default shortest float encoding is different.
+
+Reproduce the **free local A arm** from the repository root, with the earlier
+host prerequisites and a new working directory:
+
+```sh
+cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
+cmake --build build-snapshot --target agent-memory-retrieve agent-memory-lexical-timing -j4
+python3 tools/memory_screen_metrics.py --corpus tests/fixtures/memory_screen_v1 --verify-freeze
+test ! -e build/memory-screen-repro-v1
+mkdir -p build/memory-screen-repro-v1/corpus/teams
+cp tests/fixtures/memory_screen_v1/MEMORY.md tests/fixtures/memory_screen_v1/STRUCTURED.md build/memory-screen-repro-v1/corpus/
+cp tests/fixtures/memory_screen_v1/teams/other.md build/memory-screen-repro-v1/corpus/teams/
+build-snapshot/agent-memory-retrieve --memory-root build/memory-screen-repro-v1/corpus \
+  --manifest tests/fixtures/memory_screen_v1/screen.json --lexical-only \
+  --output build/memory-screen-repro-v1/lexical.json
+build-snapshot/agent-memory-lexical-timing --memory-root build/memory-screen-repro-v1/corpus \
+  --manifest tests/fixtures/memory_screen_v1/screen.json \
+  --output build/memory-screen-repro-v1/timing.json
+python3 tools/memory_screen_metrics.py --corpus tests/fixtures/memory_screen_v1 \
+  --results build/memory-screen-repro-v1/lexical.json \
+  --runtime-root build/memory-screen-repro-v1/corpus \
+  --timings build/memory-screen-repro-v1/timing.json \
+  --output build/memory-screen-repro-v1/metrics.json
+```
+
+The timing command **purges registered disposable caches in its supplied memory
+root**. Use only the isolated copy above, never a live state directory. It
+captures each case once, clears that copy's retrieval index, measures a cold
+index query and repeats the same query with a warm index. Cold/warm evidence
+IDs must agree and must match the A receipt. Source capture is measured
+separately. The OS page cache is not flushed. These are index timings, not cold
+machine/model timings. Neither command loads a key or calls a provider/answerer.
+
+Pass requires both native commands to return 0, 20 completed lexical cases,
+`validation_passed=true`, no validation errors and zero provider usage. B/C must
+remain unobserved rather than receiving fabricated successes. A detected
+hash/namespace/span/scope mismatch earns no evidence credit; inconsistent case
+identity or corrupted corpus/receipt metadata fails validation. An existing
+native output is refused. Offline metrics can be regenerated from retained
+original receipts into a new metrics file; this does not repeat retrieval or a
+paid call. `--verify-freeze` additionally checks current implementation source
+hashes; a mismatch requires using the pinned source or an explicitly revised
+study, not editing the old freeze to hide the change.
+
+Metrics distinguish the following quantities:
+
+| Metric | Definition and denominator |
+| --- | --- |
+| Macro evidence recall | Mean recovered fraction over observed evidence-bearing cases. Unexecuted arms and unanswerable cases are excluded, with coverage printed separately. |
+| Complete-evidence success | Fraction of those cases with every required evidence record. This is not final-answer accuracy. |
+| Micro evidence counts | Total recovered required records / total required records in observed evidence-bearing cases. |
+| Unanswerable empty-context rate | Diagnostic over the four unanswerable cases; a nonempty context can still lack an answer. Only a separate answer test can establish correct abstention. |
+| Stale/scope exposure | Count of current-context records whose originals are historical/inactive/future or outside the case scope. Invalid references also fail validation. |
+| p50/p95 | Nearest-rank order statistic, `ceil(p*n)`, over at most 20 observations. Small-screen observations do not estimate a production SLO. |
+
+The first A run completed all 20 cases: **26/28** required records, **90.625%**
+macro evidence recall and **14/16 (87.5%)** complete evidence. Two of four
+unanswerable cases had empty context. Original-reference validation passed with
+zero observed stale/scope exposure. The missed evidence was one record in
+`q04` (the bilingual supplier bridge) and the record in `q18` (a natural Chinese
+question). The frozen pipeline and inputs were preserved after measurement.
+The first evaluator attempt rejected native context byte counts because of
+Python/JsonCpp float formatting; correcting the offline encoder validated the
+retained original A receipt without rerunning or tuning retrieval.
+
+The index-only timing run measured capture p50/p95 **2.712/2.948 ms**, cold index
+**14.771/16.361 ms**, and warm index **7.234/8.361 ms** for these 20 cases.
+The original A process took **1.245494 s** with observed child peak RSS
+**13,064 KiB**; timing took **0.607709 s**, **26,652 KiB**. These are Linux child
+process observations, including process startup, not aggregate RAM, full-corpus
+capacity, model/VRAM/MCU measurements or general performance guarantees.
+
+`memory_screen_metrics_tests` uses the real native A executor and timing helper,
+then checks controlled recall denominators, partial/missing arms, duplicate and
+coherently rehashed forged references, wrong scope, stale/future state, changed
+corpus, malformed JSON and timing/evidence disagreement. It never asserts that
+the observed recall number must remain a product target. The capped TypeSafe
+B/C arms and unchanged-4B supported answers/citations remain pending supported
+provider access. No retrieval quality promotion follows from A alone.
+
 ### Snapshot and cache boundaries
 
 A retrieval captures complete documents, applies eligibility, then verifies the
