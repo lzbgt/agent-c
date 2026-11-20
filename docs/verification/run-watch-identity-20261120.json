@@ -1,0 +1,73 @@
+{
+  "checked_at": "2026-11-20T10:09:15.467223+00:00",
+  "source_revision": "675cbab4404c724c96547207efe16d154469c38f",
+  "scope": "Checked local accepted-job authority, exact native retirement, reload dispatch guards and context-bound run-watch preference synchronization",
+  "source_qualification": "Canonical tests ran against the working source committed as this revision. Native executable version metadata may retain the pre-commit revision; SHA-256 identifies actual checked artifacts. No production release was installed.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "1.58.0"
+  },
+  "commands": [
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "tools/verify_repo_guards.sh",
+    "python3 build/check_watch_docs.py",
+    "git diff --check"
+  ],
+  "results": {
+    "canonical": "passed",
+    "native_cli_api_checks": 49,
+    "go_packages": "all passed; environment-gated external integrations remain separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "browser_checks": 141,
+    "added_run_watch_identity_cases": 11,
+    "repository_guards": "passed",
+    "changed_document_local_links_and_anchors": 108,
+    "git_diff_check": "passed"
+  },
+  "artifacts_sha256": {
+    "build-snapshot/agent": "ab1e8cb27a682a2555e2cec0ce5ed82ac0b2183d1c7b43caa2105c18c51adfa2",
+    "build-snapshot/agentd": "ba9797deb2c80ed4aeaef5c04b7782077eaf4cacf522e01834557a455a5b97aa",
+    "build-snapshot/agent_core_tests": "fcc33e1a484172c13453bc60e6a2286184fce63a6f24d6fa9d529db31f8d7391",
+    "build-snapshot/session_store_tests": "eec8387b74d19d2527a88687114e5cc3ab495a3791136c187ee90b5b154beb1b"
+  },
+  "ui_artifacts": {
+    "files": 18,
+    "tree_sha256": "567dad5557960375b49f0c4825458fd81bdc6ffc33939960ba3832bec8191865",
+    "tree_algorithm": "SHA-256 over sorted relative file path UTF-8 + NUL + raw file SHA-256 bytes + newline for each ui/dist file",
+    "index_html_sha256": "5572128237037268c68c9cc5abfad0f05a84b5698ee661ac14157493b9ec6538"
+  },
+  "local_logs": {
+    "build/watch_identity_snapshot_20261120.log": "ec6d1f8e1393dc812a3033a777bbae9c8d07db587972434fddf5952134158961",
+    "build/watch_identity_repo_guards.log": "0a3126fa6367cb177a4552c573840988ab8b0558f8af14153137e0bee5874ce3",
+    "build/watch_identity_documentation.log": "fad2bc36bdb5bb9ad332119ce16a0d0670cb0aae28a760d61a2110041571c86e"
+  },
+  "preserved_boundaries": [
+    "Production Agent-C daemon/gateway remained inactive and disabled; dedicated PostgreSQL remained exited restart=no. No cloud-model or real-provider probe.",
+    "GitHub only; Panda publication excluded.",
+    "Pre-existing docs/PUBLISHING.md, private .config/ and local AGENTS.md/PANDA_PUSH.md remain outside the source commit."
+  ],
+  "limitations": [
+    "Accepted pins never expire/evict, but only 64 entries fit. A 65th accepted scope fails closed and retains its submission receipt.",
+    "Retired markers outrank hints but expire after seven days or can be evicted under capacity pressure. Removed history cannot suppress stale remote hints; those hints permit only read-only native recovery.",
+    "Metadata synchronization is best effort. A timed-out/aborted preference POST can still commit remotely; this is not server write-order, cross-tab/device admission or content idempotency.",
+    "Native/browser fixtures use temporary daemons, loopback model stubs and intercepted transport; no hardware, physical input, live provider or deployment qualification is implied.",
+    "The separate core-only and repeated session-store lanes were not repeated for this client-only change; prior results remain in consolidation-20261120.json. Hosted platform CI and optional external PostgreSQL integration were not rerun."
+  ],
+  "documentation_check": {
+    "scope": [
+      "README.md",
+      "HANDOFF.md",
+      "TODOS.md",
+      "docs/ARCHITECTURE_CURRENT.md",
+      "docs/CHAT_SUBMISSION_FENCE.md",
+      "docs/CURRENT_SNAPSHOT.md",
+      "docs/WEBUI.md"
+    ],
+    "method": "Local helper verifies relative Markdown destinations and GitHub-style heading fragments after excluding fenced examples. The helper lives in ignored build/check_watch_docs.py; canonical fresh-clone verification remains tools/verify_current_snapshot.sh."
+  }
+}

@@ -92,7 +92,10 @@ responsive layout and voice fixtures remain in the same lane.
 
 Current local receipts: `build/watch_identity_snapshot_20261120.log`,
 `build/watch_identity_repo_guards.log` and
-`build/watch_identity_documentation.log`. The previous consolidation's separate
+`build/watch_identity_documentation.log`. The current
+[source qualification receipt](verification/run-watch-identity-20261120.json)
+pins implementation `675cbab`, its checked artifacts and the bounded contract.
+The previous consolidation's separate
 core-only Debug lane and five repeated session-store tests passed at source
 `a575cf4`; those extra lanes were not repeated for this client-only change.
 Their [dated qualification receipt](verification/consolidation-20261120.json)
