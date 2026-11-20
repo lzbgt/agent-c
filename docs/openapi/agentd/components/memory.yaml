@@ -37,6 +37,7 @@ MemoryRetentionEnforceRequest:
     dry_run: { type: boolean }
     daily_max_days: { type: integer, format: int32 }
     daily_max_bytes: { type: integer, format: int64 }
+    archive_max_days: { type: integer, minimum: 0, maximum: 36500, description: "Zero preserves history. Positive days explicitly expire unreferenced archived originals by filesystem age." }
     checkpoint_max_days: { type: integer, format: int32 }
     checkpoint_max_count: { type: integer, format: int32 }
     structured_deprecate_days: { type: integer, format: int32 }
@@ -75,6 +76,23 @@ MemoryRetentionEnforceResponse:
       type: array
       description: Bounded retirement receipts, including captured revision, original evidence and actual commit state. Preview receipts do not publish anything.
       items: { type: object, additionalProperties: true }
+    archive_expiry:
+      type: object
+      required: [schema, complete, selected, protected_count, expired, uncertain, deferred, expired_bytes, outcomes, errors]
+      properties:
+        schema: { type: string, enum: [agent.memory.archive_expiry.v1] }
+        complete: { type: boolean }
+        cancelled: { type: boolean }
+        budget_exhausted: { type: boolean }
+        selected: { type: integer, format: int64 }
+        protected_count: { type: integer, format: int64 }
+        expired: { type: integer, format: int64 }
+        uncertain: { type: integer, format: int64 }
+        deferred: { type: integer, format: int64 }
+        expired_bytes: { type: integer, format: int64 }
+        errors_dropped: { type: integer, format: int64 }
+        outcomes: { type: array, items: { type: object, additionalProperties: true } }
+        errors: { type: array, items: { type: string } }
     structured_write_response:
       type: object
       additionalProperties: true
@@ -83,6 +101,7 @@ MemoryRetentionEnforceResponse:
     dry_run: { type: boolean }
     daily_max_days: { type: integer, format: int32 }
     daily_max_bytes: { type: integer, format: int64 }
+    archive_max_days: { type: integer, minimum: 0, maximum: 36500, description: "Zero preserves history. Positive days explicitly expire unreferenced archived originals by filesystem age." }
     checkpoint_max_days: { type: integer, format: int32 }
     checkpoint_max_count: { type: integer, format: int32 }
     structured_deprecate_days: { type: integer, format: int32 }

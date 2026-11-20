@@ -85,13 +85,24 @@ int main() {
   {
     MemoryDocumentTransaction interrupted;
     check(interrupted.begin(root, "STRUCTURED.md", current.revision, {}, &error) == Status::Ok, error);
-    check(interrupted.commit("not published", &error, 100, [](auto phase) { if (phase == MemoryPublishPhase::BeforeReplace) throw 1; }) == Status::Unavailable, "pre-replace interruption changed authority");
+    check(interrupted.commit("not published", &error,
+                             [](auto phase) {
+                               if (phase == MemoryPublishPhase::BeforeReplace)
+                                 throw 1;
+                             }) == Status::Unavailable,
+          "pre-replace interruption changed authority");
     MemoryDocument unchanged;check(memory_document_read(root, "STRUCTURED.md", &unchanged, &error) == Status::Ok && unchanged.revision == current.revision, "failed update truncated current memory");
   }
   {
     MemoryDocumentTransaction interrupted;
     check(interrupted.begin(root, "STRUCTURED.md", current.revision, {}, &error) == Status::Ok, error);
-    check(interrupted.commit("published but interrupted", &error, 100, [](auto phase) { if (phase == MemoryPublishPhase::AfterReplace) throw 1; }) == Status::Uncertain && interrupted.published(), "post-replace interruption falsely reported failure without publication");
+    check(interrupted.commit("published but interrupted", &error,
+                             [](auto phase) {
+                               if (phase == MemoryPublishPhase::AfterReplace)
+                                 throw 1;
+                             }) == Status::Uncertain &&
+              interrupted.published(),
+          "post-replace interruption falsely reported failure without publication");
   }
 #if !defined(_WIN32)
   {
@@ -123,8 +134,13 @@ int main() {
     if (child == 0) {
       ::close(signal_pipe[0]);MemoryDocumentTransaction transaction;std::string why;
       if (transaction.begin(root, "STRUCTURED.md", current.revision, {}, &why) != Status::Ok) _exit(2);
-      transaction.commit("complete new bytes", &why, 100, [&](auto checkpoint) {
-        if (checkpoint == phase) { const char ready = 'R';::write(signal_pipe[1], &ready, 1);for (;;) ::pause(); }
+      transaction.commit("complete new bytes", &why, [&](auto checkpoint) {
+        if (checkpoint == phase) {
+          const char ready = 'R';
+          ::write(signal_pipe[1], &ready, 1);
+          for (;;)
+            ::pause();
+        }
       });
       _exit(3);
     }

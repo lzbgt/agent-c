@@ -93,6 +93,13 @@ export default function MemoryExplorerRetentionSection(props: MemoryExplorerRete
             />
           </div>
         </div>
+        <details className="tool-details">
+          <summary>Expire old history</summary>
+          <label className="tool-field">Unreferenced history age (days)
+            <input inputMode="numeric" value={props.retention.archiveMaxDays} onChange={(event) => props.retention.setArchiveMaxDays(event.target.value)} />
+          </label>
+          <p className="tool-muted">0 keeps history. Expiry permanently removes old originals that saved memory no longer references.</p>
+        </details>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={props.retention.dryRun} onChange={(e) => props.retention.setDryRun(e.target.checked)} />
           <span>Dry run (preview only)</span>
@@ -107,6 +114,7 @@ export default function MemoryExplorerRetentionSection(props: MemoryExplorerRete
         <div role="status" className="mt-3">
           <p>{!props.retention.result.complete ? "Cleanup incomplete · review the results" : props.retention.result.dry_run ? "Cleanup preview · nothing changed" : "Cleanup completed"}</p>
           <p className="tool-muted">Daily files: {(props.retention.result.dry_run ? props.retention.result.daily_selected_count : props.retention.result.daily_deleted_count) ?? 0} · Checkpoints: {(props.retention.result.dry_run ? props.retention.result.checkpoint_selected_count : props.retention.result.checkpoint_deleted_count) ?? 0} · Deprecated records: {(props.retention.result.dry_run ? props.retention.result.structured_selected_count : props.retention.result.structured_deprecated_count) ?? 0}</p>
+          {props.retention.result.archive_expiry ? <p className="tool-muted">History {props.retention.result.dry_run ? "selected" : "expired"}: {props.retention.result.dry_run ? props.retention.result.archive_expiry.selected : props.retention.result.archive_expiry.expired} · Protected: {props.retention.result.archive_expiry.protected_count}{props.retention.result.archive_expiry.uncertain ? ` · Unconfirmed: ${props.retention.result.archive_expiry.uncertain}` : ""}</p> : null}
           {props.retention.result.errors?.map((error, i) => <ToolError key={i} error={error} />)}
           <JsonDetails value={props.retention.result} />
         </div>

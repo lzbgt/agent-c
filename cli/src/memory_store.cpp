@@ -264,25 +264,6 @@ Status retire_head(const fs::path& root, const fs::path& path, const std::string
       "memory retirement interrupted; inspect its current revision and retained original", error);
   }
 }
-void prune(const fs::path& root, const std::string& name, const std::string& current, const std::string& previous, size_t keep) {
-  std::vector<fs::directory_entry> entries;std::error_code ec;
-  const auto path = archive(root, name, current).parent_path();
-  for (fs::directory_iterator it(path, ec); !ec && it != fs::directory_iterator(); ++it) {
-    if (it->is_regular_file(ec) && !it->is_symlink(ec) && it->path().extension() == ".blob") entries.push_back(*it);
-    if (entries.size() > keep + 64) break;
-  }
-  std::vector<std::pair<fs::file_time_type, fs::path>> order;
-  for (const auto& entry : entries) {
-    const auto time = entry.last_write_time(ec);order.emplace_back(ec ? fs::file_time_type::min() : time, entry.path());ec.clear();
-  }
-  std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.first != b.first ? a.first > b.first : a.second < b.second; });
-  size_t retained = 0;
-  const auto now = archive(root, name, current), before = previous == "absent" ? fs::path() : archive(root, name, previous);
-  for (const auto& entry : order) {
-    if (entry.second == now || entry.second == before) continue;
-    if (retained++ >= keep - 2) fs::remove(entry.second, ec);
-  }
-}
 } // namespace
 struct MemoryCacheLease::Impl {
   fs::path root;
@@ -435,8 +416,9 @@ MemoryStoreStatus MemoryDocumentTransaction::begin(const fs::path& input, const 
   impl_->compared = expected.has_value();
   impl_->begun = true;return Status::Ok;
 }
-MemoryStoreStatus MemoryDocumentTransaction::commit(const std::string& text, std::string* error, size_t keep,
-    const std::function<void(MemoryPublishPhase)>& observer) {
+MemoryStoreStatus
+MemoryDocumentTransaction::commit(const std::string &text, std::string *error,
+                                  const std::function<void(MemoryPublishPhase)> &observer) {
   if (!impl_->begun || text.size() > kMemoryDocumentMaxBytes) return fail(Status::Invalid, "memory transaction unavailable or output exceeds 8 MiB", error);
   impl_->begun = false; // one publication attempt per captured snapshot
   if (impl_->cancelled && impl_->cancelled()) return fail(Status::Cancelled, "memory update cancelled before publication", error);
@@ -467,8 +449,6 @@ MemoryStoreStatus MemoryDocumentTransaction::commit(const std::string& text, std
     impl_->published = true;impl_->document = std::move(next);
     if (observer) observer(MemoryPublishPhase::AfterReplace);
     if (!sync_directory(impl_->path.parent_path())) return fail(Status::Uncertain, "memory replaced but directory durability is unconfirmed; inspect its revision before further writes", error);
-    try { prune(impl_->root, impl_->name, impl_->document.revision, previous, std::clamp<size_t>(keep, 2, 1000)); }
-    catch (...) { /* retention maintenance cannot revoke a durable publication */ }
     return Status::Ok;
   } catch (...) {
     return fail(impl_->published ? Status::Uncertain : Status::Unavailable, "memory publication interrupted; inspect its current revision", error);
@@ -494,5 +474,61 @@ MemoryStoreStatus MemoryDocumentTransaction::retire_auxiliary(const std::string&
   if(current.revision!=expected_revision)return fail(Status::Conflict,"auxiliary revision changed before retirement",error);
   bool removed=false;
   return retire_head(root,path,name,current,removed,impl_->cancelled,error,{});
+}
+MemoryStoreStatus MemoryDocumentTransaction::expire_revision_blob(
+    const std::string &relative, const std::string &expected, const std::string &intent,
+    bool *removed, std::string *error, const std::function<void(MemoryPublishPhase)> &observer) {
+  if (error)
+    error->clear();
+  if (removed)
+    *removed = false;
+  const auto path = fs::path(relative);
+  const auto bucket = path.parent_path().filename().string();
+  const auto leaf = path.filename().string();
+  const auto hex = [](const std::string &text) {
+    return text.size() == 64 && text.find_first_not_of("0123456789abcdef") == std::string::npos;
+  };
+  fs::path checked_root, checked_path;
+  if (!removed || !impl_->begun || !impl_->locked || intent.empty() || intent.size() > 16384 ||
+      !memory_revision_valid(expected) || expected == "absent" || !hex(bucket) ||
+      leaf != expected.substr(7) + ".blob" ||
+      path.parent_path().parent_path() != fs::path(".revisions") ||
+      !resolve(impl_->root, relative, &checked_root, &checked_path))
+    return fail(Status::Invalid, "invalid archive expiry; original preserved", error);
+  try {
+    if (impl_->cancelled && impl_->cancelled())
+      return fail(Status::Cancelled, "archive expiry cancelled", error);
+    MemoryDocument original;
+    auto status = read(checked_path, source_id(impl_->root, relative), &original, error);
+    if (status != Status::Ok)
+      return status;
+    if (!original.exists || original.revision != expected)
+      return fail(Status::Conflict, "archive changed or corrupt; original not expired", error);
+    const auto receipt = ".expiry/" + bucket + "/" + expected.substr(7) + ".json";
+    if (!memory_document_publish_immutable(impl_->root, receipt, intent, error))
+      return fail(Status::Unavailable, "cannot retain expiry intent; original preserved", error);
+    if (observer)
+      observer(MemoryPublishPhase::Archived);
+    if (impl_->cancelled && impl_->cancelled())
+      return fail(Status::Cancelled, "archive expiry cancelled after intent", error);
+    MemoryDocument final;
+    status = read(checked_path, original.source_id, &final, error);
+    if (status != Status::Ok || final.revision != expected)
+      return fail(Status::Conflict, "archive changed after intent; original preserved", error);
+    if (observer)
+      observer(MemoryPublishPhase::BeforeReplace);
+    std::error_code ec;
+    if (!fs::remove(checked_path, ec) || ec)
+      return fail(Status::Unavailable, "cannot expire original archive", error);
+    *removed = true;
+    if (observer)
+      observer(MemoryPublishPhase::AfterReplace);
+    if (!sync_directory(checked_path.parent_path()))
+      return fail(Status::Uncertain, "archive unlinked; directory durability unconfirmed", error);
+    return Status::Ok;
+  } catch (...) {
+    return fail(*removed ? Status::Uncertain : Status::Unavailable,
+                "archive expiry interrupted; inspect original and retained intent", error);
+  }
 }
 } // namespace host_tools_internal

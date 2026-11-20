@@ -206,6 +206,15 @@ void handle_memory_retention_endpoint(
   if (args.isMember("dry_run") && args["dry_run"].isBool()) {
     policy.dry_run = args["dry_run"].asBool();
   }
+  if (args.isMember("archive_max_days")) {
+    if (!args["archive_max_days"].isInt() || args["archive_max_days"].asInt() < 0 ||
+        args["archive_max_days"].asInt() > 36500) {
+      resp->status = 400;
+      resp->body = json_error_body("archive_max_days must be an integer in 0..36500");
+      return;
+    }
+    policy.archive_max_days = args["archive_max_days"].asInt();
+  }
   if (args.isMember("daily_max_days") && (args["daily_max_days"].isInt() || args["daily_max_days"].isUInt())) {
     const int n = args["daily_max_days"].isInt() ? args["daily_max_days"].asInt() : (int)args["daily_max_days"].asUInt();
     policy.daily_max_days = std::max(0, n);

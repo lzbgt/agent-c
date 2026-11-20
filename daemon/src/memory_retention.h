@@ -20,6 +20,7 @@ struct MemoryRetentionPolicy {
   std::function<void(host_tools_internal::MemoryPublishPhase)> publish_observer;
   int daily_max_days = 0;
   int64_t daily_max_bytes = 0;
+  int archive_max_days = 0; // explicit unreferenced history expiry; zero preserves history
   int checkpoint_max_days = 0;
   int checkpoint_max_count = 0;
   int structured_deprecate_days = 0;
@@ -32,7 +33,7 @@ struct MemoryRetentionStats {
   int64_t daily_selected_count = 0, checkpoint_selected_count = 0,
           structured_selected_count = 0;
   int64_t deferred_count = 0, errors_dropped = 0;
-  Json::Value outcomes{Json::arrayValue}, structured_write_response;
+  Json::Value outcomes{Json::arrayValue}, structured_write_response, archive_expiry;
   int64_t daily_bytes_before = 0;
   int64_t daily_bytes_after = 0, daily_bytes_projected = 0;
   int64_t daily_deleted_count = 0;

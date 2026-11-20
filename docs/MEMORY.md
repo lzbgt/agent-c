@@ -87,11 +87,11 @@ For a changed document, the writer performs these operations in order:
    and sync the parent directory. On POSIX, new private directories use mode
    `0700`; staged files and snapshots use `0600`, which the replaced head inherits.
    Existing directory permissions are not rewritten.
-4. Prune old originals as bounded, best-effort maintenance. `keep_checkpoints`
-   also selects the revision window, clamped to 2–1,000, default 100. Current and
-   immediately previous content are protected. A maintenance failure cannot
-   revoke a durable commit. Recognized abandoned staging files for the same
-   destination are cleaned under the lock, with a 4,096-entry scan bound.
+4. Keep original revisions. Ordinary writes no longer prune history by a hidden
+   count/mtime policy. `keep_checkpoints` controls active checkpoint files only.
+   Explicit [archive expiry](#explicit-archive-expiry) is a separate bounded
+   operation. Recognized abandoned staging files for the same destination are
+   still cleaned under the lock, with a 4,096-entry scan bound.
 
 `source_id` is `memory:` plus SHA-256 of the canonical memory-root path, a newline
 and the supplied relative path. It identifies this configured physical scope;
@@ -649,8 +649,7 @@ execute, reconcile or replay an external workflow effect.
 
 The active byte/count bounds exclude revision archives. **They are not a total
 disk quota or hard-forget guarantee.** Retirement leaves retained originals in
-place. Existing revision pruning on later writes and future bounded archive
-expiry/forget policy determine long-term availability. Inspect archive growth
+place. Explicit archive expiry below determines when unreferenced originals can be removed. Inspect archive growth
 before enabling a schedule on a storage-constrained host. No schedule or
 production workload is enabled by this source change.
 
@@ -782,6 +781,142 @@ are synthetic Linux checks; Windows runtime, storage power loss, total disk
 reclamation, MCU execution and live-provider behavior are unqualified. On another
 host, repeat these checks and qualify its filesystem's unlink/fsync semantics.
 
+## Explicit archive expiry
+
+Archive expiry removes old original **payloads**, so it is separate from retiring
+an active head. `archive_max_days=0` is the default and preserves history.
+Ordinary writes no longer perform the previous silent count-based pruning. That
+old implementation selected from a partial directory scan; the replacement first
+captures a complete bounded inventory or stops without expiry. This source change
+was exercised only in temporary fixtures. Production remains stopped.
+
+### Scope and policy
+
+[`memory_archives.cpp`](../cli/src/memory_archives.cpp) reuses the root writer lock
+and atomic metadata publication from [`memory_store.cpp`](../cli/src/memory_store.cpp).
+It is a host implementation; the portable C kernel is unchanged. The existing
+`POST /api/v1/memory/retention/enforce` accepts `archive_max_days` in 0–36,500.
+For example, these are illustrative request bodies, not instructions to restart
+or call the stopped production service:
+
+```json
+{"dry_run":true,"archive_max_days":30}
+```
+
+Inspect `archive_expiry.selected`, `protected_count`, `outcomes`, `errors` and
+`complete` first. To apply an authorized policy on a running development/deployed
+instance, submit the same positive age with `dry_run=false`. This permanently
+unlinks qualifying originals. A preview is a plan, not a saved execution grant;
+apply recaptures state under the writer lock. Saving required references first is
+essential. The WebUI keeps this option under **Retention & cleanup → Expire old
+history**, starts at zero and retains the normal preview default.
+
+Age is measured from each archive file's filesystem modification time:
+
+`eligible age = mtime < capture_time − archive_max_days × 86,400 seconds`.
+
+Equality is retained. This is archive age, not publication/event/observation time.
+No count quota or physical free-space guarantee is implied. The explicit API
+request and native policy select expiry; the existing periodic retention engine
+does not enable this new policy automatically. Its ordinary retirement schedule
+and production configuration are unchanged.
+
+### Protect evidence before expiry
+
+Under the same root lock used by cooperating writers, apply captures active
+public `.md`, `.markdown` and `.json` documents beneath the memory root. It excludes
+hidden cache/lock/expiry/revision directories. The exact hash of each active head
+is protected. Every literal lowercase `sha256:<64 hexadecimal digits>` in those
+active documents also protects that content revision across archive buckets.
+This deliberately conservative rule covers structured versions, promotion
+receipts, recap manifests and raw Markdown references without guessing their
+schema or interpreting their claims. Identical content at another path may keep
+an otherwise unused archive protected. A combined retirement/expiry pass also protects every original revision named in its own newly issued retirement receipts, so the response cannot immediately invalidate those references. Native callers can supply the same bounded pass-local receipt pins; longer retention still requires an active document reference. `protected_count` counts archive objects
+protected this way, including objects too recent for the age cutoff.
+
+External databases, workflow receipts or files outside this memory root are not
+inventoried by this policy. Before enabling expiry, preserve any original they
+still require by putting its complete immutable evidence reference (or its exact
+`sha256:` revision) in an active memory document through the normal tools. For
+example, append `Required original: sha256:<actual-original-hash>` to a maintained
+memory note. This is a policy pin, not proof of the referenced claim. Removing the
+last active reference permits age-based expiry immediately if the archive is already old; it never executes or
+replays the action that produced the evidence. This is scoped archival retention,
+not a universal cross-system forget or privacy-erasure guarantee.
+
+### Publication and recovery
+
+1. Capture active references and a complete archive inventory. Select only regular
+   `.revisions/<path-sha256>/<raw-content-sha256>.blob` files. Symlinks are not
+   followed. Unknown filenames are preserved. Sort eligible unprotected objects
+   by oldest mtime, then relative path.
+2. Before each selected unlink, read exact bytes and compare SHA-256 with the
+   filename/revision. Corrupt, changed or missing objects are preserved/reported;
+   another eligible original can still progress. The file-size and hash both
+   refer to the complete original, not a snippet.
+3. Atomically publish a small immutable intent at
+   `.expiry/<path-sha256>/<raw-content-sha256>.json`. It contains schema
+   `agent.memory.expiry_intent.v1`, `state=prepared`, archive path, revision,
+   byte count and the policy age. It contains no original payload. A missing,
+   malformed, oversized or conflicting intent prevents that object's unlink.
+4. Recheck the original revision, check cancellation, unlink and sync its parent
+   directory. The original head and its primary transaction receipt are not
+   changed. Existing intents can be reused only after fresh eligibility checks;
+   an intent never authorizes deleting a now-protected or recent archive.
+5. Check `commit_state`: `expired` means unlink and directory sync completed;
+   `expired_unconfirmed` means removal occurred but durability/acknowledgment was
+   interrupted; `not_expired` preserves the error; `preview` performs no write.
+   `expired`/`expired_bytes` count confirmed removals only. These byte counts do
+   not measure reclaimed physical disk space. `uncertain` and `deferred` remain
+   separate, and HTTP 409 preserves the complete cleanup report.
+
+An intent proves preparation, **not completion**. After a crash, inspect the
+original path/hash and its intent. If it still exists, a fresh bounded pass can
+re-evaluate the policy. If absent, do not count another expiry or substitute the
+current source. Exact evidence reads fail explicitly when the original is no
+longer retained. No model/provider or external effect is replayed by expiry.
+Intents remain as metadata even after payload removal. Storage power-loss behavior
+and forensic SSD/snapshot/backup erasure are not qualified by these host tests.
+
+### Operating bounds and verification
+
+Each active-document, archive and intent inventory is capped at 4,096 directory
+entries. Active document traversal is capped at depth 8; each source is at most
+8 MiB. Captured active bytes plus selected original bytes are capped at 64 MiB,
+with at most 20,000 protected revisions. A hard capture-cap or enumeration failure
+stops before unlink. Invalid archive objects remain preserved/reported while independent objects may progress. Revision rechecks add reads; this is a capture-memory bound,
+not a total I/O byte ceiling. A cooperative 10-second deadline, the existing
+five-second writer-lock limit and cancellation cover the pass; kernel I/O can
+outlast a cooperative deadline.
+
+At most 128 originals are attempted, sharing the existing retention pass's
+128-file mutation allowance. Remaining selected work is explicit. At most 2,048
+new/existing intent records are admitted per root; existing matching intents can
+still reconcile at that cap. The metadata inventory has its own 4,096-entry cap.
+Errors are capped at 50, with `errors_dropped` for overflow; each attempted object retains its own outcome. Capacity exhaustion preserves originals and returns incomplete; intent/consumed
+promotion receipt compaction remains future work. This policy does not delete
+metadata history to make room automatically.
+
+From the repository root on the assertion-enabled Linux host build:
+
+```sh
+cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
+cmake --build build-snapshot --target memory_archive_tests memory_store_tests agentd -j4
+ctest --test-dir build-snapshot -R '^(memory_archive_tests|memory_store_tests|memory_retrieval_smoke|agentd_memory_retention_smoke)$' --output-on-failure
+```
+
+Pass requires all selected checks to succeed. The fixtures cover preservation
+across 130 ordinary corrections, active raw/recap references, explicit expiry,
+metadata intents, corruption, linked paths, changed captured heads, cancellation,
+operation/byte/inventory/intent caps and readonly policy. Competing processes and
+actual `SIGKILL` before/after unlink verify local restart visibility and no duplicate
+expiry count. The temporary daemon tests preview/apply, strict age types and
+unchanged live content without another provider call. Browser checks cover the
+closed zero-default control, confirmed versus uncertain counts and collapsed
+receipts on a 320-pixel screen. These checks do not qualify MCU execution, Windows
+runtime, all external consumers, irreversible storage sanitization or retrieval
+quality.
+
 ## Memory recaps (LLM summaries)
 
 Recaps are generated interpretations, not authoritative facts. `POST
@@ -857,7 +992,7 @@ Listing captures at most 128 artifacts, 64 MiB total and 4,096 directory entries
 Manifest inputs share the retrieval limit of 128 source paths; each manifest
 permits 20,000 unique evidence references. Exceeding a hard capture cap fails
 explicitly. Output `limit` is 1–200 and excess eligible rows set `incomplete`.
-Archive expiry remains necessary for long-lived large installations. `kind=daily`
+Recap head retirement remains necessary before the 128-artifact list cap; archive payload expiry does not reduce the active recap inventory. `kind=daily`
 is an optional list filter; absent kind is treated as `manual`.
 
 Scheduled recaps are disabled by default. Existing daily/weekly interval and
@@ -936,7 +1071,7 @@ Durable workflows can query memory without invoking an LLM:
 The current view removes explicitly stale candidates and invalidated marker-derived
 heads; durable promotion receipts prevent old observations from undoing later
 corrections. This does not finish general correction/forget semantics. Daily/checkpoint retirement now retains originals under the declared
-[retirement policy](#source-retirement-and-retention); archive expiry remains open. Registered cache purge and recap provenance checks are implemented above. Generic conclusion validation, bounded hard forgetting and
+[retirement policy](#source-retirement-and-retention); explicit archive expiry is described above. Registered cache purge and recap provenance checks are implemented above. Generic conclusion validation, bounded hard forgetting and
 provenance-preserving handoffs remain open. Invalidating evidence must never
 resubmit a completed external effect. Keep these requirements ahead of the paid
 retrieval-quality pilot; do not interpret green eligibility tests as completion

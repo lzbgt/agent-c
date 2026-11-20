@@ -233,3 +233,41 @@ test("summary history identifies changed sources and incomplete generation never
   expect(submissions).toBe(1);
   expect(calls.filter((call) => call.method === "POST")).toEqual([]);
 });
+
+test("history expiry stays opt-in and shows confirmed versus uncertain results", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await mockMemory(page);
+  let submissions = 0;
+  let payload: any;
+  await page.route("**/api/v1/memory/retention/enforce", async (route) => {
+    submissions++; payload = route.request().postDataJSON();
+    return route.fulfill({ status: 409, json: {
+      schema: "agent.memory.retention.v2", ok: false, complete: false, generated_utc_ms: 100,
+      ...payload, daily_deleted_count: 0, checkpoint_deleted_count: 0, structured_deprecated_count: 0,
+      archive_expiry: { schema: "agent.memory.archive_expiry.v1", complete: false,
+        selected: 3, protected_count: 2, expired: 1, uncertain: 1, deferred: 1, expired_bytes: 100,
+        outcomes: [{ intent_path: "private-expiry-intent-marker" }], errors: ["Expiry stopped before the next original."] },
+      errors: ["Expiry stopped before the next original."],
+    } });
+  });
+  await page.getByTestId("memory-advanced").locator(":scope > summary").click();
+  await page.getByText("Retention & cleanup", { exact: true }).click();
+  const section = page.getByTestId("memory-retention-section");
+  const age = section.getByLabel("Unreferenced history age (days)", { exact: true });
+  await expect(age).toBeHidden();
+  await section.getByText("Expire old history", { exact: true }).click();
+  await expect(age).toHaveValue("0");
+  await age.fill("1.5");
+  await section.getByRole("button", { name: "Preview cleanup", exact: true }).click();
+  await expect(section.getByText("History age must be a whole number from 0 to 36500.", { exact: true })).toBeVisible();
+  expect(submissions).toBe(0);
+  await age.fill("30");
+  await section.getByLabel("Dry run (preview only)", { exact: true }).uncheck();
+  await section.getByRole("button", { name: "Apply cleanup", exact: true }).click();
+  await expect(section.getByText("History expired: 1 · Protected: 2 · Unconfirmed: 1", { exact: true })).toBeVisible();
+  await expect(section.getByText("Cleanup incomplete · review the results", { exact: true })).toBeVisible();
+  expect(payload.archive_max_days).toBe(30);
+  expect(submissions).toBe(1);
+  expect(await section.innerText()).not.toContain("private-expiry-intent-marker");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

@@ -158,10 +158,34 @@ with tempfile.TemporaryDirectory(prefix="memory-retrieval-") as temporary:
             assert len(list((memory / "recaps").glob("recap_*.json"))) == 5
 
 
+            # Expiry is explicit and never calls the provider. Existing recap
+            # input revisions pin the old structured originals automatically.
+            archived = b"unreferenced historical fixture\n"
+            revision = "sha256:" + hashlib.sha256(archived).hexdigest()
+            bucket = hashlib.sha256(b"ARCHIVE.md").hexdigest()
+            blob = memory / ".revisions" / bucket / (revision[7:] + ".blob")
+            blob.parent.mkdir(parents=True, exist_ok=True)
+            blob.write_bytes(archived)
+            os.utime(blob, (time.time()-30*86400, time.time()-30*86400))
+            (memory / "ARCHIVE.md").write_text("current archive fixture\n")
+            preview = call("/api/v1/memory/retention/enforce", {"dry_run":True,"archive_max_days":7})
+            assert preview["complete"] and preview["archive_expiry"]["selected"] == 1 and blob.exists(), preview
+            applied = call("/api/v1/memory/retention/enforce", {"dry_run":False,"archive_max_days":7})
+            assert applied["complete"] and applied["archive_expiry"]["expired"] == 1 and not blob.exists(), applied
+            outcome = applied["archive_expiry"]["outcomes"][0]
+            intent = json.loads((memory / outcome["intent_path"]).read_text())
+            assert intent["revision"] == revision and intent["bytes"] == len(archived), intent
+            assert (memory / "ARCHIVE.md").read_text() == "current archive fixture\n" and len(calls) == 5
+            try:
+                call("/api/v1/memory/retention/enforce", {"archive_max_days":"7"})
+                raise AssertionError("invalid expiry age type accepted")
+            except urllib.error.HTTPError as error:
+                assert error.code == 400
+
         finally:
             daemon.terminate()
             daemon.wait(timeout=8)
             provider.shutdown()
             provider.server_close()
             thread.join(timeout=2)
-print("Real API current/historical authority and recap correction fence passed; five local synthetic calls, no replay")
+print("Real API current/historical authority, recap correction and explicit archive expiry passed; five local synthetic calls, no replay")

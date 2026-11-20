@@ -286,6 +286,13 @@ export const MemoryRetentionRespSchema: z.ZodType<MemoryRetentionResp> = z
     ok: z.boolean(),
     schema: z.literal("agent.memory.retention.v2"),
     complete: z.boolean(),
+    archive_max_days: z.number().int().min(0).max(36500).optional(),
+    archive_expiry: z.object({
+      schema: z.literal("agent.memory.archive_expiry.v1"), complete: z.boolean(),
+      selected: z.number().int().nonnegative(), protected_count: z.number().int().nonnegative(),
+      expired: z.number().int().nonnegative(), uncertain: z.number().int().nonnegative(), deferred: z.number().int().nonnegative(),
+      expired_bytes: z.number().int().nonnegative(), outcomes: z.array(UnknownRecordSchema), errors: z.array(z.string()),
+    }).passthrough().optional(),
     cancelled: z.boolean().optional(),
     budget_exhausted: z.boolean().optional(),
     deferred_count: z.number().int().nonnegative().optional(),

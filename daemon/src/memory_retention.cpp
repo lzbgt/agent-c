@@ -1,4 +1,5 @@
 #include "memory_retention.h"
+#include "memory_archives.h"
 #include "memory_store.h"
 #include "memory_structured.h"
 #include "memory_view.h"
@@ -344,10 +345,10 @@ bool memory_retention_enforce(const DaemonConfig &cfg,
     maybe_push_error(stats, "state_dir not configured");
     return finish();
   }
-  if (policy.daily_max_days < 0 || policy.daily_max_days > 36500 ||
-      policy.daily_max_bytes < 0 || policy.checkpoint_max_days < 0 ||
-      policy.checkpoint_max_count < 0 || policy.structured_deprecate_days < 0 ||
-      policy.structured_deprecate_max_entries < 0) {
+  if (policy.daily_max_days < 0 || policy.daily_max_days > 36500 || policy.daily_max_bytes < 0 ||
+      policy.archive_max_days < 0 || policy.archive_max_days > 36500 ||
+      policy.checkpoint_max_days < 0 || policy.checkpoint_max_count < 0 ||
+      policy.structured_deprecate_days < 0 || policy.structured_deprecate_max_entries < 0) {
     maybe_push_error(stats, "invalid retention policy; daily_max_days must be "
                             "0..36500 and limits nonnegative");
     return finish();
@@ -635,6 +636,27 @@ bool memory_retention_enforce(const DaemonConfig &cfg,
       }
     }
   }
+  if (policy.archive_max_days > 0) {
+    MemoryArchivePolicy archive;
+    archive.max_age_days = policy.archive_max_days;
+    archive.dry_run = policy.dry_run;
+    archive.max_expirations = kRetentionMutations - std::min(attempted, kRetentionMutations);
+    archive.cancelled = policy.cancelled;
+    archive.deadline = deadline;
+    archive.observer = policy.publish_observer;
+    archive.before_expire = policy.before_retire;
+    for (const auto &outcome : stats->outcomes)
+      if (outcome["expected_revision"].isString())
+        archive.protected_revisions.insert(outcome["expected_revision"].asString());
+    MemoryArchiveReport result;
+    std::string why;
+    if (!memory_archive_expire(root, archive, &result, &why))
+      maybe_push_error(stats, why);
+    stats->archive_expiry = memory_archive_report(result);
+    stats->deferred_count += result.deferred;
+    stats->cancelled = stats->cancelled || result.cancelled;
+    stats->budget_exhausted = stats->budget_exhausted || result.budget_exhausted;
+  }
   return finish();
 }
 
@@ -653,6 +675,9 @@ Json::Value memory_retention_report(const MemoryRetentionPolicy &policy,
   out["dry_run"] = policy.dry_run;
   out["daily_max_days"] = policy.daily_max_days;
   out["daily_max_bytes"] = Json::Int64(policy.daily_max_bytes);
+  out["archive_max_days"] = policy.archive_max_days;
+  if (!stats.archive_expiry.isNull())
+    out["archive_expiry"] = stats.archive_expiry;
   out["checkpoint_max_days"] = policy.checkpoint_max_days;
   out["checkpoint_max_count"] = policy.checkpoint_max_count;
   out["structured_deprecate_days"] = policy.structured_deprecate_days;

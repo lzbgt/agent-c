@@ -1210,8 +1210,9 @@ static agent_status_t memory_put_impl(HostToolCtx* ctx, const char* arguments_js
     wrote_file = true;
   }
   if (wrote_file) {
-    const auto keep = args["keep_checkpoints"].isInt() ? std::clamp(args["keep_checkpoints"].asInt(), 2, 1000) : 100;
-    store_status = transaction.commit(out_text, &store_error, size_t(keep), promotion ? promotion->publish_observer : std::function<void(MemoryPublishPhase)>{});
+    store_status = transaction.commit(out_text, &store_error,
+                                      promotion ? promotion->publish_observer
+                                                : std::function<void(MemoryPublishPhase)>{});
     if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_put", store_status, store_error, transaction.document(), expected_revision);
   }
 

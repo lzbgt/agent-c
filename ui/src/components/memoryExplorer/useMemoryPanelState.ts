@@ -220,6 +220,8 @@ export type MemoryRecapsState = {
 };
 
 export type MemoryRetentionState = {
+  archiveMaxDays: string;
+  setArchiveMaxDays: React.Dispatch<React.SetStateAction<string>>;
   dryRun: boolean;
   setDryRun: React.Dispatch<React.SetStateAction<boolean>>;
   dailyMaxDays: string;
@@ -339,6 +341,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [recapSummaryModel, setRecapSummaryModel] = React.useState("");
 
   const [retentionDryRun, setRetentionDryRun] = React.useState(true);
+  const [retentionArchiveMaxDays, setRetentionArchiveMaxDays] = React.useState("0");
   const [retentionDailyMaxDays, setRetentionDailyMaxDays] = React.useState("30");
   const [retentionDailyMaxBytes, setRetentionDailyMaxBytes] = React.useState("0");
   const [retentionCheckpointMaxDays, setRetentionCheckpointMaxDays] = React.useState("30");
@@ -711,6 +714,13 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       return;
     }
     const payload: MemoryRetentionEnforceRequest = { dry_run: retentionDryRun };
+    const archiveText = retentionArchiveMaxDays.trim();
+    const archiveDays = archiveText ? Number(archiveText) : 0;
+    if ((archiveText && !/^\d+$/.test(archiveText)) || !Number.isSafeInteger(archiveDays) || archiveDays > 36500) {
+      setRetentionError("History age must be a whole number from 0 to 36500.");
+      return;
+    }
+    payload.archive_max_days = archiveDays;
     const dailyDays = parseOptionalInt(retentionDailyMaxDays, 0);
     if (dailyDays !== undefined) payload.daily_max_days = dailyDays;
     const dailyBytes = parseOptionalInt(retentionDailyMaxBytes, 0);
@@ -737,6 +747,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
     args.auth,
     base,
     canQuery,
+    retentionArchiveMaxDays,
     retentionCheckpointMaxCount,
     retentionCheckpointMaxDays,
     retentionDailyMaxBytes,
@@ -931,6 +942,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       },
     },
     retention: {
+      archiveMaxDays: retentionArchiveMaxDays, setArchiveMaxDays: setRetentionArchiveMaxDays,
       dryRun: retentionDryRun,
       setDryRun: setRetentionDryRun,
       dailyMaxDays: retentionDailyMaxDays,

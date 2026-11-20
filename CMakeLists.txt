@@ -217,6 +217,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/memory_store.cpp
     cli/src/memory_view.cpp
     cli/src/memory_promotion.cpp
+    cli/src/memory_archives.cpp
     cli/src/memory_derivation.cpp
     cli/src/tool_loop.cpp
     cli/src/web_evidence_guard.cpp
@@ -1932,6 +1933,10 @@ endif()
 
 if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   if(TARGET agentd_lib)
+    add_executable(memory_archive_tests tests/test_memory_archives.cpp)
+    target_link_libraries(memory_archive_tests PRIVATE agentd_lib)
+    add_test(NAME memory_archive_tests COMMAND memory_archive_tests)
+    set_tests_properties(memory_archive_tests PROPERTIES TIMEOUT 30)
     add_executable(memory_cache_tests tests/test_memory_cache.cpp)
     target_link_libraries(memory_cache_tests PRIVATE agentd_lib)
     add_test(NAME memory_cache_tests COMMAND memory_cache_tests)

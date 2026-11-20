@@ -8452,6 +8452,8 @@ export interface components {
             daily_max_days?: number;
             /** Format: int64 */
             daily_max_bytes?: number;
+            /** @description Zero preserves history. Positive days explicitly expire unreferenced archived originals by filesystem age. */
+            archive_max_days?: number;
             /** Format: int32 */
             checkpoint_max_days?: number;
             /** Format: int32 */
@@ -8484,6 +8486,31 @@ export interface components {
             outcomes?: {
                 [key: string]: unknown;
             }[];
+            archive_expiry?: {
+                /** @enum {string} */
+                schema: "agent.memory.archive_expiry.v1";
+                complete: boolean;
+                cancelled?: boolean;
+                budget_exhausted?: boolean;
+                /** Format: int64 */
+                selected: number;
+                /** Format: int64 */
+                protected_count: number;
+                /** Format: int64 */
+                expired: number;
+                /** Format: int64 */
+                uncertain: number;
+                /** Format: int64 */
+                deferred: number;
+                /** Format: int64 */
+                expired_bytes: number;
+                /** Format: int64 */
+                errors_dropped?: number;
+                outcomes: {
+                    [key: string]: unknown;
+                }[];
+                errors: string[];
+            };
             structured_write_response?: {
                 [key: string]: unknown;
             };
@@ -8495,6 +8522,8 @@ export interface components {
             daily_max_days: number;
             /** Format: int64 */
             daily_max_bytes: number;
+            /** @description Zero preserves history. Positive days explicitly expire unreferenced archived originals by filesystem age. */
+            archive_max_days?: number;
             /** Format: int32 */
             checkpoint_max_days: number;
             /** Format: int32 */
