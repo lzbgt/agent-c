@@ -589,7 +589,7 @@ not establish a production race.
 
 ### Policy and data flow
 
-Daily selection uses valid `YYYY-MM-DD.md` calendar dates. `daily_max_days=N`
+Daily selection uses valid 1970–9999 `YYYY-MM-DD.md` calendar dates. `daily_max_days=N`
 keeps names at or after the local date obtained by subtracting `24*(N-1)` hours
 from the current time. `daily_max_bytes` selects additional oldest logs until
 captured active bytes fit the bound. This is a filename-based operational rule,

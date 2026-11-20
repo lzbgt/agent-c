@@ -1,0 +1,163 @@
+{
+  "checked_at": "2026-11-20T13:37:50.556142+00:00",
+  "source_revision": "a419c20dd7e94076513fb3ea22bffea6ab6c1857",
+  "scope": "Revision-checked retirement of active daily/checkpoint heads with retained original evidence, accurate partial/uncertain reports, cancellation/budgets and UI preservation; auxiliary pruning shares the root writer lock",
+  "source_qualification": "Complete canonical lane on the committed source. Source only; production remains stopped. Retired originals are retained, so active byte/count policy is not a total disk quota or hard-forget result.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "jsoncpp": "1.9.8",
+    "sqlite3": "3.54.0",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "Version 1.58.0"
+  },
+  "commands": [
+    "cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON",
+    "cmake --build build-snapshot --target memory_retirement_tests memory_store_tests memory_promotion_tests memory_view_tests host_toolset_tests agentd -j4",
+    "ctest --test-dir build-snapshot -R '^(memory_retirement_tests|memory_store_tests|memory_promotion_tests|memory_view_tests|host_toolset_tests|agentd_memory_retention_smoke|agentd_memory_consolidate_smoke)$' --output-on-failure",
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "native_cli_api_checks": 74,
+    "browser_checks": 142,
+    "go_packages": "all canonical packages passed; environment-gated integrations remain separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "external_provider_calls": 0,
+    "paid_scorer_calls": 0,
+    "retrieval_quality_evaluation": "not run; TypeSafe credential discovery/use, official endpoint/auth/model/pricing verification and capped cloud pilot remain pending",
+    "changed_document_links_and_anchors": 147
+  },
+  "local_fixture_timings_seconds": {
+    "canonical_native": 121.84,
+    "memory_retirement_tests": 1.47,
+    "focused_subset": 5.04
+  },
+  "one_synthetic_unit_resource_run": {
+    "elapsed_seconds": 1.756592,
+    "max_rss_kib": 101032,
+    "measurement": "Linux child getrusage peak RSS, one synthetic retirement fixture run including 128-operation and 64-MiB capture caps, real competing processes and SIGKILL; not a production/MCU/model resource limit or SLO"
+  },
+  "resource_measurement_reproduction": [
+    "python3",
+    "-c",
+    "import resource,subprocess,time; start=time.perf_counter(); subprocess.run([\"build-snapshot/memory_retirement_tests\"],check=True); print({\"elapsed_seconds\":time.perf_counter()-start,\"max_rss_kib\":resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss})"
+  ],
+  "coverage": [
+    "Unpromoted whole-source and empty-file original evidence remains retrievable after active-head retirement; preview creates no writer/archival state.",
+    "Checkpoint count retains newest strict UTC timestamps; malformed calendar values remain preserved and reported.",
+    "Concurrent revision changes and original archive failures are not counted as successful removals; independent eligible sources proceed.",
+    "Actual SIGKILL before/after unlink and a competing process replacement qualify restart/CAS boundaries; uncertain removal retains a distinct receipt.",
+    "Cancellation before capture and after archival, read-only policy, 128-operation cap, 64-MiB capture cap and explicit pending work are exercised.",
+    "Links and non-normalized paths fail source validation; current warm FTS/fallback excludes retired marker support while historical originals remain identified.",
+    "Auxiliary pruning reuses the held root lock, preserves primary publication identity and retains retired originals; real memory_put pruning is exercised.",
+    "Temporary-daemon HTTP receipts match exact fixture SHA-256/span/archive bytes; an HTTP 409 preserves successful independent retirement after archive failure.",
+    "Browser incomplete-cleanup response retains confirmed counts/errors, collapses raw receipts, preserves responsive default views and makes no automatic repost."
+  ],
+  "synthetic_regression_evidence": {
+    "description": "Prior local retention directly removed an unpromoted source; the initial fixture failed exact original retrieval. The final fixture is expanded. No production loss or race is inferred.",
+    "receipt": {
+      "path": "build/memory_retirement_reproduction.log",
+      "bytes": 374,
+      "sha256": "30297d57584fb7473abd2f58536975d9eeb96cbfd22b3077e0ce6f0220ff758b"
+    }
+  },
+  "operating_bounds": {
+    "captured_sources": 4096,
+    "captured_raw_bytes": 67108864,
+    "per_source_raw_bytes": 8388608,
+    "directory_entries_per_walk": 4096,
+    "file_retirements_per_pass": 128,
+    "structured_batch_max_entries": 200,
+    "cooperative_deadline_seconds": 10,
+    "root_lock_wait_max_seconds": 5,
+    "auxiliary_prune_max_files": 50,
+    "auxiliary_prune_cooperative_seconds": 2,
+    "note": "Filesystem syscalls can outlast cooperative deadlines. Archive bytes are outside active-file quotas."
+  },
+  "production_hold": "Read-only check: daemon/gateway inactive and disabled; dedicated PostgreSQL exited restart=no. No production restart/deploy, local 4B change or 9B substitution.",
+  "artifacts": {
+    "build-snapshot/agent": {
+      "bytes": 12107640,
+      "sha256": "762a6f26acb128b748d92d78276e79e8c0e66a3e0b1a64f44d37965f6f72ceb6"
+    },
+    "build-snapshot/agentd": {
+      "bytes": 66323480,
+      "sha256": "deba02719b994f8078635b8575999801f9affd4093343bb6576a905c715eda73"
+    },
+    "build-snapshot/memory_retirement_tests": {
+      "bytes": 10301448,
+      "sha256": "cdb9d821c043bbe86c4a3b137d7aa6e2ffcda64d4c079732022d3d704033bf49"
+    },
+    "build-snapshot/memory_store_tests": {
+      "bytes": 1093488,
+      "sha256": "b9a27eb709a6df773de914197f472b22207a0c68694c2947f67899809ab30d74"
+    },
+    "build-snapshot/memory_promotion_tests": {
+      "bytes": 12020160,
+      "sha256": "e8a1de0af601cecb3544f748d3c2a35ed0817f83f950c564f3375bc04af71ab2"
+    },
+    "build-snapshot/memory_view_tests": {
+      "bytes": 9907872,
+      "sha256": "5c07b425504cb5220ffaa24017feaaf46672fa185b5213cbc391c2fe169be756"
+    },
+    "build-snapshot/host_toolset_tests": {
+      "bytes": 9438024,
+      "sha256": "1d47b8ceb2eb88541781ec5dcdfa93c7e6a3b4897db9dc6cf2ca643c296eab58"
+    },
+    "ui/dist/index.html": {
+      "bytes": 1073,
+      "sha256": "5be7b8dd8940acc672b7eb0e0419218b8aa6442330e2ef50e9bd12299fd7e46e"
+    }
+  },
+  "local_receipts": [
+    {
+      "path": "build/memory_retirement_snapshot_final.log",
+      "bytes": 41385,
+      "sha256": "410dd322147d9732443c9731d28015de6fe75a928deb5c0466477bbb53e126ce"
+    },
+    {
+      "path": "build/memory_retirement_focused_final.log",
+      "bytes": 892,
+      "sha256": "5f23a3bae58dc9b42b670fffabfa2f304403ebdeead968e410ed689d36cf3548"
+    },
+    {
+      "path": "build/memory_retirement_browser_focused.log",
+      "bytes": 2326,
+      "sha256": "6b41c0cbe84a1dffbd4609018b3989994ee51cabc1a9178c4374bd5d7a9b213b"
+    },
+    {
+      "path": "build/memory_retirement_resources.log",
+      "bytes": 381,
+      "sha256": "f80d4a6ae7e547a6e9b6bb052d5cd61523c68ea3b960322f49b14577a4a5cc3a"
+    },
+    {
+      "path": "build/memory_retirement_documentation.log",
+      "bytes": 58,
+      "sha256": "c94430e2dfd5c1828151fd1b0f72e4f6a3b0e85da12fdbd79d4743a5b8821ea8"
+    },
+    {
+      "path": "build/memory_retirement_repo_guards.log",
+      "bytes": 4091,
+      "sha256": "5b2123857d56b9e8288b1c834505a96db21aad9233a75fa6f25435d90f601f27"
+    },
+    {
+      "path": "build/memory_retirement_production_hold.log",
+      "bytes": 107,
+      "sha256": "15536a6f77a628448222d102c3a1dc468a3064b966560634f30f89068022b206"
+    }
+  ],
+  "remaining_limits": [
+    "Synthetic Linux host/browser qualification; no production, Windows runtime, storage power-loss, MCU, live-provider or retrieval-quality qualification.",
+    "Privileged out-of-protocol writes/directory replacement remain outside cooperating-writer guarantees. Versioned evidence identifies bytes, not truth or indefinite retention.",
+    "Physical cache erasure, bounded archive expiry/forgetting, consumed-receipt compaction, generic recap/conclusion validation at every consumer and effect-preserving handoffs remain open.",
+    "Shared structured parser normalization still supplies update-time fallback for missing/ill-typed observation metadata; normalized timestamps are not verified event dates.",
+    "Invalidation and retirement do not authorize replaying external effects. No cloud scoring or production workload is enabled."
+  ]
+}

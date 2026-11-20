@@ -82,49 +82,53 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-On 2026-11-20, the final canonical run passed **73 native/CLI/API checks in
-115.45 seconds**, **141 browser checks**, all Go broker/gateway packages,
-generated OpenAPI/type checks and the UI production build. Repository guards,
-changed-document links/anchors and whitespace checks passed. One synthetic
-full-capacity/crash-fixture run took 0.880688 seconds with a Linux child peak RSS
-of 69,508 KiB; this single run is not an operating resource limit or latency SLO.
+On 2026-11-20, the final canonical run on retirement implementation **`a419c20`**
+passed **74 native/CLI/API checks in 121.84 seconds**, **142 browser checks**,
+all Go broker/gateway packages, generated OpenAPI/type checks and the UI production
+build. The [retirement receipt](verification/memory-retirement-20261120.json) pins
+source, commands, artifact/log SHA-256 hashes, timing and limits. Repository guards,
+changed-document links/anchors and whitespace checks passed. One synthetic fixture
+run including capture/operation caps and process-crash cases took
+1.756592 seconds with a Linux child peak RSS of 101,032 KiB. This single run is not
+a production, model or MCU resource limit or latency SLO.
 
-The latest promotion qualification pins implementation **`9ec12c7`** in the
-[promotion receipt](verification/memory-promotion-20261120.json). The canonical
-lane result, artifact hashes, fixture timing and exact limitations are recorded
-there. Reproduce with the command above or the narrower
-[promotion checks](MEMORY.md#durable-marker-promotion).
+`memory_retirement_tests` covers retrievable unpromoted/empty-file originals,
+newest checkpoint selection, stale revisions, archive failures, independent partial
+results, uncertain removal, cancellation before/after archival, read-only policy,
+128-operation and 64-MiB capture caps, strict dates, links/normalized paths,
+current cache eligibility and auxiliary root-lock reuse. Competing real processes
+and actual `SIGKILL` before/after unlink exercise restart boundaries. Real
+`memory_put` pruning retains checkpoint originals and the primary receipt. The
+HTTP fixture verifies archive bytes against returned SHA-256/span references and
+an incomplete result with an independent success. The browser case retains
+confirmed counts/errors and leaves receipts collapsed without an automatic repost.
+These are synthetic checks; no production loss or race is inferred.
 
-`memory_promotion_tests` covers correction preservation beyond the 20-version
-window, moved markers, per-record revision conflicts, competing observations,
-independent partial commits, consumed rejections, malformed input/ledger,
-byte/key/receipt caps, cancellation, read-only policy, failed original retention,
-notes conversion and actual process death immediately before/after atomic
-replacement. It also checks source edit/deletion propagation through current
-FTS/fallback, structured/API/native queries, salience and all context modes,
-with retrievable originals. The temporary-daemon HTTP fixture checks that an
-incomplete response retains the commit report and independently accepted fact.
-These are synthetic host fixtures, not evidence of a production race.
+Reproduce with the canonical command above or the
+[retirement subset](MEMORY.md#bounds-pruning-and-verification). Ignored receipts
+are `build/memory_retirement_snapshot_final.log`,
+`build/memory_retirement_focused_final.log`,
+`build/memory_retirement_browser_focused.log`,
+`build/memory_retirement_resources.log`,
+`build/memory_retirement_documentation.log` and
+`build/memory_retirement_repo_guards.log`. The checked-in receipt preserves their
+identity and the tested artifact hashes. No external provider, paid scorer,
+TypeSafe key use, 9B substitution or production deployment is part of this lane.
+Production remains stopped. Linux host/browser qualification does not prove
+Windows runtime, storage power loss, total disk reclamation, MCU execution,
+live-provider behavior or retrieval quality.
 
-Ignored local receipts are `build/memory_promotion_snapshot_final.log`,
-`build/memory_promotion_focused.log`, `build/memory_promotion_resources.log`,
-`build/memory_promotion_documentation.log` and
-`build/memory_promotion_repo_guards.log`. The checked-in receipt preserves their
-hashes and the tested binary identities. No external provider, paid scorer,
-TypeSafe key use or 9B substitution is part of this milestone. Production remains
-stopped. Linux host/browser tests do not qualify MCU execution, Windows runtime,
-filesystem power loss, live-provider behavior, retrieval quality or a production SLO.
-
-Prior [retrieval](verification/memory-views-20261120.json) and
-[atomic-publication](verification/memory-authority-20261120.json) receipts pin
-`90b05f8` and `f355886`; their failure cases remain in the canonical lane.
+Prior [promotion](verification/memory-promotion-20261120.json),
+[retrieval](verification/memory-views-20261120.json) and
+[publication](verification/memory-authority-20261120.json) receipts pin `9ec12c7`,
+`90b05f8` and `f355886`; their failure cases remain in the current canonical lane.
 The [remote-workflow](verification/remote-workflow-20261120.json),
 [watch-state](verification/run-watch-identity-20261120.json) and earlier
 [consolidation](verification/consolidation-20261120.json) receipts identify their
 own qualified revisions. The separate core-only lane and repeated session-store
-qualification in the consolidation receipt were not repeated here; the core
-test remains in the current host lane. Older artifact hashes never qualify new
-binaries. Earlier narratives are retained in
+qualification in the consolidation receipt were not repeated here; the core test
+remains in the host lane. Older artifact hashes never qualify new binaries.
+Earlier narratives are retained in
 [the qualification archive](reports/qualification-through-20261118.md).
 
 ## Boundaries and next work
@@ -133,8 +137,8 @@ Durable promotion provenance now prevents old `@mem` observations from undoing
 later corrections and invalidates marker-derived heads when support changes.
 Revision-checked retirement now preserves originals and excludes removed support
 from current retrieval. The next authority gates are persistent cache erasure,
-archive expiry, recap/conclusion validation at every consumer and bounded forgetting. Provenance
-compaction must preserve consumed observations and the declared history policy.
+archive expiry, recap/conclusion validation at every consumer and bounded forgetting.
+Provenance compaction must preserve consumed observations and the declared history policy.
 Invalidation must never replay a completed external effect. Declared currentness
 and exact references do not prove arbitrary prose or generated claims true.
 A bounded lexical multi-hop experiment follows the authority gates, with the
