@@ -1,0 +1,81 @@
+{
+  "checked_at": "2026-11-20T10:42:13.538830+00:00",
+  "source_revision": "05384a3ce993bdeb2de4300252f16566665ba7de",
+  "scope": "Durable native remote-workflow admission, database-scoped correlation, original-outcome lookup and saved terminal replay",
+  "source_qualification": "Complete canonical native/browser/Go/OpenAPI/UI lane passed. Final empty-session type and zero-I/O failure-accounting review was followed by rebuilding agentd/controller and repeating the same complete 53-native selection. Artifact hashes identify tested binaries; version metadata may retain the pre-commit revision. No production deployment.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "1.58.0"
+  },
+  "commands": [
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "cmake --build build-snapshot --target agentd workflow_agentd_call_effect_tests -j4",
+    "ctest --test-dir build-snapshot -R '^(agent_core_tests|work_ledger_tests|workflow_agentd_call_effect_tests|agentd_workflow_agentd_call_smoke|agentd_workflow_agentd_call_broker_proxy_smoke|agentd_workflow_agentd_call_recovery_smoke|agentd_session_work_smoke|agentd_session_message_pages_smoke|agentd_job_trace_lookup_smoke|agentd_job_durable_admission_smoke|agentd_job_durable_admission_stream_smoke|agentd_job_durable_cancel_smoke|workflow_durable_delay_smoke|session_store_tests|workflow_sop_tests|workflow_sop_registry_tests|agentd_workflow_sop_registry_smoke|workflow_decision_tests|agentd_workflow_decision_smoke|workflow_signal_tests|agentd_workflow_signal_smoke|workflow_condition_tests|agentd_workflow_condition_smoke|workflow_model_effect_tests|workflow_model_transcript_tests|workflow_model_session_tests|agentd_workflow_model_effect_recovery_smoke|agentd_workflow_delegate_smoke|agentd_workflow_delegate_attempt_caps_smoke|agentd_workflow_delegate_continuation_smoke|agentd_workflow_token_grant_smoke|workflow_host_tool_tests|agentd_workflow_host_tool_recovery_smoke|workflow_effect_tests|workflow_budget_tests|workflow_budget_parallel_smoke|device_assignment_tests|agent_db_tests|agentd_workflow_effect_recovery_smoke|host_session_prompts_tests|host_toolset_tests|docs_sanity_tests|cli_harness_smoke|cli_machine_output_smoke|agentd_workflow_sop_smoke|agent_local_stream_tool_loop_smoke|agent_local_stream_assistant_smoke|agentd_workflow_idempotency_smoke|agentd_workflow_replay_spec_smoke|agentd_workflow_http_json_smoke|agentd_workflow_http_allowlist_smoke|agentd_workflow_http_dns_pin_smoke|agentd_workflow_http_deny_cidr_smoke)$' --output-on-failure",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "canonical_native_cli_api_checks": 53,
+    "final_native_repeat": "passed",
+    "browser_checks": 141,
+    "go_packages": "all passed; optional environment-gated integrations remain separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "live_provider_calls": 0,
+    "retrieval_evaluation": "not run; TypeSafe endpoint/auth/model/pricing and frozen pilot remain pending",
+    "changed_document_links_and_anchors": 111
+  },
+  "local_fixture_timings_seconds": {
+    "final_53_native_suite": 95.43,
+    "workflow_agentd_call_effect_tests": 0.06,
+    "agentd_workflow_agentd_call_recovery_smoke": 5.13
+  },
+  "artifacts_sha256": {
+    "build-snapshot/agentd": "524094fe49042d6b20d0718e1c925dd42bfeb83a2d3493433351758cbda323f7",
+    "build-snapshot/workflow_agentd_call_effect_tests": "711eb9da60be7b0bb110f1aad1dfa3b393e694a47741bca4c1c0b388589a47dc",
+    "build-snapshot/agent_core_tests": "fcc33e1a484172c13453bc60e6a2286184fce63a6f24d6fa9d529db31f8d7391",
+    "build-snapshot/workflow_model_transcript_tests": "3340bf73d6c30135104269e15aa31d2eb84f795c5504a645b7f6b869bc358ebc"
+  },
+  "ui_artifacts": {
+    "files": 18,
+    "tree_sha256": "a35ba8dd99e999a28497dbe4ce8ce32e7047cb11c8b92a203062dc22b4e184ca",
+    "tree_algorithm": "SHA-256 over sorted relative file path UTF-8 + NUL + raw file SHA-256 bytes + newline for each ui/dist file",
+    "index_html_sha256": "1f1d54776c3552e36325c57954e554f939516c295a53c42e06d6958d4fc0bae3"
+  },
+  "local_logs": {
+    "build/remote_workflow_snapshot_complete_20261120.log": "2a20e4299fb0108771128d01f76c613dc0ee33284748b1d8f3a0e25e843511bb",
+    "build/remote_workflow_native_final.log": "3a553c0822d57bfe0d9783c1edc38cdc9a8f957ce2cf4b8427647f3ffa547058",
+    "build/remote_workflow_focused_final.log": "3b04f19b3a1998a27e5eb3a3b80ae7967dd9d2cc8602f142e05cfc7042aacc8b",
+    "build/remote_workflow_browser.log": "8a46f8a3bee998fdcf30f2425b936fa7232ec7e1857fd227ab08277f599de0a8",
+    "build/remote_workflow_repo_guards.log": "b14209c963235a3d424d7a6709b9c479807238711d2bf4fe6ebd0b21af28d3a9",
+    "build/remote_workflow_documentation.log": "724e38c936d3b8e11fbc9dea0c21161a2fe2859f1077a3eaa191fd38f06f0025"
+  },
+  "verified_failure_boundaries": [
+    "Local admission before one submit; lost reply and parent death before/after remote identity capture never repeat POST or the actual file-appending child host action.",
+    "Atomic first remote-ID checkpoint; key/trace/session/status/ID mismatch, oversized/corrupt receipts, stale runners and persistence errors remain guarded.",
+    "Terminal receipt survives parent task-settlement failure and recovers without another network grant.",
+    "Three bounded unavailable reads, scoped unresolved state and one-worker independent branch progress; original-target reconciliation rejects alternate URL.",
+    "Owner cancellation/deadline fences remain authoritative; parent cancellation does not assert downstream undo or stop.",
+    "Separate parent database namespaces prevent chosen workflow/task-name collisions. Existing model transcript CAS remains covered."
+  ],
+  "preserved_boundaries": [
+    "Existing 4B answerer unchanged; no 9B substitution, TypeSafe call or live provider probe.",
+    "Production Agent-C daemon/gateway inactive and disabled; dedicated PostgreSQL exited restart=no.",
+    "Only GitHub publication authorized; Panda excluded. Private .config/, local AGENTS.md/PANDA_PUSH.md and pre-existing docs/PUBLISHING.md remain outside the implementation commit."
+  ],
+  "limitations": [
+    "This protects native remote submission correlation, not distributed exactly-once physical/business execution, multi-authority goal handoff or deleted destination history.",
+    "Preserve the original database namespace and admission history. Previously attempted tasks without admission records fail closed; no migration/adoption from old result text.",
+    "Bounded synchronous polling still occupies one worker until its attempt yields; general worker-free remote waiting is not claimed.",
+    "Future native reads consume current network/step grants. Reconciliation grants no additional budget and cannot revive owner stops.",
+    "Linux fixtures do not establish MCU, physical-device, live-provider, hosted CI or optional external PostgreSQL integration qualification.",
+    "Memory authority/eligibility/evidence refactoring and bounded multi-hop retrieval quality measurement are the next owner priorities, not implemented by this remote-call milestone."
+  ],
+  "documentation_check": "Local ignored build/check_watch_docs.py checked relative Markdown paths and GitHub-style fragments in README, HANDOFF, TODOS, current architecture/snapshot, WORKFLOWS and WORKFLOW_EFFECTS. Canonical fresh-checkout verification remains tools/verify_current_snapshot.sh."
+}

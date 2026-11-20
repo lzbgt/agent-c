@@ -98,7 +98,10 @@ production recovery SLO. Local receipts:
 `build/remote_workflow_snapshot_complete_20261120.log`,
 `build/remote_workflow_native_final.log`,
 `build/remote_workflow_repo_guards.log` and
-`build/remote_workflow_documentation.log`.
+`build/remote_workflow_documentation.log`. The
+[source qualification receipt](verification/remote-workflow-20261120.json)
+pins implementation `05384a3`, checked artifacts, measured fixture timings and
+remaining boundaries.
 
 The previous [watch-state receipt](verification/run-watch-identity-20261120.json)
 pins `675cbab` and its 49-native/141-browser result, including the eleven combined
