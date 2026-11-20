@@ -25,16 +25,17 @@ import {
   type MemorySalienceResp,
 } from "./schemas/memory";
 
-async function memoryResponse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+async function memoryResponse<T>(response: Response, schema: z.ZodType<T>, acceptFailureReport = false): Promise<T> {
   const body: unknown = await response.json().catch(() => {
     throw new Error(`Memory request failed (HTTP ${response.status}).`);
   });
   const record = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const parsed = schema.safeParse(body);
+  if (acceptFailureReport && parsed.success && record.ok === false) return parsed.data;
   if (!response.ok || record.ok === false) {
     const message = typeof record.error === "string" ? record.error : typeof record.err === "string" ? record.err : "Memory request failed.";
     throw new Error(message);
   }
-  const parsed = schema.safeParse(body);
   if (!parsed.success) throw new Error("Memory service returned an unexpected response.");
   return parsed.data;
 }
@@ -199,7 +200,7 @@ export async function apiMemoryRetentionEnforce(
     `${base}/api/v1/memory/retention/enforce`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
   );
-  return memoryResponse(r, MemoryRetentionRespSchema);
+  return memoryResponse(r, MemoryRetentionRespSchema, true);
 }
 
 export async function apiMemoryRecapsList(

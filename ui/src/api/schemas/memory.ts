@@ -288,6 +288,14 @@ export const MemorySalienceRespSchema: z.ZodType<MemorySalienceResp> = z
 export const MemoryRetentionRespSchema: z.ZodType<MemoryRetentionResp> = z
   .object({
     ok: z.boolean(),
+    schema: z.literal("agent.memory.retention.v2"),
+    complete: z.boolean(),
+    cancelled: z.boolean().optional(),
+    budget_exhausted: z.boolean().optional(),
+    deferred_count: z.number().int().nonnegative().optional(),
+    daily_selected_count: z.number().int().nonnegative().optional(),
+    checkpoint_selected_count: z.number().int().nonnegative().optional(),
+    structured_selected_count: z.number().int().nonnegative().optional(),
     generated_utc_ms: z.number().int().nonnegative(),
     dry_run: z.boolean(),
     daily_max_days: z.number().int().nonnegative(),
@@ -309,7 +317,8 @@ export const MemoryRetentionRespSchema: z.ZodType<MemoryRetentionResp> = z
     err: z.string().optional(),
     code: z.string().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((report) => report.ok === report.complete, "Inconsistent retention completion state.");
 
 export const MemoryRecapsListRespSchema: z.ZodType<MemoryRecapsListResp> = z
   .object({

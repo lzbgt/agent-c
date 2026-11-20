@@ -43,6 +43,14 @@ class MemoryDocumentTransaction {
     const std::optional<std::string>& expected_revision, std::function<bool()> cancelled, std::string* error);
   MemoryStoreStatus commit(const std::string& text, std::string* error, size_t keep_revisions = 100,
     const std::function<void(MemoryPublishPhase)>& observer = {});
+  // Retain the original, atomically unlink the active head and sync its directory.
+  // Requires begin() with an explicit expected revision; no hard forgetting.
+  MemoryStoreStatus retire(std::string* error,
+    const std::function<void(MemoryPublishPhase)>& observer = {});
+  // Retire a different source using this transaction's already-held root lock.
+  // Auxiliary maintenance never changes the primary publication receipt.
+  MemoryStoreStatus retire_auxiliary(const std::string& relative_path,
+    const std::string& expected_revision, std::string* error);
   const MemoryDocument& document() const;
   bool published() const;
  private:

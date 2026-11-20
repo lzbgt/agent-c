@@ -264,51 +264,9 @@ void handle_memory_retention_endpoint(
 
   MemoryRetentionStats stats;
   std::string err;
-  if (!memory_retention_enforce(cfg, policy, &stats, &err)) {
-    resp->status = 500;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["error"] = err.empty() ? "memory retention failed" : err;
-    resp->body = json_stringify(o);
-    return;
-  }
-
-  Json::Value o(Json::objectValue);
-  o["ok"] = true;
-  o["generated_utc_ms"] = (Json::Int64)stats.generated_utc_ms;
-  o["dry_run"] = policy.dry_run;
-  o["daily_max_days"] = policy.daily_max_days;
-  o["daily_max_bytes"] = (Json::Int64)policy.daily_max_bytes;
-  o["checkpoint_max_days"] = policy.checkpoint_max_days;
-  o["checkpoint_max_count"] = policy.checkpoint_max_count;
-  o["structured_deprecate_days"] = policy.structured_deprecate_days;
-  o["structured_deprecate_max_entries"] = policy.structured_deprecate_max_entries;
-  o["daily_deleted_count"] = (Json::Int64)stats.daily_deleted_count;
-  o["checkpoint_deleted_count"] = (Json::Int64)stats.checkpoint_deleted_count;
-  o["structured_deprecated_count"] = (Json::Int64)stats.structured_deprecated_count;
-  o["daily_bytes_before"] = (Json::Int64)stats.daily_bytes_before;
-  o["daily_bytes_after"] = (Json::Int64)stats.daily_bytes_after;
-  if (!stats.daily_deleted.empty()) {
-    Json::Value arr(Json::arrayValue);
-    for (const auto& p : stats.daily_deleted) arr.append(p);
-    o["daily_deleted"] = arr;
-  }
-  if (!stats.checkpoint_deleted.empty()) {
-    Json::Value arr(Json::arrayValue);
-    for (const auto& p : stats.checkpoint_deleted) arr.append(p);
-    o["checkpoint_deleted"] = arr;
-  }
-  if (!stats.structured_deprecated_keys.empty()) {
-    Json::Value arr(Json::arrayValue);
-    for (const auto& k : stats.structured_deprecated_keys) arr.append(k);
-    o["structured_deprecated_keys"] = arr;
-  }
-  if (!stats.errors.empty()) {
-    Json::Value arr(Json::arrayValue);
-    for (const auto& e : stats.errors) arr.append(e);
-    o["errors"] = arr;
-  }
-  resp->body = json_stringify(o);
+  const bool complete = memory_retention_enforce(cfg, policy, &stats, &err);
+  resp->status = complete ? 200 : 409;
+  resp->body = json_stringify(memory_retention_report(policy, stats, err));
 }
 
 void handle_memory_checkpoints_endpoint(

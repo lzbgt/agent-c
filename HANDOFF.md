@@ -76,8 +76,9 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
    Reuse the store, projector, exact original reader and revision checks. Durable
    [marker promotion](docs/MEMORY.md#durable-marker-promotion) now atomically records
    consumed observations and fences replacements; current consumers invalidate
-   changed marker derivations. Next close retained-source retirement,
-   persistent cache erasure and recap/conclusion validation at every consumer.
+   changed marker derivations. [Source retirement](docs/MEMORY.md#source-retirement-and-retention)
+   now preserves originals through revision-checked removal and bounded partial
+   outcomes. Next close archive expiry, persistent cache erasure and recap/conclusion validation at every consumer.
    Keep history/forget policy explicit; invalidation never replays an external
    effect. Linux fixtures do not qualify Windows runtime or storage power loss.
 2. Then implement bounded lexical multi-hop retrieval with a pluggable scorer.

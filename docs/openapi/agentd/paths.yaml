@@ -1817,7 +1817,7 @@
     tags: [memory]
     summary: Enforce deterministic memory retention
     description: |
-      Applies a deterministic retention policy to daily memory logs and structured checkpoints.
+      Revision-checked retirement of active daily logs and structured checkpoints retains original evidence before atomic removal.
       Supports `dry_run` and per-call overrides.
     requestBody:
       required: false
@@ -1838,12 +1838,12 @@
           application/json:
             schema:
               $ref: "#/components/schemas/ErrorResponse"
-      "500":
-        description: Retention failed
+      "409":
+        description: Incomplete retention; full report preserves successful retirements, uncertain outcomes, conflicts and deferred work.
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ErrorResponse"
+              $ref: "#/components/schemas/MemoryRetentionEnforceResponse"
 
 /api/v1/db/analytics/workflows/export:
   get:

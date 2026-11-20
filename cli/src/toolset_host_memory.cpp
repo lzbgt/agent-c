@@ -1210,7 +1210,8 @@ static agent_status_t memory_put_impl(HostToolCtx* ctx, const char* arguments_js
 
   // Rolling consolidation checkpoint: when a structured memory file is updated, keep a time-stamped
   // JSON snapshot for correlation over time (best-effort; does not fail the tool call).
-  bool checkpoint_ok = false;
+  bool checkpoint_ok = false, checkpoint_prune_ok = false;
+  int checkpoint_pruned_count = 0;
   std::string checkpoint_path_rel;
   std::string checkpoint_ts_utc;
   std::string checkpoint_sha256;
@@ -1220,7 +1221,7 @@ static agent_status_t memory_put_impl(HostToolCtx* ctx, const char* arguments_js
     const bool want_checkpoint =
       args.isMember("checkpoint") && args["checkpoint"].isBool() ? args["checkpoint"].asBool() : true;
     const int keep_checkpoints =
-      args.isMember("keep_checkpoints") && args["keep_checkpoints"].isInt() ? std::max(1, args["keep_checkpoints"].asInt()) : 100;
+      args.isMember("keep_checkpoints") && args["keep_checkpoints"].isInt() ? std::clamp(args["keep_checkpoints"].asInt(), 1, 1000) : 100;
     if (want_checkpoint) {
       const std::filesystem::path ckdir = mem_root / "checkpoints";
       std::error_code ec2;
@@ -1255,7 +1256,15 @@ static agent_status_t memory_put_impl(HostToolCtx* ctx, const char* arguments_js
           checkpoint_path_rel = to_generic_string(ckfile.lexically_relative(mem_root));
           // Best-effort pruning: keep only the newest N checkpoint files.
           std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> entries;
-          for (auto it = std::filesystem::directory_iterator(ckdir, ec2); !ec2 && it != std::filesystem::directory_iterator(); ++it) {
+          checkpoint_prune_ok = true;
+          size_t visited = 0;
+          const auto prune_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+          auto it = std::filesystem::directory_iterator(ckdir, ec2);
+          for (; !ec2 && it != std::filesystem::directory_iterator(); it.increment(ec2)) {
+            if (++visited > 4096 || is_cancelled(ctx) || std::chrono::steady_clock::now() >= prune_deadline) {
+              checkpoint_prune_ok = false;
+              break;
+            }
             const auto& de = *it;
             if (de.is_symlink(ec2) || !de.is_regular_file(ec2)) continue;
             const std::string fn = de.path().filename().string();
@@ -1264,15 +1273,26 @@ static agent_status_t memory_put_impl(HostToolCtx* ctx, const char* arguments_js
             const auto stamp = de.last_write_time(ec2);
             if (ec2) break;
             entries.emplace_back(stamp, de.path());
-            if (entries.size() > (size_t)keep_checkpoints + 50) break; // bound directory walks
           }
-          if (entries.size() > (size_t)keep_checkpoints) {
+          if (ec2) checkpoint_prune_ok = false;
+          if (checkpoint_prune_ok && entries.size() > (size_t)keep_checkpoints) {
             std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
               return a.first != b.first ? a.first > b.first : a.second < b.second;
             });
             for (size_t i = (size_t)keep_checkpoints; i < entries.size(); i++) {
-              std::filesystem::remove(entries[i].second, ec2);
-              if (ec2) break;
+              if (checkpoint_pruned_count >= 50 || is_cancelled(ctx) || std::chrono::steady_clock::now() >= prune_deadline) {
+                checkpoint_prune_ok = false;
+                break;
+              }
+              const auto prune_path = entries[i].second.lexically_relative(mem_root).generic_string();
+              MemoryDocument prune_source;
+              std::string prune_error;
+              if (memory_document_read(mem_root, prune_path, &prune_source, &prune_error) != MemoryStoreStatus::Ok ||
+                  transaction.retire_auxiliary(prune_path, prune_source.revision, &prune_error) != MemoryStoreStatus::Ok) {
+                checkpoint_prune_ok = false;
+                break;
+              }
+              ++checkpoint_pruned_count;
             }
           }
         }
@@ -1280,7 +1300,7 @@ static agent_status_t memory_put_impl(HostToolCtx* ctx, const char* arguments_js
     }
   }
 
-  } catch (...) { /* auxiliary maintenance cannot revoke a committed memory update */ }
+  } catch (...) { checkpoint_prune_ok = false; /* auxiliary maintenance cannot revoke a committed memory update */ }
 
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_put";
@@ -1299,6 +1319,8 @@ static agent_status_t memory_put_impl(HostToolCtx* ctx, const char* arguments_js
     data["entries_superseded"] = structured_entries_superseded;
     data["entries_evidence_added"] = structured_entries_evidence_added;
     data["checkpoint_ok"] = checkpoint_ok;
+    data["checkpoint_prune_ok"] = checkpoint_prune_ok;
+    data["checkpoint_pruned_count"] = checkpoint_pruned_count;
     if (!checkpoint_path_rel.empty()) data["checkpoint_path"] = checkpoint_path_rel;
     if (checkpoint_ok) {
       if (!checkpoint_ts_utc.empty()) data["checkpoint_ts_utc"] = checkpoint_ts_utc;

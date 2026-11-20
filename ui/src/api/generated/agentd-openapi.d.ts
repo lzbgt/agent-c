@@ -3079,7 +3079,7 @@ export interface paths {
         put?: never;
         /**
          * Enforce deterministic memory retention
-         * @description Applies a deterministic retention policy to daily memory logs and structured checkpoints.
+         * @description Revision-checked retirement of active daily logs and structured checkpoints retains original evidence before atomic removal.
          *     Supports `dry_run` and per-call overrides.
          */
         post: {
@@ -3113,13 +3113,13 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Retention failed */
-                500: {
+                /** @description Incomplete retention; full report preserves successful retirements, uncertain outcomes, conflicts and deferred work. */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["MemoryRetentionEnforceResponse"];
                     };
                 };
             };
@@ -8465,7 +8465,32 @@ export interface components {
             structured_deprecate_max_entries?: number;
         };
         MemoryRetentionEnforceResponse: {
+            /** @enum {string} */
+            schema: "agent.memory.retention.v2";
             ok: boolean;
+            complete: boolean;
+            cancelled?: boolean;
+            budget_exhausted?: boolean;
+            /** Format: int64 */
+            deferred_count?: number;
+            /** Format: int64 */
+            errors_dropped?: number;
+            /** Format: int64 */
+            daily_selected_count?: number;
+            /** Format: int64 */
+            checkpoint_selected_count?: number;
+            /** Format: int64 */
+            structured_selected_count?: number;
+            /** Format: int64 */
+            daily_bytes_projected?: number;
+            /** @description Bounded retirement receipts, including captured revision, original evidence and actual commit state. Preview receipts do not publish anything. */
+            outcomes?: {
+                [key: string]: unknown;
+            }[];
+            structured_write_response?: {
+                [key: string]: unknown;
+            };
+            error?: string;
             /** Format: int64 */
             generated_utc_ms: number;
             dry_run: boolean;
@@ -8494,6 +8519,7 @@ export interface components {
             daily_deleted?: string[];
             checkpoint_deleted?: string[];
             structured_deprecated_keys?: string[];
+            structured_selected_keys?: string[];
             errors?: string[];
         };
         MemoryIndexRow: {

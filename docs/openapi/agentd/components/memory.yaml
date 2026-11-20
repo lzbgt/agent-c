@@ -48,6 +48,8 @@ MemoryRetentionEnforceResponse:
   required:
     [
       ok,
+      schema,
+      complete,
       generated_utc_ms,
       dry_run,
       daily_max_days,
@@ -58,7 +60,25 @@ MemoryRetentionEnforceResponse:
       structured_deprecate_max_entries
     ]
   properties:
+    schema: { type: string, enum: [agent.memory.retention.v2] }
     ok: { type: boolean }
+    complete: { type: boolean }
+    cancelled: { type: boolean }
+    budget_exhausted: { type: boolean }
+    deferred_count: { type: integer, format: int64 }
+    errors_dropped: { type: integer, format: int64 }
+    daily_selected_count: { type: integer, format: int64 }
+    checkpoint_selected_count: { type: integer, format: int64 }
+    structured_selected_count: { type: integer, format: int64 }
+    daily_bytes_projected: { type: integer, format: int64 }
+    outcomes:
+      type: array
+      description: Bounded retirement receipts, including captured revision, original evidence and actual commit state. Preview receipts do not publish anything.
+      items: { type: object, additionalProperties: true }
+    structured_write_response:
+      type: object
+      additionalProperties: true
+    error: { type: string }
     generated_utc_ms: { type: integer, format: int64 }
     dry_run: { type: boolean }
     daily_max_days: { type: integer, format: int32 }
@@ -79,6 +99,9 @@ MemoryRetentionEnforceResponse:
       type: array
       items: { type: string }
     structured_deprecated_keys:
+      type: array
+      items: { type: string }
+    structured_selected_keys:
       type: array
       items: { type: string }
     errors:

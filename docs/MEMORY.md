@@ -99,8 +99,8 @@ relocating the root does not preserve that identifier. Direct privileged edits,
 in-place writes outside the store, directory replacement and external deletion
 are outside the cooperating-writer guarantee. The final comparison detects an
 observed external change; it is not an OS compare-and-swap against arbitrary
-writers. Daily-file rotation/deletion and derived-cache invalidation remain
-separate policy work.
+writers. Revision-checked daily/checkpoint retirement is described below. Persistent
+cache erasure and general forgetting remain separate policy work.
 
 | Observable result | Meaning and recovery |
 | --- | --- |
@@ -570,58 +570,185 @@ When a checkpoint is written, `memory_put` also reports:
 These fields exist so workflows can attach a stable “memory evidence hash” to their event logs without needing to
 re-open files during execution.
 
-## Memory retention (v1)
+## Source retirement and retention
 
-This is a deterministic, operator-controlled policy to keep durable memory growth bounded.
+Retention removes selected **active file heads** after preserving their exact
+original bytes. It applies to host daily logs and structured checkpoints. The
+existing background engine and authenticated `POST /api/v1/memory/retention/enforce`
+share this operation; no new scheduler or model call is added. Source:
+[`memory_store.cpp`](../cli/src/memory_store.cpp),
+[`memory_retention.cpp`](../daemon/src/memory_retention.cpp) and
+[the API handler](../daemon/src/memory_endpoints.cpp).
 
-Goals:
-- Bound disk usage for daily logs and structured checkpoints.
-- Provide dry-run previews.
-- Support both on-demand and background enforcement.
-- Allow structured memory facts to be deprecated when they age out of policy.
+The original implementation directly removed files and counted failed removals
+as successful deletions. A synthetic regression demonstrated an unpromoted
+original becoming unavailable. Retirement now follows the same authority as
+publication, so a concurrent cooperating writer cannot lose a newer revision to
+an older cleanup decision. This finding is from local source/fixtures; it does
+not establish a production race.
 
-Policy surfaces:
-1) Daily logs (state_dir/memory/YYYY-MM-DD.md)
-   - Age bound: keep at most daily_max_days files (oldest deleted first)
-   - Size bound: keep total daily bytes under daily_max_bytes
-2) Structured checkpoints (state_dir/memory/checkpoints/structured_*.json)
-   - Age bound: delete checkpoints older than checkpoint_max_days
-   - Count bound: keep at most checkpoint_max_count (oldest deleted first)
-3) Structured deprecation (STRUCTURED.md)
-   - Current authoritative entries older than structured_deprecate_days are revision-checked and upserted as status="deprecated"
-   - Bound by structured_deprecate_max_entries per enforcement pass
+### Policy and data flow
 
-API:
-- POST /api/v1/memory/retention/enforce
-  - supports dry_run plus per-call overrides
-  - returns deleted files and counts
+Daily selection uses valid `YYYY-MM-DD.md` calendar dates. `daily_max_days=N`
+keeps names at or after the local date obtained by subtracting `24*(N-1)` hours
+from the current time. `daily_max_bytes` selects additional oldest logs until
+captured active bytes fit the bound. This is a filename-based operational rule,
+not proof of an observation's event date. Checkpoint selection reads strict
+`ts_utc` values from captured JSON. `checkpoint_max_days` removes older entries;
+`checkpoint_max_count` keeps the newest eligible timestamps, with ascending path
+as the deterministic tie-breaker. Invalid timestamps are preserved and reported.
+Selected removals run oldest first.
 
-Example request:
+Each selected source carries a complete raw-byte revision from capture. Under
+`memory/.locks/writer.lock`, the transaction compares that revision, verifies and
+syncs its original at `.revisions/<path-hash>/<content-hash>.blob`, rechecks the
+head, atomically unlinks its active name and syncs the parent directory. Hashes
+and byte ranges follow [revision-checked publication](#revision-checked-publication).
+Source paths must be normalized relative paths; redundant separators, trailing
+slashes, traversal and linked components are refused. Empty files have a content
+hash and can also be retired; absence remains a separate state.
 
-{
-  "dry_run": true,
-  "daily_max_days": 30,
-  "daily_max_bytes": 104857600,
-  "checkpoint_max_days": 30,
-  "checkpoint_max_count": 200,
-  "structured_deprecate_days": 90,
-  "structured_deprecate_max_entries": 50
-}
+After retirement, ordinary reads see `revision="absent"`. Exact original reads
+through `memory_get(evidence=...)` or `memory_get(path=...,revision=...)` still use
+the retained bytes. Current retrieval excludes the missing raw source, and
+marker-derived facts whose required support disappeared become historical before
+scoring/injection. Archiving alone does not keep that derived head eligible.
+Historical references continue to identify the original. Retirement does not
+execute, reconcile or replay an external workflow effect.
 
-Config knobs (all optional; 0 disables each bound):
-- memory_retention_interval_ms
-- memory_retention_daily_max_days
-- memory_retention_daily_max_bytes
-- memory_retention_checkpoint_max_days
-- memory_retention_checkpoint_max_count
-- memory_retention_structured_deprecate_days
-- memory_retention_structured_deprecate_max_entries
+The active byte/count bounds exclude revision archives. **They are not a total
+disk quota or hard-forget guarantee.** Retirement leaves retained originals in
+place. Existing revision pruning on later writes and future bounded archive
+expiry/forget policy determine long-term availability. Inspect archive growth
+before enabling a schedule on a storage-constrained host. No schedule or
+production workload is enabled by this source change.
 
-Broker fan-out (multi-deployment):
-- POST /v1/agents/{agent_id}/memory/retention/enforce
+### Apply, inspect and recover
 
-Background enforcement:
-- when memory_retention_interval_ms > 0, the daemon applies policy periodically
+Start from the host prerequisites in [OPERATIONS.md](OPERATIONS.md), a coherent
+Agent-C daemon/client revision and authenticated access. Applying policy requires
+`--tools host --host-policy full`; read-only preview remains available under a
+read-only host policy. The default configuration leaves all limits and the
+background interval at zero, disabling them.
+
+1. Open **Memory → Advanced → Retention & cleanup** and preview the subject
+   limits. This illustrative request body can also be sent through an existing
+   authenticated API client:
+
+   ```json
+   {
+     "dry_run": true,
+     "daily_max_days": 30,
+     "daily_max_bytes": 10485760,
+     "checkpoint_max_days": 30,
+     "checkpoint_max_count": 200,
+     "structured_deprecate_days": 90,
+     "structured_deprecate_max_entries": 50
+   }
+   ```
+
+   Units are days, raw active-file bytes and counts. Here `10485760` is
+   `10*1024*1024` bytes (10 MiB). Zero disables an individual bound.
+   `daily_max_days` is 0–36,500; other limits must be nonnegative.
+2. Inspect the versioned `agent.memory.retention.v2` report. `*_selected_count`
+   shows planned work. During preview, `*_deleted_count` and
+   `structured_deprecated_count` remain zero; `outcomes[].commit_state="preview"`
+   is not a publication receipt. `daily_bytes_projected` estimates the selected
+   policy's result, while `daily_bytes_after` still equals captured active bytes.
+   Preview creates no locks, archives, receipts or changed facts on disk.
+3. Apply the reviewed policy (`dry_run=false`). Execution captures again; preview
+   does not authorize stale revision reuse. A retirement receipt
+   (`agent.memory.retirement.v1`) records path/layer, source ID,
+   `expected_revision`, exact whole-source `original_evidence`, commit state and
+   an observed `current_revision` when available. `head_removed` describes this
+   attempt. Confirmed success is `retired`, current revision `absent`, with the
+   synced original retained.
+4. Check `ok` and `complete`. HTTP `200` means the selected bounded pass completed.
+   HTTP `409` returns the same full report when work is incomplete. Successful
+   independent retirements remain committed. The UI retains that report, shows
+   **Cleanup incomplete** and the confirmed counts/errors, and keeps raw receipts
+   collapsed. It does not retry automatically.
+5. Recover from the specific state below. Re-read active heads and exact original
+   evidence before deciding on another action. Keep independent requirements
+   runnable. A new pass derives new decisions; it must not reuse a stale removal
+   decision or resubmit an unrelated external effect.
+
+| Receipt/status | Observation and next action |
+| --- | --- |
+| `retired` | The active name was removed and its parent synced. Inspect the exact original through the returned evidence reference. |
+| `revision_conflict` | This attempt did not remove the captured head. Another revision or absence was observed. Read and reconsider policy against current bytes. |
+| `busy` / `cancelled` | No removal by this attempt. Respect cancellation; investigate a persistent lock before another bounded pass. |
+| `not_retired` | Original retention, source validation or removal failed. The error identifies the storage/path cause. Repair it and inspect the current head. Counters do not claim success. |
+| `retired_unconfirmed` | Removal occurred but directory durability/acknowledgment was interrupted. Verify current absence and the retained original. Do not blindly replay or treat this as a confirmed retirement. |
+| `deferred_count>0` / `budget_exhausted` | Some work was not attempted. Preserve completed receipts and perform another bounded capture when eligible. |
+
+`daily_bytes_before/after` account for the captured readable sources minus only
+confirmed retirements. Unconfirmed removals are conservatively charged as
+remaining; concurrent later writes require a new capture. These fields do not
+measure free disk space. The report preserves errors (up to 50, with
+`errors_dropped` for overflow), per-source outcomes and the actual
+`structured_write_response` when a deprecation write is attempted.
+
+Structured age policy reads the authoritative `STRUCTURED.md`, uses the shared parser's normalized
+observation time (or known update-time fallback for missing/ill-typed observation
+metadata), and submits
+one revision-checked deprecation batch. Unknown or malformed timestamp strings are not treated as fresh observations.
+The normalized metadata does not prove an event date. The batch changes only eligible string-valued records and is
+bounded to 200 entries (default 50); remaining eligible entries are explicit
+pending work. Confirmed key lists/counts remain separate from selected keys.
+
+### Bounds, pruning and verification
+
+A pass captures at most 4,096 sources and 64 MiB total, with the store's 8 MiB
+per-source limit. Each directory walk permits at most 4,096 entries. Exceeding a
+hard capture budget stops before any retirement. Ordinary per-source read/parse
+errors remain visible while independently eligible sources can proceed. At most
+128 file retirements plus one bounded structured batch run per pass. A shared
+10-second cooperative deadline and cancellation apply to capture, lock waits and
+mutation boundaries. Kernel filesystem I/O can outlast that deadline; this is
+not a real-time guarantee. Each root lock wait retains the store's five-second
+bound. Background stop uses the same cancellation port and atomic stop state;
+failures are reported by the existing engine instead of being silently counted.
+
+`memory_put` auxiliary checkpoint pruning uses its already-held writer lock.
+It retains each pruned original through the same retirement implementation and
+cannot retire its primary source or alter the primary commit receipt. Its
+separate best-effort policy keeps recent checkpoint file modification times,
+scans at most 4,096 directory entries and retires at most 50 files within a
+cooperative two-second maintenance window. `keep_checkpoints` is clamped to
+1–1,000 for active checkpoints. `checkpoint_prune_ok` and
+`checkpoint_pruned_count` expose its result. An incomplete scan does not choose
+pruning candidates. Maintenance failure cannot revoke a committed fact update.
+
+The existing configuration fields select scheduling and policy:
+`memory_retention_interval_ms`, `memory_retention_daily_max_days`,
+`memory_retention_daily_max_bytes`, `memory_retention_checkpoint_max_days`,
+`memory_retention_checkpoint_max_count`, `memory_retention_structured_deprecate_days`
+and `memory_retention_structured_deprecate_max_entries`. The broker's existing
+`POST /v1/agents/{agent_id}/memory/retention/enforce` forwards to deployment policy;
+this milestone does not enable any deployment or broker fan-out.
+
+From the repository root on the Linux development host:
+
+```sh
+cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
+cmake --build build-snapshot --target memory_retirement_tests memory_store_tests memory_promotion_tests memory_view_tests host_toolset_tests agentd -j4
+ctest --test-dir build-snapshot -R '^(memory_retirement_tests|memory_store_tests|memory_promotion_tests|memory_view_tests|host_toolset_tests|agentd_memory_retention_smoke|agentd_memory_consolidate_smoke)$' --output-on-failure
+```
+
+Pass requires every selected check to succeed. Fixtures qualify exact original
+retrieval after removal, empty files, newest-checkpoint selection, stale/current
+revision conflicts, original archive failure, independent partial results,
+uncertain outcomes, cancellation before/after archival, read-only preview/apply,
+128-operation and 64-MiB capture limits, strict dates, linked/non-normalized
+sources, current FTS/fallback invalidation, root-lock reuse and competing real
+process writers. Actual `SIGKILL` immediately before/after unlink verifies process
+restart boundaries. The HTTP fixture verifies archive bytes against returned
+SHA-256/span receipts and an incomplete response with an independent success.
+Browser coverage checks the retained partial report and closed metadata. These
+are synthetic Linux checks; Windows runtime, storage power loss, total disk
+reclamation, MCU execution and live-provider behavior are unqualified. On another
+host, repeat these checks and qualify its filesystem's unlink/fsync semantics.
 
 ## Memory recaps (LLM summaries)
 
@@ -697,8 +824,8 @@ Durable workflows can query memory without invoking an LLM:
 
 The current view removes explicitly stale candidates and invalidated marker-derived
 heads; durable promotion receipts prevent old observations from undoing later
-corrections. This does not finish general correction/forget semantics. Daily-file retirement
-must retain required originals under a declared policy. Persistent cache erasure,
+corrections. This does not finish general correction/forget semantics. Daily/checkpoint retirement now retains originals under the declared
+[retirement policy](#source-retirement-and-retention); archive expiry remains open. Persistent cache erasure,
 recap/conclusion invalidation at every consumer, bounded hard forgetting and
 provenance-preserving handoffs remain open. Invalidating evidence must never
 resubmit a completed external effect. Keep these requirements ahead of the paid

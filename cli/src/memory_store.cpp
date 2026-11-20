@@ -40,7 +40,8 @@ bool resolve(const fs::path& input, const std::string& relative, fs::path* root,
   if (input.empty() || relative.empty() || relative.size() > 1024 || relative.find('\0') != std::string::npos ||
       relative.find('\\') != std::string::npos || relative.find(':') != std::string::npos) return false;
   const fs::path name(relative);
-  if (name.is_absolute() || name.has_root_name()) return false;
+  if (name.is_absolute() || name.has_root_name() || relative.back() == '/' ||
+      name.generic_string() != relative || name.lexically_normal().generic_string() != relative) return false;
   for (const auto& part : name) if (part == "." || part == "..") return false;
   std::error_code ec;const auto absolute = fs::absolute(input, ec);
   if (ec) return false;
@@ -223,6 +224,38 @@ bool retain(const fs::path& root, const std::string& name, const MemoryDocument&
   StagedFile staged;
   return staged.prepare(path, document.text) && staged.publish(path, false) && sync_directory(path.parent_path());
 }
+Status retire_head(const fs::path& root, const fs::path& path, const std::string& name,
+    MemoryDocument& document, bool& published, const std::function<bool()>& cancelled,
+    std::string* error, const std::function<void(MemoryPublishPhase)>& observer) {
+  if (cancelled && cancelled()) return fail(Status::Cancelled, "memory retirement cancelled", error);
+  if (!document.exists) return Status::Ok;
+  try {
+    if (!retain(root, name, document))
+      return fail(Status::Unavailable, "cannot retain original memory revision; source not retired", error);
+    if (observer) observer(MemoryPublishPhase::Archived);
+    MemoryDocument current;
+    if (read(path, document.source_id, &current, error) != Status::Ok) return Status::Unavailable;
+    if (current.revision != document.revision) {
+      document = std::move(current);
+      return fail(Status::Conflict, "memory changed before retirement; source not removed", error);
+    }
+    if (cancelled && cancelled()) return fail(Status::Cancelled, "memory retirement cancelled before removal", error);
+    if (observer) observer(MemoryPublishPhase::BeforeReplace);
+    std::error_code ec;
+    if (!fs::remove(path, ec))
+      return fail(ec ? Status::Unavailable : Status::Conflict, "memory head removal failed; inspect its current revision", error);
+    const auto source = document.source_id;
+    published = true;document = {};document.source_id = source;
+    if (observer) observer(MemoryPublishPhase::AfterReplace);
+    if (!sync_directory(path.parent_path()))
+      return fail(Status::Uncertain, "memory removed but directory durability is unconfirmed; reconcile before further writes", error);
+    // Retirement retains originals. Bounded forget/archival expiry is a separate policy.
+    return Status::Ok;
+  } catch (...) {
+    return fail(published ? Status::Uncertain : Status::Unavailable,
+      "memory retirement interrupted; inspect its current revision and retained original", error);
+  }
+}
 void prune(const fs::path& root, const std::string& name, const std::string& current, const std::string& previous, size_t keep) {
   std::vector<fs::directory_entry> entries;std::error_code ec;
   const auto path = archive(root, name, current).parent_path();
@@ -294,7 +327,7 @@ struct MemoryDocumentTransaction::Impl {
   std::string name;
   MemoryDocument document;
   std::function<bool()> cancelled;
-  bool used = false, begun = false, published = false;
+  bool used = false, begun = false, published = false, compared = false, locked = false;
 };
 MemoryDocumentTransaction::MemoryDocumentTransaction() : impl_(new Impl) {}
 MemoryDocumentTransaction::~MemoryDocumentTransaction() = default;
@@ -311,10 +344,12 @@ MemoryStoreStatus MemoryDocumentTransaction::begin(const fs::path& input, const 
   if (!directory(directory_path)) return fail(Status::Unavailable, "cannot create private memory lock directory", error);
   auto status = impl_->lock.acquire(directory_path / "writer.lock", impl_->cancelled, error);
   if (status != Status::Ok) return status;
+  impl_->locked = true;
   clean_stages(impl_->path);
   status = read(impl_->path, source_id(impl_->root, name), &impl_->document, error);
   if (status != Status::Ok) return status;
   if (expected && *expected != impl_->document.revision) return fail(Status::Conflict, "memory revision conflict; reread and reconsider the update", error);
+  impl_->compared = expected.has_value();
   impl_->begun = true;return Status::Ok;
 }
 MemoryStoreStatus MemoryDocumentTransaction::commit(const std::string& text, std::string* error, size_t keep,
@@ -349,5 +384,26 @@ MemoryStoreStatus MemoryDocumentTransaction::commit(const std::string& text, std
   } catch (...) {
     return fail(impl_->published ? Status::Uncertain : Status::Unavailable, "memory publication interrupted; inspect its current revision", error);
   }
+}
+MemoryStoreStatus MemoryDocumentTransaction::retire(std::string* error,
+    const std::function<void(MemoryPublishPhase)>& observer) {
+  if (error) error->clear();
+  if (!impl_->begun || !impl_->compared) return fail(Status::Invalid, "retirement requires an explicit expected revision", error);
+  impl_->begun = false;
+  return retire_head(impl_->root, impl_->path, impl_->name, impl_->document, impl_->published, impl_->cancelled, error, observer);
+}
+MemoryStoreStatus MemoryDocumentTransaction::retire_auxiliary(const std::string& name,
+    const std::string& expected_revision, std::string* error) {
+  if (error) error->clear();
+  fs::path root,path;
+  if (!impl_->locked || !memory_revision_valid(expected_revision) ||
+      !resolve(impl_->root,name,&root,&path) || path==impl_->path)
+    return fail(Status::Invalid,"invalid auxiliary retirement or writer lock unavailable",error);
+  MemoryDocument current;
+  auto status=read(path,source_id(root,name),&current,error);
+  if(status!=Status::Ok)return status;
+  if(current.revision!=expected_revision)return fail(Status::Conflict,"auxiliary revision changed before retirement",error);
+  bool removed=false;
+  return retire_head(root,path,name,current,removed,impl_->cancelled,error,{});
 }
 } // namespace host_tools_internal

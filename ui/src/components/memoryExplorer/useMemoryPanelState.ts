@@ -723,7 +723,6 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
     setRetentionBusy(true);
     try {
       const res = await apiMemoryRetentionEnforce(base, payload, args.auth);
-      if (!res.ok) throw new Error(res.error || "retention enforce failed");
       setRetentionResult(res);
     } catch (e) {
       setRetentionError(e instanceof Error ? e.message : String(e));

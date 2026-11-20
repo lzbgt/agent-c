@@ -48,7 +48,7 @@ async function mockMemory(page: Page) {
     };
     if (path.endsWith("/config")) response = { ok: true, memory: { recap_daily_interval_ms: 60000, recap_weekly_interval_ms: 120000, recap_daily_days: 2, recap_weekly_days: 9 }, daemon: { summary_model: "summary-model-marker" } };
     if (path.endsWith("/config/update")) response = { ok: true, applied: body };
-    if (path.endsWith("/memory/retention/enforce")) response = { ok: true, generated_utc_ms: 100, ...body, daily_deleted_count: 0, checkpoint_deleted_count: 0, structured_deprecated_count: 0 };
+    if (path.endsWith("/memory/retention/enforce")) response = { schema: "agent.memory.retention.v2", ok: true, complete: true, generated_utc_ms: 100, ...body, daily_deleted_count: 0, checkpoint_deleted_count: 0, structured_deprecated_count: 0 };
     return route.fulfill({ json: response });
   });
   await page.goto("/");
@@ -160,4 +160,31 @@ test("advanced trace, index, schedule and cleanup remain available only on reque
   await page.getByRole("button", { name: "Apply schedule", exact: true }).click();
   await expect.poll(() => calls.find((call) => call.path.endsWith("/config/update"))?.body).toEqual({ memory: { recap_daily_interval_ms: 90000, recap_weekly_interval_ms: 120000, recap_daily_days: 2, recap_weekly_days: 9 } });
   expect(await main.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+});
+
+test("incomplete cleanup preserves confirmed work and keeps receipts collapsed", async ({ page }) => {
+  await mockMemory(page);
+  let submissions = 0;
+  await page.route("**/api/v1/memory/retention/enforce", async (route) => {
+    submissions++;
+    return route.fulfill({ status: 409, json: {
+      schema: "agent.memory.retention.v2", ok: false, complete: false, generated_utc_ms: 100,
+      dry_run: false, daily_max_days: 1, daily_max_bytes: 0, checkpoint_max_days: 0,
+      checkpoint_max_count: 0, structured_deprecate_days: 0, structured_deprecate_max_entries: 0,
+      daily_deleted_count: 1, checkpoint_deleted_count: 0, structured_deprecated_count: 0,
+      errors: ["One source changed during cleanup. Review it before continuing."],
+      outcomes: [{ commit_state: "retired_unconfirmed", original_evidence: "retained-original-marker" }],
+    } });
+  });
+  await page.getByTestId("memory-advanced").locator(":scope > summary").click();
+  await page.getByText("Retention & cleanup", { exact: true }).click();
+  const section = page.getByTestId("memory-retention-section");
+  await section.getByLabel("Dry run (preview only)", { exact: true }).uncheck();
+  await section.getByRole("button", { name: "Apply cleanup", exact: true }).click();
+  await expect(section.getByText("Cleanup incomplete · review the results", { exact: true })).toBeVisible();
+  await expect(section.getByText("Daily files: 1 · Checkpoints: 0 · Deprecated records: 0", { exact: true })).toBeVisible();
+  await expect(section.getByText("One source changed during cleanup. Review it before continuing.", { exact: true })).toBeVisible();
+  await expect(section.getByText("Cleanup completed", { exact: true })).toHaveCount(0);
+  expect(await section.innerText()).not.toMatch(/retired_unconfirmed|retained-original-marker/);
+  expect(submissions).toBe(1);
 });

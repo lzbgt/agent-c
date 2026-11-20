@@ -105,8 +105,8 @@ export default function MemoryExplorerRetentionSection(props: MemoryExplorerRete
       ) : null}
       {props.retention.result ? (
         <div role="status" className="mt-3">
-          <p>{props.retention.result.dry_run ? "Cleanup preview · nothing changed" : "Cleanup completed"}</p>
-          <p className="tool-muted">Daily files: {props.retention.result.daily_deleted_count ?? 0} · Checkpoints: {props.retention.result.checkpoint_deleted_count ?? 0} · Deprecated records: {props.retention.result.structured_deprecated_count ?? 0}</p>
+          <p>{!props.retention.result.complete ? "Cleanup incomplete · review the results" : props.retention.result.dry_run ? "Cleanup preview · nothing changed" : "Cleanup completed"}</p>
+          <p className="tool-muted">Daily files: {(props.retention.result.dry_run ? props.retention.result.daily_selected_count : props.retention.result.daily_deleted_count) ?? 0} · Checkpoints: {(props.retention.result.dry_run ? props.retention.result.checkpoint_selected_count : props.retention.result.checkpoint_deleted_count) ?? 0} · Deprecated records: {(props.retention.result.dry_run ? props.retention.result.structured_selected_count : props.retention.result.structured_deprecated_count) ?? 0}</p>
           {props.retention.result.errors?.map((error, i) => <ToolError key={i} error={error} />)}
           <JsonDetails value={props.retention.result} />
         </div>
