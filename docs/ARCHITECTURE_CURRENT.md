@@ -27,7 +27,7 @@ A human-action blocker is a durable fact about an external prerequisite, with ob
 | Workflow engine | `daemon/src/workflow_engine.h` explicitly documents single-daemon DB ownership and at-least-once task recovery. Submit dedupe, retries, budgets, dataflow and deterministic checks are implemented. | Deterministic HTTP POSTs now have a journal/receipt boundary; device assignment/outbox publication is atomic; deterministic host actions now retain guarded intent/results, and ordinary model-driven host tasks guard incomplete effects. Ephemeral and session-backed ordinary host-model tasks can replay bounded image preparation and verified provider/tool transcripts after provider failure or restart. Sequential delegated host-model children have distinct parent-owned journals and completed-prefix replay; verified partial checkpoints can traverse cached work with no new tool/step grants while fresh calls remain guarded. Session generations fence stale continuations; final conversation and model receipt commit atomically. Unknown host outcomes and physical device receipt guarantees still require trusted adapters. No general saga/compensation or durable arbitrary human-signal state machine is established. |
 | SOP authoring | Versioned stages/actions compile into the existing DAG. The append-only daemon-local registry enforces immutable saved versions; exact references copy verified source into a run snapshot. The composer saves and selects versions without implicit execution. Explicit decision actions persist configured continue/fail choices and release workers while waiting. | Inline SOPs remain ad hoc. Single-delivery JSON signals have exact immutable receipts and opt-in submit-time slots; early input never bypasses dependencies, conditions, expiry-at-activation or owner stops. Bounded per-action conditions compare typed prior results and retain effect-free skip evidence. Arbitrary transitions, subflows, general inbox/broadcast signals, publisher-specific authorization, compensation and active-run migrations remain future work. |
 | Autonomy | Explicit bound goals read the existing host requirement/blocker authority, continue independent work, gate completion on recorded evidence and use single-use dispatch/control CAS. Managed requirement waits use bounded server-notified long polling with periodic fallback; immutable broker admission/receipt records recover an original persisted team run after response loss, while owner stops remain authoritative. Unbound goals retain the legacy role/replanning loop. | Durable replayable event streams, multi-authority handoff and reconstruction of unrecorded host outcomes remain open. Evidence presence and drift timeouts are not semantic proof. See [bound goals](GOAL_WORK_LEDGER.md). |
-| Memory | Atomic revision-checked publication and durable marker promotion plus shared current/historical/evidence views, scoped FTS/fallback, hard salience eligibility, original references, revision-checked source retirement and revision-fenced context, registered cache purge, live correlation and input-validated recap originals. | General forget propagation, expiry/consumed-receipt compaction, durable direct recap admission and generic conclusion/claim validation remain open. Declared eligibility and references are not semantic fact verification or retrieval-quality evidence. |
+| Memory | Atomic revision-checked publication, compacted consumed-marker receipts, shared current/historical/evidence views, scoped FTS/fallback, hard salience eligibility, original references, revision-checked source retirement and revision-fenced context, registered cache purge, live correlation and input-validated recap originals. | General forget propagation, expiry-intent metadata compaction, durable direct recap admission and generic conclusion/claim validation remain open. Declared eligibility and references are not semantic fact verification or retrieval-quality evidence. |
 | UI/CLI | Existing clients have broad operational coverage, OpenAPI types and replay surfaces. This snapshot modernizes navigation/layout and separates new CLI command handling. | Bound-goal authority/progress UI exists; broader goal authoring, granular timeline debugging, and a completely decomposed legacy CLI remain open. |
 
 The valuable foundation is already here. Keep the C kernel and native hosts, consolidate semantics, and add missing guarantees incrementally. Avoid another parallel orchestration engine or a framework-wide rewrite based on feature checklists.
@@ -145,6 +145,18 @@ old stale-marker overwrite, then qualify correction preservation, capacity and
 process-crash boundaries. This is an implementation reliability result, not a
 retrieval-quality measurement. See [the promotion contract](MEMORY.md#durable-marker-promotion).
 
+The current v2 promotion ledger compacts old full decisions into exact consumed
+IDs and one-hop original-table references. Up to 4,096 recent full receipts and
+32,768 compacted IDs remain authoritative; at most 128 original anchors pin
+both the receipt table and its marker revisions. Compaction shares the atomic
+fact publication. Missing/corrupt originals hold an intent consumed rather than
+making it runnable. New-intent admission is separate from bounded duplicate
+scans, and truncated detail is explicit. The real daemon-consolidator fixture
+crosses the old 4,096-receipt limit; crash/expiry fixtures preserve original
+receipts, leaf evidence and later corrections. This current source format has
+no automatic v1 conversion. It reduces current receipt bodies, not total archive
+storage; all byte/count bounds still apply. See [compaction and recovery](MEMORY.md#compacted-receipts-and-recovery).
+
 Revision-checked retirement now retains daily/checkpoint originals under the
 shared writer lock, validates the removal revision and preserves partial/uncertain
 reports through API/UI. Local checks qualify competing writers, real process
@@ -171,7 +183,7 @@ and [recap contract](MEMORY.md#memory-recaps-llm-summaries).
 
 Explicit archive expiry now protects active memory heads and literal revision references under the writer lock, validates bounded inventories and saves metadata intents before unlink. Zero preserves history; ordinary writes no longer silently prune originals. External consumers must preserve their required revisions in active memory. See [expiry policy](MEMORY.md#explicit-archive-expiry).
 
-Next extend cross-system forgetting/receipt compaction, generic
+Next extend cross-system forgetting, expiry-intent metadata compaction, generic
 conclusion/claim validators and evidence-preserving handoffs. Invalidation must
 never replay external effects. Registered-file removal is not forensic storage
 erasure; retained originals still occupy disk. Host retrieval stays outside the
@@ -197,6 +209,19 @@ and prices before any paid request; an OpenRouter example does not establish
 that a direct TypeSafe key works there. Parse only needed dotenv entries as data,
 keep credentials out of argv, logs, artifacts and model inputs, and use only
 public/synthetic or sanitized fixtures.
+
+Public provider capability check on **2026-11-20**: TypeSafe's official
+[System One contract](https://docs.typesafe.ai/api/system-one.md) specifies
+`POST https://api.typesafe.ai/v1/systemone` with Bearer authentication and
+authenticated `GET /v1/models` discovery. Named typed questions return matching
+answers, the actual model and input/output usage. Its
+[listed price](https://help.typesafe.ai/articles/5187202169-how-much-does-jev-cost)
+is **$0.042 per million input tokens**, with output free and prepaid exhaustion
+reported as HTTP 402. These public facts do not verify this account's key,
+balance or available immutable model revision. No credential discovery,
+authenticated canary or paid screening has run for the compaction milestone.
+Recheck the contract and price before the bounded canary; record request/response
+model identity and budget reservations in that evaluation, not in production.
 
 After one separately bounded authentication/scoring canary, freeze 20 held-out
 questions and compare A: FTS, B: identical FTS plus Jev reranking, C: identical

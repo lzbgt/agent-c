@@ -14,13 +14,13 @@ production services were restarted.
 
 - **Scoped memory views and original evidence (source only):** current/historical/evidence projection is shared by FTS, substring fallback, structured queries, salience and all context modes. Current state is filtered before scoring; only the selected scope/view enters BM25. Content revisions replace timestamp-only refresh. References bind source, revision and byte span/JSON Pointer with exact original reads and checked output frontiers. API/native current queries use the head; historical checkpoints are explicit. Current context excludes unversioned recap/assistant hints and reports unavailable retrieval; recap publication checks inputs after the provider response. See [memory views](MEMORY.md#current-views-and-original-evidence). Generic conclusion/claim and forget propagation remain open.
 
-- **Durable marker promotion (source only):** facts and consumed-observation receipts publish atomically in the existing structured authority. Stable intent IDs prevent an old marker from undoing a later correction. Replacement markers require a per-record revision; conflicts, malformed input and capacity deferral stay explicit while independent facts can commit. Current consumers validate original marker dependencies before scoring/output; history retains provenance. Read-only preview, original archives, bounded scans and process-crash recovery reuse the store. See [marker promotion](MEMORY.md#durable-marker-promotion).
+- **Durable marker promotion (source only):** facts and consumed-observation receipts publish atomically in the existing structured authority. Stable intent IDs prevent an old marker from undoing a later correction. Replacement markers require a per-record revision; conflicts, malformed input and capacity deferral stay explicit while independent facts can commit. Current consumers validate original marker dependencies before scoring/output; history retains provenance. The current v2 ledger compacts old full receipts into exact consumed IDs and one-hop retained originals, preserving leaf revision pins. New-intent admission is separate from bounded duplicate scans; omitted report detail is explicit. No automatic v1 conversion or total archive reduction is implied. See [marker promotion](MEMORY.md#durable-marker-promotion) and [compaction recovery](MEMORY.md#compacted-receipts-and-recovery).
 
 - **Revision-checked source retirement (source only):** retention captures revisions, retains originals and removes selected active heads under the shared writer lock. Checkpoint count policy keeps newest timestamps; failures/uncertainty/deferred work preserve full API/UI reports and truthful confirmed counts. Preview is read-only, passes are bounded/cancellable, and auxiliary checkpoint pruning reuses the same authority. Active-byte limits exclude archives; hard forgetting and archive expiry remain separate. See [source retirement](MEMORY.md#source-retirement-and-retention).
 
-- **Cache and recap invalidation (source only):** source publication purges registered disposable caches/sidecars under a cross-process lease; FTS view rebuilds use checked SQLite/FTS secure deletion. Correlation projects eligible current sources directly. Recap originals use atomic publication and versioned derivation manifests; list reads revalidate source IDs, revisions and eligible references. Stale/unverified results remain historical. Incomplete provider outcomes preserve full API/UI reports and never auto-retry. Exact JSON decoding keeps evidence fields literal and rejects unsupported current schemas. See [cache boundaries](MEMORY.md#snapshot-and-cache-boundaries) and [recaps](MEMORY.md#memory-recaps-llm-summaries). Input currentness does not verify claims; direct recap pre-call crash admission, archive expiry and generic forgetting remain open.
+- **Cache and recap invalidation (source only):** source publication purges registered disposable caches/sidecars under a cross-process lease; FTS view rebuilds use checked SQLite/FTS secure deletion. Correlation projects eligible current sources directly. Recap originals use atomic publication and versioned derivation manifests; list reads revalidate source IDs, revisions and eligible references. Stale/unverified results remain historical. Incomplete provider outcomes preserve full API/UI reports and never auto-retry. Exact JSON decoding keeps evidence fields literal and rejects unsupported current schemas. See [cache boundaries](MEMORY.md#snapshot-and-cache-boundaries) and [recaps](MEMORY.md#memory-recaps-llm-summaries). Input currentness does not verify claims; direct recap pre-call crash admission and generic forgetting remain open.
 
-- **Explicit archive expiry (source only):** ordinary writes preserve original history. A positive `archive_max_days` cleanup policy captures active memory heads/literal revision references under the writer lock, protects matching originals, validates complete bounded inventories and persists metadata intents before unlink. Confirmed/uncertain/deferred results remain distinct through API/UI; zero preserves history. This covers memory-root retention, not external consumers without active pins, universal hard forgetting or forensic erasure. See [archive expiry](MEMORY.md#explicit-archive-expiry). Receipt/intent compaction remains open.
+- **Explicit archive expiry (source only):** ordinary writes preserve original history. A positive `archive_max_days` cleanup policy captures active memory heads/literal revision references under the writer lock, protects matching originals, validates complete bounded inventories and persists metadata intents before unlink. Confirmed/uncertain/deferred results remain distinct through API/UI; zero preserves history. This covers memory-root retention, not external consumers without active pins, universal hard forgetting or forensic erasure. See [archive expiry](MEMORY.md#explicit-archive-expiry). Expiry-intent metadata compaction remains open.
 
 - **Native remote workflow recovery (source only):** `agentd_call` saves a parent-owned admission before one remote POST, uses a database-scoped server-owned key and resumes only authenticated original-workflow reads. Exact identity/state checks pin the returned workflow; completed receipts save before parent settlement and replay without fresh network grants. Missing/corrupt outcomes remain scoped blockers; API/UI checks cannot replace the target, bypass budgets or revive owner stops. Direct and broker proxy fixtures use real temporary daemons and no provider. See [remote admission](WORKFLOW_EFFECTS.md#durable-remote-workflow-admission).
 
@@ -74,7 +74,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-For a supported installed Chromium, set `AGENT_E2E_BROWSER_EXECUTABLE` to its executable path. `AGENT_E2E_UI_PORT` chooses an unused test port. The snapshot verifier disables trace/video recording by default; set `AGENT_E2E_RECORD=1` to enable them. It uses local model stubs and mocked browser APIs, not live provider keys or a production deployment.
+For a supported installed Chromium, set `AGENT_E2E_BROWSER_EXECUTABLE` to its executable path. `AGENT_E2E_UI_PORT` chooses an unused test port. The snapshot verifier retains traces on browser failure and disables video by default; set `AGENT_E2E_RECORD=1` for additional recording. It uses local model stubs and mocked browser APIs, not live provider keys or a production deployment.
 
 For the embedded-safe host build/test lane:
 
@@ -85,6 +85,16 @@ tools/verify_current_snapshot.sh --core-only
 The verifier configures **Debug** builds so assertion-based existing C tests execute. Do not interpret passing Release tests compiled with `NDEBUG` as equivalent coverage. Build artifacts live under ignored `build-snapshot/` and `build-snapshot-core/`; override `AGENT_SNAPSHOT_BUILD_DIR` if needed.
 
 ## Verification evidence
+
+The promotion-compaction increment passed three focused native/API checks in
+**41.32 seconds**. After adding explicit missing-original, wrong-scope and
+unsupported-format cases, the promotion test passed again in **28.86 seconds**.
+The real daemon-consolidator fixture crosses the
+4,096-receipt limit; synthetic fixtures cover original/leaf retrieval, expiry
+pins, missing/corrupt original refusal, capacity and process-crash boundaries.
+The following full-lane receipt belongs to the preceding implementation; it
+does not yet qualify the compaction binaries. Reproduce the current source with
+the canonical command above or the [promotion subset](MEMORY.md#marker-identity-eligibility-and-operating-bounds).
 
 On 2026-11-20, implementation **`6c40ad9`** passed **76 native/CLI/API
 checks in 129.20 seconds**, all Go broker/gateway packages, OpenAPI/type checks
@@ -150,15 +160,14 @@ Earlier narratives are retained in
 Durable promotion provenance now prevents old `@mem` observations from undoing
 later corrections and invalidates marker-derived heads when support changes.
 Revision-checked retirement now preserves originals and excludes removed support
-from current retrieval. Registered cache purge, live correlation and recap input validation now cover those consumers. Explicit memory-root archive expiry now preserves active reference pins. The next authority gates are broader bounded forgetting/receipt compaction, generic conclusion/claim validation and direct recap crash admission.
-Provenance compaction must preserve consumed observations and the declared history policy.
+from current retrieval. Registered cache purge, live correlation and recap input validation cover those consumers. Explicit memory-root archive expiry preserves active reference pins. Promotion compaction now preserves consumed IDs, full original decisions and marker revision pins while allowing further bounded admission. The next authority gates are broader bounded forgetting, expiry-intent metadata compaction, generic conclusion/claim validation and direct recap crash admission.
 Invalidation must never replay a completed external effect. Declared currentness
 and exact references do not prove arbitrary prose or generated claims true.
 A bounded lexical multi-hop experiment follows the authority gates, with the
 unchanged 4B answerer. The
 [architecture evaluation gate](ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
-records the canary/pilot caps. TypeSafe endpoint/auth/model/pricing verification,
-private-key use and measured retrieval quality remain pending; no paid evaluation
+records the canary/pilot caps and checked public endpoint/auth/typed-response and
+listed price. Account/model discovery, private-key use and measured retrieval quality remain pending; no paid evaluation
 was performed for this source milestone.
 
 

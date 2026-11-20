@@ -78,7 +78,7 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
    consumed observations and fences replacements; current consumers invalidate
    changed marker derivations. [Source retirement](docs/MEMORY.md#source-retirement-and-retention)
    now preserves originals through revision-checked removal and bounded partial
-   outcomes. Registered cache purge, live current correlation and recap provenance checks now cover those consumers. Explicit memory-root archive expiry now preserves active pins and metadata intents. Next close expiry/consumed-receipt compaction, broader bounded forgetting, generic conclusion/claim validation and direct recap pre-provider crash admission.
+   outcomes. Registered cache purge, live current correlation and recap provenance checks now cover those consumers. Explicit memory-root archive expiry preserves active pins and metadata intents. [Promotion receipt compaction](docs/MEMORY.md#compacted-receipts-and-recovery) now keeps consumed IDs, literal original receipts and leaf pins across atomic publication; the current source format has no automatic v1 conversion. Next close expiry-intent metadata compaction, broader bounded forgetting, generic conclusion/claim validation and direct recap pre-provider crash admission.
    Keep history/forget policy explicit; invalidation never replays an external
    effect. Linux fixtures do not qualify Windows runtime or storage power loss.
 2. Then implement bounded lexical multi-hop retrieval with a pluggable scorer.

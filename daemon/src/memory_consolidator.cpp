@@ -247,11 +247,8 @@ bool memory_consolidate_once(
     host_tools_internal::MemoryPromotionUpdate update;
     if (!host_tools_internal::memory_structured_parse_doc(plan.snapshot.sources.at("STRUCTURED.md").text, &doc, out_err) ||
         !host_tools_internal::memory_promotion_prepare(mem_root, doc, plan, &update, out_err, false)) return false;
-    Json::Value result;
-    result["dry_run"] = true; result["would_apply_keys"] = update.entries.size();
-    result["would_record_receipts"] = Json::UInt64(update.new_receipts);
-    result["deferred"] = Json::UInt64(update.deferred); result["errors"] = plan.errors;
-    result["decisions"] = update.ledger["receipts"];
+    Json::Value result = host_tools_internal::memory_promotion_preview_report(doc, plan, &update);
+    result["dry_run"] = true;
     report["promotion_preview"] = result;
     report["output"] = "dry_run: preview only; no facts or receipts published";
     if (out_report) *out_report = report;

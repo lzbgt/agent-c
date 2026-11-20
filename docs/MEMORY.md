@@ -447,11 +447,20 @@ not another scheduler or database. The source is
 
 An old observation must not become a new correction merely because consolidation
 reads it again. The machine block therefore contains `promotion_ledger`, schema
-`agent.memory.promotion.v1`, with up to **4,096 immutable decision receipts**.
+`agent.memory.promotion.v2`, with up to **4,096 recent full decision receipts**
+and **32,768 compacted consumed IDs**. When another selected key needs room,
+consolidation replaces the prior full receipt table with exact consumed-ID
+references to that table's retained original. It never drops consumed IDs.
 Accepted facts and their receipts are published in the same atomic document.
 A process interrupted before replacement leaves neither; after replacement both
 are present. Retrying the scan recognizes the consumed observation. This is
 process-crash qualification, not proof against storage power loss.
+
+This is the current source format for fresh state. There is no automatic v1
+conversion. An existing incompatible ledger is refused by current publication
+and promotion capture. Preserve its source and archives for historical reads;
+do not delete its ledger and rescan old markers as new work. No live memory was
+converted for this milestone.
 
 Use this sequence to create or replace a fact:
 
@@ -500,6 +509,56 @@ Use this sequence to create or replace a fact:
    be committed.** Read their original receipt before recovery. Resolve the cause
    or issue a new bound intent; do not roll back or blindly replay a partial result.
 
+### Compacted receipts and recovery
+
+Compaction reuses the root writer transaction and exact original reader. The
+current ledger contains three fields in addition to its schema:
+
+| Field | Meaning and bound |
+| --- | --- |
+| `receipts` | At most 4,096 full immutable decisions, indexed by marker ID. |
+| `consumed` | At most 32,768 exact marker IDs, each mapped to an integer `receipt_sources` index. These IDs remain consumed even if their originals cannot be read. |
+| `receipt_sources` | At most 128 anchors containing physical `source_id`, raw structured-file `revision` and unique original marker `evidence_revisions`. Every anchor must be referenced. |
+
+One pass can compact the full receipts from its captured structured head once.
+Receipts created during that pass remain full; they cannot refer to an
+unpublished intermediate state. The old head is retained before publication.
+The atomic replacement publishes compacted IDs, the new decisions and changed
+facts together. A crash before replacement leaves the old authority; a crash
+after replacement leaves the new authority and its retained original.
+
+For a previously consumed marker, the reader verifies the anchored original's
+raw hash and physical scope, then reads its literal receipt at JSON Pointer
+`/promotion_ledger/receipts/<marker-ID>`. Each original table is decoded once per
+pass. Reports identify `receipt_storage="archived"` and supply
+`original_receipt_evidence`, usable with `memory_evidence_read`, alongside the
+receipt's original marker-byte evidence. The reader does not reconstruct a
+decision from today's fact or follow a recursive summary chain.
+
+The anchor's marker revision pins protect original leaf evidence even after a
+direct correction removes the old derivation. The existing archive-expiry scan
+recognizes both these literal revisions and the anchored structured revision.
+Compaction reduces the current authority's full receipt bodies; it does **not**
+reduce total archive disk usage. Old full snapshots and pinned original markers
+remain subject to the explicit history policy.
+
+If an original is missing, corrupt, from another scope or exceeds the lookup
+budget, promotion fails before publication and the ID stays consumed. Restore
+the exact required original from a verified copy and retry a fresh capture.
+Never replace it with current bytes or remove the ID to permit a replay. Other
+direct fact updates and independent workflow requirements remain available.
+
+Detailed output is capped at 4,096 decisions, ordered by new decisions, unresolved
+old decisions, then ordinary duplicate acknowledgements. `observations_checked`,
+`decisions_omitted` and `details_incomplete` expose omitted detail. Aggregate
+`complete`, `unresolved` and `deferred` cover the whole scan; `complete=true` does
+not promise that every duplicate is printed. `compacted_receipts`,
+`consumed_receipt_count`, `receipt_source_count`, `archive_reads` and
+`archive_bytes` report this pass's capacity and original reads. These are input
+provenance and execution results, not verification that a fact is true.
+
+### Marker identity, eligibility and operating bounds
+
 A marker identity is `marker:` plus SHA-256 of compact JSON containing schema
 `agent.memory.marker.v1`, physical `source_id`, normalized key/kind/status/value
 and optional expected record revision. Its identity excludes line number and
@@ -535,18 +594,28 @@ Selection and limits are explicit:
   These timestamps select files, not authoritative values. Hidden session paths
   are skipped; linked sources fail validation. Both `.md` and `.markdown` are supported.
 - At most 128 captured sources including the structured dependency, 64 MiB total,
-  8 MiB per document, 20,000 lines per source, 4,096 observations and 64 parse
-  errors. Dependency validation allows at most 20,000 references. Exceeding a hard
-  capture budget fails explicitly; input is never silently truncated.
+  8 MiB per document, 20,000 lines per source, 4,096 distinct new intents,
+  40,960 total marker observations and 64 parse errors. Already-consumed IDs do
+  not use new-intent admission. Dependency validation allows at most 20,000
+  references and 40,960 scanned markers. Original receipt lookup shares a 64-MiB
+  byte allowance with the captured current documents. Exceeding a hard capture
+  or lookup budget fails explicitly; input is never silently truncated.
 - `max_file_bytes` defaults to 1 MiB, is at least 1,024 bytes and cannot exceed
-  the store's 8 MiB read limit. `max_entries` limits keys per invocation to
+  the store's 8 MiB read limit. The structured authority always uses that 8-MiB
+  store limit, so its growing ledger cannot be rejected by the default 1-MiB
+  observation-file limit before compaction. `max_entries` limits keys per invocation to
   1–1,000 (default 256); unprocessed observations report `deferred` and remain
-  eligible for a later bounded scan. At ledger capacity, new observations remain
-  deferred. Do not delete or reset receipts to make room; bounded provenance
-  compaction/forget policy remains future work. Direct authorized upserts and
+  eligible for a later bounded scan. If the compacted-ID or anchor capacity
+  prevents further compaction, new observations that do not fit remain deferred.
+  Byte, source and line limits can be reached before the ID limits. Do not delete
+  or reset consumed IDs to make room. This is bounded rolling capacity, not
+  unlimited history or a general forget policy. Direct authorized upserts and
   independent workflow requirements remain available.
 - `dry_run=true` only reads sources and reports `promotion_preview` with proposed
-  decisions. It does not create locks, archives, facts or receipts. Actual
+  decisions and `would_apply_keys`, `would_record_receipts` and
+  `would_compact_receipts`. New decision rows have `proposed=true`; preview record
+  revisions are not promised post-write hashes. It does not create locks,
+  archives, facts or receipts. Actual
   execution rechecks the sources; preview is not a publication receipt.
 - Full-text `memory_put` replacement of an existing machine document is rejected.
   Use `entries` so the ledger survives ordinary corrections. A malformed ledger
@@ -567,6 +636,14 @@ conflicting/malformed observations, independent partial commits, rejected-intent
 recovery, original retrieval after edits/deletion, every current consumer, stale
 snapshots, read-only policy, cancellation, archive failure, byte/key/ledger caps,
 notes conversion and real `SIGKILL` immediately before/after replacement. The
+real daemon-consolidator test admits 4,096 genuine markers over five bounded
+batches with the default observation-file limit, then appends two markers and
+verifies compaction, old/new eligibility, omitted-detail counts and a no-change
+retry. Separate synthetic full-table fixtures exercise exact original receipt
+and leaf reads, archive-expiry pins, corrupt-original refusal, rejected-intent
+non-replay after head restoration, the 32,768-ID cap and both compaction crash
+boundaries. Filler receipts in those capacity fixtures are structurally valid
+copies, not claims of independent factual evidence. The
 HTTP fixture checks the incomplete result and committed independent fact. No
 production service, live provider, paid scorer, filesystem power cut or MCU is
 exercised. On another filesystem, repeat the same failure cases and qualify its
@@ -893,8 +970,9 @@ At most 128 originals are attempted, sharing the existing retention pass's
 128-file mutation allowance. Remaining selected work is explicit. At most 2,048
 new/existing intent records are admitted per root; existing matching intents can
 still reconcile at that cap. The metadata inventory has its own 4,096-entry cap.
-Errors are capped at 50, with `errors_dropped` for overflow; each attempted object retains its own outcome. Capacity exhaustion preserves originals and returns incomplete; intent/consumed
-promotion receipt compaction remains future work. This policy does not delete
+Errors are capped at 50, with `errors_dropped` for overflow; each attempted object retains its own outcome. Capacity exhaustion preserves originals and returns incomplete; expiry-intent
+metadata compaction remains future work. [Promotion receipt compaction](#compacted-receipts-and-recovery)
+is separate and preserves consumed IDs and original revision pins. This policy does not delete
 metadata history to make room automatically.
 
 From the repository root on the assertion-enabled Linux host build:
