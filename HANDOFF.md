@@ -68,7 +68,10 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
 
 ## Continue the next concrete requirement
 
-1. Extend effect continuity to remaining uninstrumented preparation/tool paths;
+1. First preserve locally accepted current-job identity when delayed server
+   watch preferences carry future timestamps. Add reload/late-response tests;
+   preference timestamps alone must not choose a different job. Then extend
+   effect continuity to remaining uninstrumented preparation/tool paths;
    add trusted host receipt resolvers and additional device adapters. Keep
    unknown outcomes explicit and require evidence before recovery.
 2. Add permanent conversation identity/history and move remaining consumers to
