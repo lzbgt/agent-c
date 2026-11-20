@@ -222,6 +222,16 @@ balance or available immutable model revision. No credential discovery,
 authenticated canary or paid screening has run for the compaction milestone.
 Recheck the contract and price before the bounded canary; record request/response
 model identity and budget reservations in that evaluation, not in production.
+The [official model table](https://docs.typesafe.ai/models) lists `jev-1.14.0`
+and `jev-1.13.0`, each with a 64k per-request and 32k per-question default
+context. `jev-latest` currently points to 1.14.0 but moves with releases;
+responses identify the version used. The account list may contain aliases
+rather than every accepted versioned ID. Discover the account, then verify a
+versioned ID in the small canary before freezing it for both cloud arms.
+The [error contract](https://docs.typesafe.ai/api/errors) identifies 429 and 529
+as backoff candidates; Agent-C still needs its own total attempt/deadline limits
+instead of accepting an SDK's default retry loop. Authentication, payment and
+schema errors require an explicit incomplete result, not blind replay.
 
 After one separately bounded authentication/scoring canary, freeze 20 held-out
 questions and compare A: FTS, B: identical FTS plus Jev reranking, C: identical

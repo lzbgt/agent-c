@@ -1,0 +1,167 @@
+{
+  "checked_at": "2026-11-20T15:59:31.447713+00:00",
+  "source_revision": "f38cb31d063001fa0af858ef009b5125badc8fc9",
+  "scope": "Bounded v2 promotion receipt compaction with exact consumed IDs, one-hop original full receipts and marker revision pins; atomic publication, new-intent admission and bounded honest output through the existing consolidator",
+  "source_qualification": "Canonical source-only local native/CLI/API, Go/OpenAPI/UI-build and browser lane passed. Production remains stopped; no live memory conversion or paid provider calls.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "cxx": "c++ (GCC) 16.2.1 20260810",
+    "jsoncpp": "1.9.8",
+    "sqlite3": "3.54.0",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "Version 1.58.0"
+  },
+  "commands": [
+    "cmake --build build-snapshot --target memory_promotion_tests agentd -j6",
+    "ctest --test-dir build-snapshot -R '^(memory_promotion_tests|agentd_memory_consolidate_smoke|agentd_workflow_memory_consolidate_smoke)$' --output-on-failure",
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "python3 build/check_watch_docs.py (checks local links and anchors in the eight maintained contract/index Markdown files)",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "native_cli_api_checks": 76,
+    "browser_checks": 144,
+    "go_packages": "all canonical packages passed (cached where eligible); packages without tests compiled; environment-gated integrations are separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "changed_document_links_and_anchors": 167,
+    "external_provider_calls": 0,
+    "paid_scorer_calls": 0,
+    "retrieval_quality_evaluation": "not run; official public TypeSafe contract/model/pricing inspected, account authentication/key discovery and bounded canary/screening pending"
+  },
+  "local_fixture_timings_seconds": {
+    "focused_three_checks": 41.32,
+    "focused_final_promotion_test": 28.86,
+    "canonical_native": 155.03
+  },
+  "one_synthetic_unit_resource_run": {
+    "elapsed_seconds": 28.7038,
+    "max_rss_kib": 174424,
+    "one_synthetic_full_table_before_bytes": 2880710,
+    "one_synthetic_full_table_after_bytes": 314773,
+    "fixture_consumed_ids": 4096,
+    "measurement": "One Linux child synthetic promotion test, including the real 4096-marker daemon batches and separate copied-filler capacity/crash fixtures. Measured after the canonical run completed. Not aggregate RAM, production/model/MCU limits, VRAM or a latency SLO; before/after bytes describe one synthetic current authority, not total disk history."
+  },
+  "resource_measurement_reproduction": [
+    "python3",
+    "-c",
+    "import resource,subprocess,time; start=time.perf_counter(); subprocess.run([\"build-snapshot/memory_promotion_tests\"],check=True); print({\"elapsed_seconds\":time.perf_counter()-start,\"max_rss_kib\":resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss})"
+  ],
+  "coverage": [
+    "4096 genuine independent markers pass through the real daemon consolidator in five bounded batches with the default 1-MiB observation-file limit; the authority exceeds 1 MiB and still accepts two new markers after compaction.",
+    "4098-observation current reads remain eligible; full-detail output is capped at 4096 with explicit omission counts; a retry is source-unchanged and decodes one anchored old table once.",
+    "A separate 4097-new-intent capture is rejected before any publication rather than silently truncated.",
+    "Synthetic full-table fixtures preserve direct corrections and literal original receipts/marker bytes, including explicit archive expiry of old unpinned history.",
+    "Corrupt, missing or wrong-scope anchored originals refuse publication and never turn a consumed intent into new work; unsupported ledger format and overlapping compacted/current IDs are rejected.",
+    "A previously rejected intent remains consumed after intervening correction and exact original-head restoration. At the compacted-ID cap, new work remains explicitly deferred and IDs are preserved.",
+    "Actual SIGKILL immediately before/after authority replacement exposes exactly the old or compacted authority; original receipt tables remain readable and recovery cannot undo later corrections.",
+    "Read-only preview reports proposed compaction without archives, locks, facts or receipts. Existing cancellation, scope/currentness, conflict, raw byte, key-budget and archive-failure checks remain in the canonical lane.",
+    "Unchanged WebUI/Go and earlier memory/workflow/CLI reliability checks pass in the same canonical run. No separate browser rerun was needed for this milestone."
+  ],
+  "operating_bounds": {
+    "recent_full_receipts": 4096,
+    "compacted_ids": 32768,
+    "original_anchors": 128,
+    "new_unique_intents_per_capture": 4096,
+    "marker_observations_per_capture": 40960,
+    "detailed_decisions_per_report": 4096,
+    "sources": 128,
+    "lines_per_source": 20000,
+    "captured_plus_receipt_original_bytes": 67108864,
+    "authority_document_bytes": 8388608
+  },
+  "limitations": [
+    "This is current v2 source state with no automatic v1 conversion. Production state/history/configuration were not converted or deployed. Do not reset consumed IDs to make old work runnable.",
+    "Compaction shrinks current full receipt bodies, not total disk history. Old whole authority snapshots and leaf originals remain pinned; source/byte/line/anchor limits can be reached before the ID cap.",
+    "Capacity fixtures use structurally valid copied filler receipts for deterministic bounds and crash tests; the separate real multi-batch fixture contains 4096 genuine independent markers. Neither establishes semantic truth of facts.",
+    "The one resource run measures one Linux synthetic child, including subprocess cases. It is not aggregate RAM, production/model/MCU resource limits, VRAM, p50/p95, latency SLO or retrieval-quality evidence.",
+    "Process death and rename/fsync tests do not qualify storage power loss, Windows runtime, MCU execution or forensic snapshot/backup erasure. Portable C source is unchanged; the core-only lane was not repeated.",
+    "The prior archive milestone had an intermittent blank workspace after browser reload; its separate initial failure and passing reruns remain recorded in its original receipt. This clean run does not establish that issue is fixed.",
+    "Expiry-intent metadata compaction, active recap-head retirement, direct recap pre-provider admission, generic claim/conclusion validation and broader forgetting/lifecycle/handoffs remain open. No TypeSafe credential was discovered/read or used, no 9B substitution and no Panda publication."
+  ],
+  "production_state": {
+    "checked_at": "2026-11-20T15:52:42.846616+00:00",
+    "systemd": "ActiveState=inactive\nUnitFileState=disabled\n\nActiveState=inactive\nUnitFileState=disabled\n",
+    "postgres": "exited restart=no"
+  },
+  "artifacts": [
+    {
+      "path": "build-snapshot/agent",
+      "bytes": 12301528,
+      "sha256": "e4859617ca9887f9c9d37887d473716d5d3edda98c7fd3438c8ced3aa108b00f"
+    },
+    {
+      "path": "build-snapshot/agentd",
+      "bytes": 66907728,
+      "sha256": "afbae02febbdeaf8fa77a309582f51ca6c77af11e08ab5ff3128c398a4ce5893"
+    },
+    {
+      "path": "build-snapshot/memory_promotion_tests",
+      "bytes": 12451520,
+      "sha256": "b301817a23b74e36df32e61e9e1828b84e8973f426b8e7aad63a36c36306bf31"
+    },
+    {
+      "path": "ui/dist/index.html",
+      "bytes": 1073,
+      "sha256": "6bb33594ba658be8804a82287dabcd372ee4ace094869d4f21588fb05d8793a2"
+    },
+    {
+      "path": "ui/dist/assets/index-Cnaezztn.js",
+      "bytes": 784942,
+      "sha256": "bd5173359dfa967e7111f397b2a876742912c43d5bc21b9251a08687842e5ef3"
+    },
+    {
+      "path": "ui/dist/assets/index-vKkktlW6.css",
+      "bytes": 65342,
+      "sha256": "cd94028e1f65b96708054e6d3cdc7b22c396cd5d303f14c6f8ea64affd588364"
+    }
+  ],
+  "logs": [
+    {
+      "path": "build/memory_compaction_snapshot_final.log",
+      "bytes": 42597,
+      "sha256": "66c9ea290273417262d4e9e0936fb38757ae196dd8022d82c8e22ac7c64c8169"
+    },
+    {
+      "path": "build/memory_compaction_focused_final.log",
+      "bytes": 502,
+      "sha256": "feb3def918417eb87be07c88fcc3db0e96ab50feb49a790cc7c05b610e153895"
+    },
+    {
+      "path": "build/memory_compaction_before_commit.log",
+      "bytes": 227,
+      "sha256": "bc689055a9bb3df730cc8ec9c441e487e17b4c409954967fd55dbe69eef23722"
+    },
+    {
+      "path": "build/memory_compaction_resources.log",
+      "bytes": 720,
+      "sha256": "3a146e95e9737998e9e758aff835be7a94e00ec61379249c7685a3e3e2ac534e"
+    },
+    {
+      "path": "build/memory_compaction_resources.json",
+      "bytes": 552,
+      "sha256": "eab848fe199e1069540543d0dd382aa19e3f962a679545536c414d9b4de59d7e"
+    },
+    {
+      "path": "build/memory_compaction_documentation.log",
+      "bytes": 58,
+      "sha256": "f0674841e3f83c6f6a35422b362323281df4085b9020a9e1aac5da79a3bd26e0"
+    },
+    {
+      "path": "build/memory_compaction_repo_guards.log",
+      "bytes": 4027,
+      "sha256": "4184b4956843c58969f6a53c44eca3d27352943804a46b93f261977b35998335"
+    },
+    {
+      "path": "build/memory_compaction_production_state.json",
+      "bytes": 201,
+      "sha256": "f685a08d7532af7d3aafffbf883edfc33f75b9e0ea096d1bb5d15bac165457a3"
+    }
+  ]
+}

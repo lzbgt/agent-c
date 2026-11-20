@@ -86,58 +86,58 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The promotion-compaction increment passed three focused native/API checks in
-**41.32 seconds**. After adding explicit missing-original, wrong-scope and
-unsupported-format cases, the promotion test passed again in **28.86 seconds**.
-The real daemon-consolidator fixture crosses the
-4,096-receipt limit; synthetic fixtures cover original/leaf retrieval, expiry
-pins, missing/corrupt original refusal, capacity and process-crash boundaries.
-The following full-lane receipt belongs to the preceding implementation; it
-does not yet qualify the compaction binaries. Reproduce the current source with
-the canonical command above or the [promotion subset](MEMORY.md#marker-identity-eligibility-and-operating-bounds).
-
-On 2026-11-20, implementation **`6c40ad9`** passed **76 native/CLI/API
-checks in 129.20 seconds**, all Go broker/gateway packages, OpenAPI/type checks
-and the UI production build. The initial browser pass had 143 successes and one
-390-pixel scene test timeout: the workspace was blank after reload and the prompt
-was absent. Its keyboard-isolation assertions had already passed. Six focused
-canvas/DOM diagnostic runs passed, followed by a separate full **144-check browser
-rerun** with failure tracing enabled. Root cause remains unconfirmed; no product
-fix is claimed. The canonical verifier now retains failure traces for diagnosis.
-The [archive-expiry receipt](verification/memory-archive-expiry-20261120.json)
+On 2026-11-20, implementation **`f38cb31`** passed **76 native/CLI/API
+checks in 155.03 seconds**, all canonical Go packages (cached where eligible),
+OpenAPI/type checks, the UI production build and **144 browser checks in 2.2
+minutes** in one canonical pass. The
+[compaction receipt](verification/memory-promotion-compaction-20261120.json)
 pins source, reproducible commands, artifact/log SHA-256 hashes, observed timings
 and limits. Repository guards, changed-document links/anchors and whitespace
-checks passed.
+checks passed. These are source checks, not a production deployment.
 
-`memory_archive_tests` covers preservation through 130 ordinary corrections,
-zero-default policy, active raw/recap references, metadata intents, corruption,
-linked paths, captured-head changes, readonly policy and bounded cancellation,
-operation/byte/inventory/intent capacity. A combined retirement/expiry pass cannot
-invalidate its own newly issued original references. Competing processes and
-actual `SIGKILL` before/after unlink verify restart visibility and no duplicate
-expiry count. The real temporary-daemon fixture exercises preview/apply and strict
-age types without another provider call. Ten memory browser checks include
-320-pixel layout, fractional-age refusal, a closed zero-default expiry control and
-separate confirmed/protected/uncertain counts with receipts collapsed.
+`memory_promotion_tests` sends 4,096 genuine independent markers through the real
+daemon consolidator in five bounded batches. The structured authority grows past
+1 MiB without hitting the default observation-file limit. Appending two markers
+then compacts the full receipts, keeps old/new facts eligible and reports two
+omitted duplicate details explicitly. A retry changes no source and decodes one
+anchored original table once. A separate 4,097-new-intent capture fails explicitly
+before publication. Synthetic copied-filler fixtures verify literal original
+receipts and marker bytes, active expiry pins, missing/corrupt/wrong-scope
+original refusal, rejection non-replay after head restoration, capacity,
+unsupported format, preview, cancellation and actual `SIGKILL` before/after
+compacted authority replacement. The copied fillers test structure/capacity,
+not independent factual evidence.
 
-One synthetic archive fixture run took **2.589731 seconds** with a Linux child
-peak RSS of **92,740 KiB**, including capture caps and child-process cases. This is
-not aggregate RAM or a production/model/MCU limit or latency SLO. Reproduce the
-canonical command above or the [archive subset](MEMORY.md#operating-bounds-and-verification).
-Ignored logs include `build/memory_archive_snapshot_final.log`,
-`build/memory_archive_browser_final.log`, `build/memory_archive_scene_diagnostic.log`,
-`build/memory_archive_before_commit.log`, `build/memory_archive_browser_commit.log`,
-`build/memory_archive_resources.log`, `build/memory_archive_documentation.log` and
-`build/memory_archive_repo_guards.log`. The receipt preserves their identities.
+One Linux promotion fixture run after the canonical lane took
+**28.703800 seconds** with child peak RSS **174,424 KiB**.
+In one synthetic full-table case, the current authority changed from
+**2,880,710 to 314,773 bytes** while preserving
+4,096 consumed IDs and retrievable originals. This is not aggregate RAM,
+production/model/MCU resource qualification, retrieval quality, a latency SLO or
+a reduction of total archive storage. Reproduce the canonical command above or
+the [promotion subset](MEMORY.md#marker-identity-eligibility-and-operating-bounds).
+Ignored logs include `build/memory_compaction_snapshot_final.log`,
+`build/memory_compaction_focused_final.log`, `build/memory_compaction_before_commit.log`,
+`build/memory_compaction_resources.log`, `build/memory_compaction_documentation.log`
+and `build/memory_compaction_repo_guards.log`; the receipt preserves their identities.
 
-Expiry removes unreferenced original payloads according to an explicit policy.
-It conservatively inventories memory-root documents and pass-local receipts;
-external consumers need active memory pins. Prepared intents are not completion
-proof. Metadata remains, and inode/backup/forensic erasure, storage power loss,
-Windows runtime and MCU execution are not qualified. No live history, production
-configuration, external provider or TypeSafe key was used/changed. The daemon and
-gateway remain inactive/disabled; PostgreSQL is exited with restart disabled.
-The 4B profile is unchanged. No paid retrieval-quality evaluation was performed.
+The current v2 ledger has no automatic v1 conversion. No live memory, history or
+production configuration was converted. Current compaction preserves IDs and
+original pins; byte, source, line and anchor limits remain explicit. Expiry-intent
+metadata compaction and active recap-head retention remain separate work.
+Process-death checks do not qualify storage power loss, Windows, forensic erasure
+or MCU execution. No provider credential was discovered/read or used; public
+TypeSafe capability/model/pricing checks do not qualify account authentication or
+retrieval quality. The 4B profile is unchanged. The daemon and gateway remain
+inactive/disabled; PostgreSQL is exited with restart disabled.
+
+The preceding [archive-expiry receipt](verification/memory-archive-expiry-20261120.json)
+pins `6c40ad9`. Its initial browser pass had 143 successes and one blank workspace
+after reload at 390 pixels; keyboard-isolation assertions had already passed.
+Six focused diagnostics and a separate full 144-check browser rerun passed.
+Root cause remains unknown. The current clean run does not establish a fix; the
+canonical verifier retains future failure traces. Archive/promotion/retirement
+failure cases remain in the current lane.
 
 Prior [derived-memory](verification/memory-derived-state-20261120.json) and
 [retirement](verification/memory-retirement-20261120.json) receipts pin `f17968f`
