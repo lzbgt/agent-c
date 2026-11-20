@@ -120,12 +120,8 @@ The on-demand [local 4B profile](https://github.com/lzbgt/tiny-multimodal-edge-a
 | Responsive workspace | `ui/` · [WebUI](docs/WEBUI.md) · [UI design](docs/UI_DESIGN.md) |
 | Reproducible checks and deployment | `tools/` · [Operations](docs/OPERATIONS.md) |
 
-## Publishing
-
-The owner's latest direction is to publish this verified snapshot to **GitHub**. Panda publishing remains on hold while that service is being fixed. Existing remotes are preserved; excluded Panda repositories are never recreated automatically. [Publishing policy](docs/PUBLISHING.md)
-
 ## Embedded example and support
 
 The existing [ESP32 voice-agent demonstration](https://github.com/user-attachments/assets/be605653-04cf-49f1-9696-4dff41796635) illustrates an integration; it is not board-level qualification evidence for every current feature.
 
-Optional contributions support public maintenance and experiments: [Support Agent-C with PayPal](https://support.hubstack.cn/projects/agent-c). Choose a one-time amount; no LangLearn account or subscription is required. The independent [support service](docs/SUPPORT_SERVICE.md) also supports other open-source projects.
+[Support Agent-C](https://support.hubstack.cn/projects/agent-c).

@@ -15,10 +15,10 @@ API nor reads its customer database. The existing Agent-C daemon, gateway and
 PostgreSQL shutdown remains effective. The VPS runs only the exact support
 reverse-proxy route; no support application or database is installed there.
 
-This guide owns the support service's operation and limitations. Source is in
-[`support_service/`](../support_service/); the independent systemd unit and
-Traefik route are in [`deploy/arch/`](../deploy/arch/). Do not use the general
-Agent-C production installer to deploy this service.
+This guide owns the support service's operation and limitations. Its source is
+in this directory; the independent systemd unit and Traefik route are in
+[`deploy/arch/`](../deploy/arch/). Do not use the general Agent-C production
+installer to deploy this service.
 
 ## Payment flow and evidence
 
@@ -60,7 +60,7 @@ in Python rather than copying LangLearn's credit ledger and subscription engine.
 
 ### Durable retries and uncertain results
 
-[`store.py`](../support_service/store.py) uses SQLite WAL, `synchronous=FULL` and
+[`store.py`](store.py) uses SQLite WAL, `synchronous=FULL` and
 short `BEGIN IMMEDIATE` transactions. Network calls hold no database transaction.
 Each operation claims a 60-second lease with a random fencing token. A late
 response cannot overwrite a newer worker's result.
@@ -141,7 +141,7 @@ than repeatedly importing or rotating it. Neither LangLearn's files nor its
 container are modified. Both services share credential-rotation consequences.
 
 On another host, privately populate
-[`config.example.json`](../support_service/config.example.json) with that host's
+[`config.example.json`](config.example.json) with that host's
 merchant values, a new `secrets.token_hex(32)` cookie secret, its own database
 path and correct addresses. Do not commit the populated file, put secrets in
 shell arguments, print it, or switch an existing database from sandbox to live.
