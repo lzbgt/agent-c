@@ -1,11 +1,12 @@
 import React from "react";
-import { lookupChatJob } from "../api/chatJobLookup";
 import useChatSubmissionFence from "./useChatSubmissionFence";
+import useChatJobRecovery from "./useChatJobRecovery";
 import { useMutation } from "@tanstack/react-query";
 import { apiRun, apiRunAsync, type ApiAuth, type RunRequest, type RunResponse, type AgentEvent } from "../api";
 import type { Attachment } from "../components/PromptBar";
 import { safeObject } from "../jsonUtils";
 import type { JobStoreWriter } from "./runtimePlaneTypes";
+import { persistAcceptedJobWatch } from "../jobStore";
 
 export type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
 
@@ -143,7 +144,8 @@ export default function useRunExecution(args: RunExecutionArgs) {
   const fence = useChatSubmissionFence(jobStoreKey);
   const run = useMutation({
     retry: false,
-    mutationFn: async (vars: { prompt: string; attachments: Attachment[] }) => {
+    mutationFn: async (vars: { prompt: string; attachments: Attachment[]; originScope: string }) => {
+      if (vars.originScope !== jobStoreKey) throw new Error("Chat context changed before dispatch");
       const maxStepsTrim = String(maxSteps ?? "").trim();
       const parsedMaxSteps =
         maxStepsTrim.length === 0
@@ -294,7 +296,8 @@ export default function useRunExecution(args: RunExecutionArgs) {
       const traceId = `trace_${crypto.randomUUID()}`;
       req.trace_id = traceId;
       const originScope = jobStoreKey;
-      fence.begin(traceId); // durable before either POST; failures never authorize resubmission
+      fence.begin({ version: 1, trace_id: traceId, session_id: req.session_id || "default",
+        mode: effectiveUseAsync ? "async" : "sync", created_unix_ms: Date.now() });
       if (effectiveUseAsync) {
         const job = await apiRunAsync(effectiveBase, req, daemonAuth);
         return { mode: "async" as const, job, req, originScope, traceId };
@@ -304,7 +307,8 @@ export default function useRunExecution(args: RunExecutionArgs) {
     },
     onSuccess: (value, submitted) => {
       if (value.mode === "async" && value.job.ok && value.job.job_id) {
-        writeJobsBySession(prev => ({ ...prev, [value.originScope]: { job_id: value.job.job_id!, cursor: 0, started_unix_ms: Date.now() } }));
+        const watches = persistAcceptedJobWatch(value.originScope, value.job.job_id);
+        writeJobsBySession(() => watches);
       }
       if (value.mode === "sync" || (value.job.ok && value.job.job_id)) fence.finish(value.originScope, value.traceId);
       if (fence.currentScope.current !== value.originScope) return;
@@ -341,43 +345,31 @@ export default function useRunExecution(args: RunExecutionArgs) {
       cursorRef.current = 0;
       setActiveJobId(value.job.job_id);
       setJobStatus("queued");
-
-      const sid = String(sessionId || "").trim();
-      if (sid) {
-        writeJobsBySession((prev) => ({
-          ...prev,
-          [jobStoreKey]: { job_id: value.job.job_id, cursor: 0, started_unix_ms: Date.now() },
-        }));
-      }
     },
-    onError: (error) => {
+    onError: (error, submitted) => {
+      if (fence.currentScope.current !== submitted.originScope) return;
       setJobError(`run failed: ${String(error)}`);
       setJobNotice(null);
     },
   });
 
-  const [checkingChatSubmission, setCheckingChatSubmission] = React.useState(false);
-  const recoverChatSubmission = async () => {
-    if (checkingChatSubmission || run.isPending || !fence.pending) return;
-    const origin = jobStoreKey;
-    setCheckingChatSubmission(true);
-    try {
-      const receipt = JSON.parse(fence.pending);
-      if (typeof receipt.trace_id !== "string") throw new Error("No trace receipt is available");
-      const found = await lookupChatJob(effectiveBase, receipt.trace_id, sessionId || "default", daemonAuth);
-      writeJobsBySession(prev => ({ ...prev, [origin]: { job_id: found.job_id, cursor: 0, started_unix_ms: Date.now() } }));
-      // Selection changes must not attach an old job to a different conversation.
-      if (fence.currentScope.current !== origin) return;
+  const recovery = useChatJobRecovery({
+    base: effectiveBase, scope: jobStoreKey, sessionId, auth: daemonAuth,
+    pending: fence.pending, submitting: run.isPending,
+    onRecovered: (found, traceId) => {
+      // Persist the existing job before releasing dispatch, including reloads
+      // where the original POST response was never received.
+      const watches = persistAcceptedJobWatch(jobStoreKey, found.job_id);
+      writeJobsBySession(() => watches);
       setActiveJobId(found.job_id);
       setJobStatus(found.status);
       cursorRef.current = 0;
       setJobError(null);
-      setJobNotice("Recovered existing job " + found.job_id + "; no request was resubmitted.");
-      fence.finish(origin, receipt.trace_id);
-    } catch (error) {
-      if (fence.currentScope.current === origin) setJobNotice("Receipt lookup: " + String(error) + ". Submission remains held.");
-    } finally { setCheckingChatSubmission(false); }
-  };
+      setJobNotice("Reconnected to the original run.");
+      fence.finish(jobStoreKey, traceId);
+    },
+    onFailure: setJobNotice,
+  });
 
   const dequeueInFlightRef = React.useRef(false);
 
@@ -406,10 +398,12 @@ export default function useRunExecution(args: RunExecutionArgs) {
     const next = runQueue[0];
     if (!next || typeof next !== "object") return;
     dequeueInFlightRef.current = true;
+    const originScope = jobStoreKey;
     setRunQueue((prev) => (Array.isArray(prev) ? prev.slice(1) : []));
     run
-      .mutateAsync({ prompt: next.prompt, attachments: next.attachments || [] })
+      .mutateAsync({ prompt: next.prompt, attachments: next.attachments || [], originScope })
       .catch((error) => {
+        if (fence.currentScope.current !== originScope) return;
         setJobNotice(`queued run failed: ${String(error)}`);
         // Never reinsert a possibly executed request into the automatic queue.
         // Restore its text for inspection, not automatic dispatch.
@@ -418,7 +412,7 @@ export default function useRunExecution(args: RunExecutionArgs) {
       .finally(() => {
         dequeueInFlightRef.current = false;
       });
-  }, [activeJobId, run.isPending, runQueue, run, fence.pending, setJobNotice, setRunQueue, setPrompt]);
+  }, [activeJobId, run.isPending, runQueue, run, fence.pending, jobStoreKey, setJobNotice, setRunQueue, setPrompt]);
 
   const handleDirectRunRequest = React.useCallback(
     async (vars: { prompt: string; attachments: Attachment[] }) => {
@@ -427,15 +421,15 @@ export default function useRunExecution(args: RunExecutionArgs) {
         enqueueRun(vars);
         return;
       }
-      run.mutate(vars);
+      run.mutate({ ...vars, originScope: jobStoreKey });
     },
-    [activeJobId, enqueueRun, run, fence.pending, setJobNotice],
+    [activeJobId, enqueueRun, run, fence.pending, jobStoreKey, setJobNotice],
   );
 
   return {
     handleDirectRunRequest,
-    checkingChatSubmission,
-    recoverChatSubmission,
+    checkingChatSubmission: recovery.checking,
+    recoverChatSubmission: recovery.recover,
     pendingChatSubmission: fence.pending,
     releaseChatSubmission: fence.release,
     run,

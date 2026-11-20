@@ -12,6 +12,7 @@ distinction between contracts, deployment instructions and recorded evidence.
 | Build, verify or diagnose Agent C | [Operations](OPERATIONS.md), [diagnostics](DIAGNOSTICS.md), [limits](LIMITS.md) |
 | Use the CLI or consume its events | [CLI](CLI.md), [CLI event protocol](CLI_EVENT_PROTOCOL.md) |
 | Develop the browser workspace | [WebUI](WEBUI.md), [UI design](UI_DESIGN.md) |
+| Recover a chat request or inspect bounded session context | [Chat submission recovery](CHAT_SUBMISSION_FENCE.md), [session message pages](SESSION_MESSAGE_PAGES.md) |
 | Configure production services | [Arch deployment and owner stop](ARCH_HOST_DEPLOYMENT.md), or [other deployment paths](DEPLOYMENT.md) |
 | Understand architecture and implemented scope | [Current architecture](ARCHITECTURE_CURRENT.md), [source snapshot and qualification](CURRENT_SNAPSHOT.md) |
 | Author durable processes | [SOP workflows](SOP_WORKFLOWS.md), [workflow engine](WORKFLOWS.md), [effect recovery](WORKFLOW_EFFECTS.md) |
@@ -35,7 +36,7 @@ remains effective.
 | General host build, test and maintenance procedures | [OPERATIONS.md](OPERATIONS.md); deployment-specific steps belong in the appropriate runbook |
 | Implemented scope, limitations and recorded qualification | [CURRENT_SNAPSHOT.md](CURRENT_SNAPSHOT.md), with explicit source/deployment distinctions |
 | Compact orientation | [HANDBOOK.md](HANDBOOK.md), generated from [handbook/OVERVIEW.md](handbook/OVERVIEW.md); feature contracts take precedence |
-| Dated research, decisions and historical outcomes | [Research](research/agent-systems-20261110.md), [archive](ARCHIVE.md), and linked reports; these do not redefine current defaults or live status |
+| Dated research, decisions and historical outcomes | [Research](research/agent-systems-20261110.md), [qualification archive](reports/qualification-through-20261118.md), [historical subsystem roadmap](reports/subsystem-roadmap-history-20261120.md) and [archive](ARCHIVE.md); these do not redefine current defaults or live status |
 
 When behavior changes, update its source and owning contract together. Link to
 that contract from setup guides instead of copying its limits. Keep test

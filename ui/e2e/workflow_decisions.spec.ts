@@ -151,6 +151,9 @@ test("connection changes discard in-flight receipt UI and do not retarget a choi
   await page.getByText("Connections & access", { exact: true }).click();
   await page.getByTestId("daemon-base").fill("http://127.0.0.1:8888");
   await page.getByTestId("settings-close").click();
+  // Navigation belongs to the selected connection; open its workflow page
+  // rather than relying on the prior connection's in-memory view leaking over.
+  await page.getByRole("navigation").getByRole("button", { name: "Workflows", exact: true }).click();
   await page.getByTestId("workflow-list-panel").getByText("wf-review", { exact: true }).click();
   await expect(page.getByTestId("workflow-decisions")).toContainText("New connection review");
   release();

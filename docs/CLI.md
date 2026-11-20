@@ -1,6 +1,6 @@
 # CLI Usage (`agent`)
 
-Current entry points (2026-11-10):
+Current entry points (2026-11-20):
 
 ```sh
 ./build/agent exec "implement and verify the change" -C /path/to/project
@@ -36,6 +36,15 @@ Notes:
 This uses session id `default` and stores it at `~/.agent/sessions/default.sess` (portable, JSON-free). If built with JSONCPP,
 it also writes `~/.agent/sessions/default.json` for debugging/interoperability. If built without JSONCPP, `.sess` is the only
 persisted session format.
+
+Snapshot saving stages the portable file and optional JSON copy under exclusive
+temporary names in the same directory before publication. A staging failure
+preserves both previous snapshots and unrelated temporary files. Portable
+publication remains authoritative: a later JSON publication failure is reported
+without discarding already-published portable history. Existing unreadable
+snapshots are not silently replaced by a new empty session. The canonical
+`session_store_tests` and CLI smoke checks cover these preservation boundaries;
+this is not a multi-file atomic transaction.
 
 ## Proxy (when outbound networking requires it)
 

@@ -5,6 +5,7 @@
 #include <json/json.h>
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -36,12 +37,17 @@ static std::filesystem::path make_temp_root() {
   std::error_code ec;
   std::filesystem::create_directories(base, ec);
   assert(!ec);
-  // Per-process unique-ish directory (best-effort; ok for unit tests).
-  const auto p = base / ("run_" + std::to_string((unsigned long long)std::rand()));
-  ec.clear();
-  std::filesystem::create_directories(p, ec);
-  assert(!ec);
-  return p;
+  // Claim a new directory; deterministic rand() reused prior runs' fixtures and
+  // made unrelated old files look like leaked staging files after a save error.
+  for (int attempt = 0; attempt < 128; ++attempt) {
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto p = base / ("run_" + std::to_string(stamp) + "_" + std::to_string(attempt));
+    ec.clear();
+    if (std::filesystem::create_directory(p, ec)) return p;
+    assert(!ec);
+  }
+  assert(false && "cannot claim isolated session-store fixture directory");
+  return {};
 }
 
 static void test_load_prefers_sess_over_json(void) {
@@ -73,6 +79,7 @@ static void test_load_prefers_sess_over_json(void) {
   assert(agent_session_get_message(loaded, 0, &v) == AGENT_OK);
   assert(std::string(v.content, v.content_len) == "from_sess");
   agent_session_destroy(loaded);
+  std::filesystem::remove_all(root);
 }
 
 static void test_load_falls_back_to_json_if_sess_corrupt(void) {
@@ -95,6 +102,7 @@ static void test_load_falls_back_to_json_if_sess_corrupt(void) {
   assert(agent_session_get_message(loaded, 0, &v) == AGENT_OK);
   assert(std::string(v.content, v.content_len) == "from_json_ok");
   agent_session_destroy(loaded);
+  std::filesystem::remove_all(root);
 }
 
 static void test_list_dedups_extensions(void) {
@@ -113,6 +121,7 @@ static void test_list_dedups_extensions(void) {
   assert(ids.size() == 2);
   assert(ids[0] == "a");
   assert(ids[1] == "b");
+  std::filesystem::remove_all(root);
 }
 
 static void test_save_failure_keeps_existing_paths() {
@@ -137,6 +146,7 @@ static void test_save_failure_keeps_existing_paths() {
   for (const auto& entry : std::filesystem::directory_iterator(root)) {
     assert(entry.path() == destination || entry.path() == old_tmp);
   }
+  std::filesystem::remove_all(root);
 }
 
 int main() {

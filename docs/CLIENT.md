@@ -56,6 +56,13 @@ Correlation headers:
 - X-Trace-Id: for /api/v1/run and /api/v1/run_async, if trace_id is omitted
   in JSON, the daemon uses the header value (must pass trace_id_is_safe)
 
+Correlation is not execution idempotency. After an uncertain async submission,
+an authenticated trace/session job lookup may recover the original durable job;
+an empty lookup does not authorize another POST. Native admission and browser
+reconciliation are specified in [chat recovery](CHAT_SUBMISSION_FENCE.md).
+For bounded current-context retrieval, use [session pages](SESSION_MESSAGE_PAGES.md);
+their generation-scoped indices are not permanent conversation message IDs.
+
 ## Session id safety
 
 session_id is treated like a filename key and must pass session_id_is_safe:

@@ -192,9 +192,11 @@ test("sending a message clears only the accepted draft and respects IME composit
   const prompt = page.getByTestId("prompt");
   await expect(page.getByTestId("run")).toBeDisabled();
   await prompt.fill("你好");
+  await expect(page.getByTestId("run")).toBeEnabled();
   await prompt.evaluate((el) => el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, isComposing: true })));
   expect(requests).toHaveLength(0);
   await prompt.press("Control+Enter");
+  await expect.poll(() => requests.length).toBe(1);
   await expect(page.getByRole("log", { name: "Conversation", exact: true })).toContainText(greeting);
   await expect(prompt).toHaveValue("");
   expect(requests).toHaveLength(1);

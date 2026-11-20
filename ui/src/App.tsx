@@ -799,11 +799,13 @@ export default function App() {
         onTeamActionChange={(next) => setTeamAction(next)}
       />
 
-      {!isTeamTarget && pendingChatSubmission ? <section role="alert" aria-label="Unresolved chat submission">
-        <p>A chat submission may have executed. Further chat dispatch is paused until its outcome is checked.</p>
-        <code>{pendingChatSubmission}</code>
-        <button type="button" disabled={run.isPending || checkingChatSubmission} onClick={() => void recoverChatSubmission()}>Check existing chat job</button>
-        <button type="button" disabled={run.isPending || checkingChatSubmission} onClick={releaseChatSubmission}>Clear chat uncertainty…</button>
+      {!isTeamTarget && pendingChatSubmission && !run.isPending ? <section role="alert" aria-label="Unresolved chat submission">
+        <p>{checkingChatSubmission ? "Checking the original run…" : "The last message may have been sent. Check its status before sending again."}</p>
+          <button type="button" disabled={checkingChatSubmission} onClick={() => void recoverChatSubmission()}>Check run</button>
+          <details><summary>Recovery details</summary>
+            <pre className="whitespace-pre-wrap break-words">{pendingChatSubmission}</pre>
+            <button type="button" disabled={checkingChatSubmission} onClick={releaseChatSubmission}>Release held message…</button>
+          </details>
       </section> : null}
 
       {!localModelProfile ? <SettingsDrawer

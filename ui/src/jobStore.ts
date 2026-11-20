@@ -5,6 +5,24 @@ export const JOB_STORE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const UNVERIFIED_JOB_STATUS = "unverified";
 export const UNVERIFIED_JOB_RECEIPT = "Run receipt unverified. Waiting for the native receipt.";
 
+// Complete the durable handoff before a submission uncertainty fence is removed.
+// The existing React preference uses a JSON string encoded inside localStorage.
+export function persistAcceptedJobWatch(scope: string, jobId: string, startedMs = Date.now()) {
+  const stored = localStorage.getItem("agentui.jobsBySession");
+  const encoded = stored === null ? "{}" : JSON.parse(stored);
+  if (typeof encoded !== "string") throw new Error("Saved job watches are invalid; submission remains held");
+  const jobs = JSON.parse(encoded);
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) throw new Error("Saved job watches are invalid; submission remains held");
+  // Current acceptance outranks cached timestamps, including a clock rollback.
+  // Prune older watches first, then reserve the last slot for this exact job.
+  const previous = pruneJobsBySession(Date.now(), jobs, JOB_STORE_MAX - 1).next;
+  const next = { ...previous, [scope]: { job_id: jobId, cursor: 0, started_unix_ms: startedMs } };
+  const value = JSON.stringify(JSON.stringify(next));
+  localStorage.setItem("agentui.jobsBySession", value);
+  if (localStorage.getItem("agentui.jobsBySession") !== value) throw new Error("Unable to save accepted job; submission remains held");
+  return next;
+}
+
 export function isTerminalJobStatus(status: string | null | undefined): status is "done" | "error" | "cancelled" | "interrupted" {
   return status === "done" || status === "error" || status === "cancelled" || status === "interrupted";
 }

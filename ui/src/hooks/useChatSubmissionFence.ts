@@ -1,12 +1,30 @@
 import React from "react";
 const prefix = "agentui.pendingChatSubmission.";
+export type ChatSubmissionReceipt = {
+  version: 1;
+  trace_id: string;
+  session_id: string;
+  mode: "sync" | "async";
+  created_unix_ms: number;
+};
+export function parseChatSubmissionReceipt(raw: string): ChatSubmissionReceipt | null {
+  try {
+    const value = JSON.parse(raw);
+    return value?.version === 1 && typeof value.trace_id === "string" &&
+      /^[A-Za-z0-9_.:@-]{1,128}$/.test(value.trace_id) &&
+      typeof value.session_id === "string" && value.session_id.length > 0 && value.session_id.length <= 1024 &&
+      (value.mode === "sync" || value.mode === "async") &&
+      Number.isSafeInteger(value.created_unix_ms) && value.created_unix_ms >= 0 ? value : null;
+  } catch { return null; }
+}
 export function readChatFence(scope: string): string | null {
   try { return localStorage.getItem(prefix + scope); }
   catch { return "Browser storage unavailable; no chat can be dispatched safely."; }
 }
-export function beginChatFence(scope: string, traceId: string) {
+export function beginChatFence(scope: string, receipt: ChatSubmissionReceipt) {
   if (readChatFence(scope)) throw new Error("Previous chat submission unresolved; inspect its outcome before continuing.");
-  const value = JSON.stringify({ trace_id: traceId, created_unix_ms: Date.now() });
+  const value = JSON.stringify(receipt);
+  if (!parseChatSubmissionReceipt(value)) throw new Error("Invalid chat submission receipt");
   localStorage.setItem(prefix + scope, value);
   if (localStorage.getItem(prefix + scope) !== value) throw new Error("Unable to persist chat submission receipt");
 }
@@ -27,8 +45,8 @@ export default function useChatSubmissionFence(scope: string) {
   return {
     pending: readChatFence(scope) || (blocked.current?.scope === scope ? blocked.current.error : null), currentScope,
     isBlocked: () => Boolean(readChatFence(scope) || blocked.current?.scope === scope),
-    begin: (trace: string) => {
-      try { beginChatFence(scope, trace); refresh(); }
+    begin: (receipt: ChatSubmissionReceipt) => {
+      try { beginChatFence(scope, receipt); refresh(); }
       catch (e) { blocked.current = { scope, error: String(e) }; refresh(); throw e; }
     },
     finish: (origin: string, trace: string) => { finishChatFence(origin, trace); refresh(); },

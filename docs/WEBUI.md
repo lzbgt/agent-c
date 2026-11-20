@@ -304,6 +304,8 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 
 ## Reliability notes
 
+- A lost asynchronous chat reply triggers bounded authenticated reads to reconnect to the original job, without another execution POST. Missing or invalid receipts retain the hold, and recovery metadata stays collapsed. See [chat submission recovery](CHAT_SUBMISSION_FENCE.md).
+- Queues and other keyed browser state load from the selected scope; late setters from a previous scope cannot write into the new one. Each connection restores its own saved tool/view selection instead of inheriting the previous connection's in-memory page.
 - The UI persists the active async `job_id` + SSE cursor so refresh can resume a running job stream.
 - When client prefs are supported (daemon/broker), job resume state is stored server-side with localStorage as fallback.
 - Team runs in async mode persist member `job_id`s in the broker DB; status lookups remain valid after refresh.

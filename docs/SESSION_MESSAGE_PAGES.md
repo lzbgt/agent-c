@@ -33,6 +33,6 @@ The TypeScript `apiGetSessionPage` helper validates bounds, returned session/rev
 
 ## Verification
 
-`python3 tests/session_message_pages_smoke.py build/agentd` exercises a temporary authenticated daemon: 501-message traversal without gaps or duplicates, restart, legacy compatibility, media, strict parameters, row/byte caps, normal append, deletion/recreation, and concurrent second-connection commits.
+`python3 tests/session_message_pages_smoke.py build-snapshot/agentd` exercises a temporary authenticated Debug daemon: 501-message traversal without gaps or duplicates, restart, legacy compatibility, media, strict parameters, row/byte caps, normal append, deletion/recreation, and concurrent second-connection commits. Build it through `tools/verify_current_snapshot.sh`; the native fixture is registered as `agentd_session_message_pages_smoke` in the canonical lane.
 
-`ui/e2e/session_message_pages.spec.ts` exercises the actual typed browser module and rejects stale identities or invalid ordering. No production service or real conversation is used.
+`ui/e2e/session_message_pages.spec.ts` exercises the actual typed browser module and rejects stale identities or invalid ordering. `ui/e2e/session_context_viewer.spec.ts` exercises lazy loading, one-page retention, revision conflict handling and explicit latest-page reload in the actual history panel. Both are included in the canonical lane. No production service or real conversation is used.

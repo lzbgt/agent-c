@@ -20,6 +20,8 @@ test("a late library response cannot cross a daemon connection change", async ({
   await page.getByText("Connections & access", { exact: true }).click();
   await page.getByTestId("daemon-base").fill("http://127.0.0.1:8888");
   await page.getByTestId("settings-close").click();
+  await page.getByRole("navigation").getByRole("button", { name: "Workflows", exact: true }).click();
+  await page.getByRole("button", { name: "Create workflow", exact: true }).click();
   const summary = page.getByText("Saved SOP versions", { exact: true });
   if (!(await page.getByTestId("workflow-sop-library").evaluate((el) => (el as HTMLDetailsElement).open))) await summary.click();
   await expect(page.getByRole("button", { name: "Use SOP new-connection-process version 1", exact: true })).toBeVisible();

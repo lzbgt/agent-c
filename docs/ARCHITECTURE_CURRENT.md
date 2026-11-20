@@ -93,6 +93,15 @@ Prefer one worker for sequential work. Add specialists only for independent bran
 
 ## Provider, context and CLI direction
 
+Submission recovery and execution continuation are separate contracts. The
+browser now saves a scoped trace receipt before chat dispatch, performs bounded
+read-only original-job lookup after response loss, and saves the accepted job
+watch before releasing the submission guard. It never retries a POST to infer
+whether the original ran. Generation-fenced context pages are available in an
+optional one-page inspector; they do not establish append-only conversation
+identity. See [chat recovery](CHAT_SUBMISSION_FENCE.md) and
+[session pages](SESSION_MESSAGE_PAGES.md).
+
 Retain a provider-neutral transcript with opaque adapter metadata. API compatibility must include streaming, tool-result correlation, error handling, usage and continuation behavior. The current Chat Completions adapter already has provider-specific reasoning handling, but that is not proof that every current DeepSeek/Codex route works. Add Responses/native adapters behind explicit capability descriptors rather than silently translating away unsupported features.
 
 Split immutable instructions and capability declarations, current goal/state, retrieved knowledge and recent observations. Keep large data as artifact references and fetch bounded slices. Evaluate artifact-backed context exploration inspired by RLMs on host workloads, behind recursion/cost limits. Preserve evidence and constraints during compaction; do not depend on a prose summary to retain pending effects or human dependencies.
