@@ -30,6 +30,24 @@ MemoryStoreStatus memory_document_read(const std::filesystem::path& root, const 
 MemoryStoreStatus memory_document_read_revision(const std::filesystem::path& root, const std::string& relative_path,
     const std::string& revision, MemoryDocument* out, std::string* error);
 
+// Disposable derived artifacts share a cross-process lease with source writers.
+// Lock order: source writer -> cache; readers take only cache, never writer.
+class MemoryCacheLease {
+public:
+  MemoryCacheLease();
+  ~MemoryCacheLease();
+  MemoryCacheLease(const MemoryCacheLease &) = delete;
+  MemoryCacheLease &operator=(const MemoryCacheLease &) = delete;
+  MemoryStoreStatus begin(const std::filesystem::path &root, std::function<bool()> cancelled,
+                          std::string *error);
+  bool purge(std::string *error);
+  bool discard_obsolete(std::string *error);
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
 // All memory API writers share a memory-root OS lock. A replacement supplies
 // the revision it read; append operations may capture the current revision while
 // holding the lock. A commit retains original bytes before atomic publication.

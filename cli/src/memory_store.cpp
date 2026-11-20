@@ -114,7 +114,8 @@ class FileLock {
     if (fd_ >= 0) ::close(fd_);
 #endif
   }
-  Status acquire(const fs::path& path, const std::function<bool()>& cancelled, std::string* error) {
+  Status acquire(const fs::path &path, const std::function<bool()> &cancelled, std::string *error,
+                 std::chrono::milliseconds wait = std::chrono::seconds(5)) {
 #if defined(_WIN32)
     handle_ = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
@@ -128,7 +129,7 @@ class FileLock {
     if (fd_ < 0 || ::fstat(fd_, &state) != 0 || !S_ISREG(state.st_mode))
       return fail(Status::Unavailable, "cannot open memory lock", error);
 #endif
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    const auto deadline = std::chrono::steady_clock::now() + wait;
     do {
       if (cancelled && cancelled()) return fail(Status::Cancelled, "memory update cancelled", error);
 #if defined(_WIN32)
@@ -143,6 +144,7 @@ class FileLock {
     } while (std::chrono::steady_clock::now() < deadline);
     return fail(Status::Busy, "memory document busy; reread before retrying", error);
   }
+
  private:
 #if defined(_WIN32)
   HANDLE handle_ = INVALID_HANDLE_VALUE;
@@ -240,6 +242,12 @@ Status retire_head(const fs::path& root, const fs::path& path, const std::string
       return fail(Status::Conflict, "memory changed before retirement; source not removed", error);
     }
     if (cancelled && cancelled()) return fail(Status::Cancelled, "memory retirement cancelled before removal", error);
+    MemoryCacheLease cache;
+    const auto cache_status = cache.begin(root, cancelled, error);
+    if (cache_status != Status::Ok)
+      return cache_status;
+    if (!cache.purge(error))
+      return Status::Unavailable;
     if (observer) observer(MemoryPublishPhase::BeforeReplace);
     std::error_code ec;
     if (!fs::remove(path, ec))
@@ -276,6 +284,78 @@ void prune(const fs::path& root, const std::string& name, const std::string& cur
   }
 }
 } // namespace
+struct MemoryCacheLease::Impl {
+  fs::path root;
+  FileLock lock;
+  bool used = false, held = false;
+};
+MemoryCacheLease::MemoryCacheLease() : impl_(new Impl) {}
+MemoryCacheLease::~MemoryCacheLease() = default;
+MemoryStoreStatus MemoryCacheLease::begin(const fs::path &input, std::function<bool()> cancelled,
+                                          std::string *error) {
+  if (error)
+    error->clear();
+  fs::path path;
+  if (impl_->used || !resolve(input, ".memory_retrieval_v2.sqlite3", &impl_->root, &path))
+    return fail(Status::Invalid, "invalid cache lease root or linked active cache", error);
+  impl_->used = true;
+  if (!directory(impl_->root / ".locks"))
+    return fail(Status::Unavailable, "cannot create cache lease directory", error);
+  const auto status = impl_->lock.acquire(impl_->root / ".locks/cache.lock", cancelled, error,
+                                          std::chrono::milliseconds(500));
+  impl_->held = status == Status::Ok;
+  if (status == Status::Busy && error)
+    *error = "derived cache busy; source was not changed";
+  return status;
+}
+namespace {
+bool purge_caches(const fs::path &root, bool obsolete_only, std::string *error) {
+  // These names contain only rebuildable data. Never archive cache payloads.
+  const std::vector<std::string> databases = {
+      ".memory_index.sqlite3", ".memory_retrieval_v1.sqlite3", ".memory_correlation.sqlite3",
+      ".memory_retrieval_v2.sqlite3"};
+  std::vector<std::string> files = {".memory_correlation.json"};
+  for (const auto &db : databases) {
+    if (obsolete_only && db == ".memory_retrieval_v2.sqlite3")
+      continue;
+    for (const auto *suffix : {"", "-journal", "-wal", "-shm"})
+      files.push_back(db + suffix);
+  }
+  bool changed = false;
+  for (const auto &file : files) {
+    std::error_code ec;
+    const auto path = root / file;
+    const auto state = fs::symlink_status(path, ec);
+    if (ec == std::errc::no_such_file_or_directory || state.type() == fs::file_type::not_found)
+      continue;
+    if (ec || !fs::is_regular_file(state) || fs::is_symlink(state)) {
+      if (error)
+        *error = "cache artifact is not an owned regular file: " + file;
+      return false;
+    }
+    if (!fs::remove(path, ec) || ec) {
+      if (error)
+        *error = "cannot remove derived cache artifact: " + file;
+      return false;
+    }
+    changed = true;
+  }
+  if ((!obsolete_only || changed) && !sync_directory(root)) {
+    if (error)
+      *error = "derived cache removal durability is unconfirmed";
+    return false;
+  }
+  return true;
+}
+} // namespace
+bool MemoryCacheLease::purge(std::string *error) {
+  return impl_->held ? purge_caches(impl_->root, false, error)
+                     : (fail(Status::Invalid, "cache lease not held", error), false);
+}
+bool MemoryCacheLease::discard_obsolete(std::string *error) {
+  return impl_->held ? purge_caches(impl_->root, true, error)
+                     : (fail(Status::Invalid, "cache lease not held", error), false);
+}
 bool memory_revision_valid(const std::string& value) {
   return value == "absent" || (value.size() == 71 && value.rfind("sha256:", 0) == 0 && value.find_first_not_of("0123456789abcdef", 7) == std::string::npos);
 }
@@ -286,6 +366,9 @@ bool memory_document_publish_immutable(const fs::path& input, const std::string&
   if (read(path, source_id(root, name), &existing, error) != Status::Ok) return false;
   if (existing.exists) return existing.text == text && sync_directory(path.parent_path());
   clean_stages(path);
+  MemoryCacheLease cache;
+  if (cache.begin(root, {}, error) != Status::Ok || !cache.purge(error))
+    return false;
   StagedFile staged;
   return staged.prepare(path, text) && staged.publish(path, false) && sync_directory(path.parent_path());
 }
@@ -372,6 +455,12 @@ MemoryStoreStatus MemoryDocumentTransaction::commit(const std::string& text, std
       return fail(Status::Conflict, "memory changed outside its writer lock; source not replaced", error);
     }
     if (impl_->cancelled && impl_->cancelled()) return fail(Status::Cancelled, "memory update cancelled before replacement", error);
+    MemoryCacheLease cache;
+    const auto cache_status = cache.begin(impl_->root, impl_->cancelled, error);
+    if (cache_status != Status::Ok)
+      return cache_status;
+    if (!cache.purge(error))
+      return Status::Unavailable;
     if (observer) observer(MemoryPublishPhase::BeforeReplace);
     if (!staged.publish(impl_->path, true)) return fail(Status::Unavailable, "memory document replacement failed; source unchanged", error);
     const auto previous = impl_->document.revision;

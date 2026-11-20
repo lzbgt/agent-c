@@ -745,13 +745,17 @@ WorkflowMemoryStructuredQuerySpec:
 WorkflowMemoryCorrelateSpec:
   type: object
   description: |
-    Deterministic memory correlation configuration for `kind:memory_correlate`.
+    Deterministic current evidence correlation for `kind:memory_correlate`.
+    Historical/evidence view explicitly reads checkpoint originals; time windows require one of those views.
 
-    The engine scans rolling structured checkpoints under `memory/checkpoints/structured_*.json` and returns
-    entries whose `record.sources[]` contains a substring `trace:<trace_id>`. Results include
+    Current view projects eligible heads and recent daily observations. Historical/evidence view scans
+    checkpoint originals. Exact trace tokens and colon-delimited child tokens match. Results include
     `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking memory items to
     trace/workflow/task/job IDs and bounded source excerpts.
   properties:
+    view: { type: string, enum: [current, historical, evidence], default: current }
+    structured_path: { type: string }
+    key_prefix: { type: string }
     trace_id:
       type: string
       description: If omitted, the engine uses the workflow trace_id.
@@ -766,7 +770,7 @@ WorkflowMemoryCorrelateSpec:
     max_entries:
       type: integer
       format: int32
-      description: Max entries to return per checkpoint (default 50; clamped 1..500).
+      description: Max entries in the current structured/daily result or per historical checkpoint (default 50; clamped 1..500).
     timeline:
       type: boolean
       description: If true, returns multiple checkpoints (up to 50) instead of only the newest in-window checkpoint.

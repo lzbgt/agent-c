@@ -27,7 +27,7 @@ A human-action blocker is a durable fact about an external prerequisite, with ob
 | Workflow engine | `daemon/src/workflow_engine.h` explicitly documents single-daemon DB ownership and at-least-once task recovery. Submit dedupe, retries, budgets, dataflow and deterministic checks are implemented. | Deterministic HTTP POSTs now have a journal/receipt boundary; device assignment/outbox publication is atomic; deterministic host actions now retain guarded intent/results, and ordinary model-driven host tasks guard incomplete effects. Ephemeral and session-backed ordinary host-model tasks can replay bounded image preparation and verified provider/tool transcripts after provider failure or restart. Sequential delegated host-model children have distinct parent-owned journals and completed-prefix replay; verified partial checkpoints can traverse cached work with no new tool/step grants while fresh calls remain guarded. Session generations fence stale continuations; final conversation and model receipt commit atomically. Unknown host outcomes and physical device receipt guarantees still require trusted adapters. No general saga/compensation or durable arbitrary human-signal state machine is established. |
 | SOP authoring | Versioned stages/actions compile into the existing DAG. The append-only daemon-local registry enforces immutable saved versions; exact references copy verified source into a run snapshot. The composer saves and selects versions without implicit execution. Explicit decision actions persist configured continue/fail choices and release workers while waiting. | Inline SOPs remain ad hoc. Single-delivery JSON signals have exact immutable receipts and opt-in submit-time slots; early input never bypasses dependencies, conditions, expiry-at-activation or owner stops. Bounded per-action conditions compare typed prior results and retain effect-free skip evidence. Arbitrary transitions, subflows, general inbox/broadcast signals, publisher-specific authorization, compensation and active-run migrations remain future work. |
 | Autonomy | Explicit bound goals read the existing host requirement/blocker authority, continue independent work, gate completion on recorded evidence and use single-use dispatch/control CAS. Managed requirement waits use bounded server-notified long polling with periodic fallback; immutable broker admission/receipt records recover an original persisted team run after response loss, while owner stops remain authoritative. Unbound goals retain the legacy role/replanning loop. | Durable replayable event streams, multi-authority handoff and reconstruction of unrecorded host outcomes remain open. Evidence presence and drift timeouts are not semantic proof. See [bound goals](GOAL_WORK_LEDGER.md). |
-| Memory | Atomic revision-checked publication and durable marker promotion plus shared current/historical/evidence views, scoped FTS/fallback, hard salience eligibility, original references, revision-checked source retirement and revision-fenced context/recap preparation. | Archive expiry/general forget propagation, persistent cache erasure and validation of long-lived summaries/conclusions remain open. Declared eligibility and references are not semantic fact verification or retrieval-quality evidence. |
+| Memory | Atomic revision-checked publication and durable marker promotion plus shared current/historical/evidence views, scoped FTS/fallback, hard salience eligibility, original references, revision-checked source retirement and revision-fenced context, registered cache purge, live correlation and input-validated recap originals. | Archive expiry/general forget propagation, durable direct recap admission and generic conclusion/claim validation remain open. Declared eligibility and references are not semantic fact verification or retrieval-quality evidence. |
 | UI/CLI | Existing clients have broad operational coverage, OpenAPI types and replay surfaces. This snapshot modernizes navigation/layout and separates new CLI command handling. | Bound-goal authority/progress UI exists; broader goal authoring, granular timeline debugging, and a completely decomposed legacy CLI remain open. |
 
 The valuable foundation is already here. Keep the C kernel and native hosts, consolidate semantics, and add missing guarantees incrementally. Avoid another parallel orchestration engine or a framework-wide rewrite based on feature checklists.
@@ -112,7 +112,7 @@ CLI `exec`, stdin, `resume`, `sessions`, explicit workspace/session-root selecti
 
 ## Memory authority and retrieval evaluation
 
-**Atomic publication and scoped retrieval views are implemented; general correction/forget propagation remains next.**
+**Atomic publication, scoped retrieval and registered cache/recap invalidation are implemented; general forgetting and claim validation remain next.**
 [`memory_store.cpp`](../cli/src/memory_store.cpp) now supplies one root-wide OS
 writer lock, explicit raw-byte SHA-256 revisions, retained prior originals,
 synced atomic replacement and exact historical lookup. `memory_put` requires
@@ -152,13 +152,29 @@ death, archive failure and current eligibility after retirement. Active byte/cou
 limits exclude archives; this is not a hard-forget or total disk-quota result.
 See [the retirement contract](MEMORY.md#source-retirement-and-retention).
 
-General correction/forget propagation remains the next authority gate. Extend
-archive expiry, persistent cache erasure,
-recap/conclusion validation at every consumer and bounded forgetting, preserving
-history according to policy. Invalidation must never replay external effects.
-Current projection filters declared state; it is not semantic proof of arbitrary
-raw notes or generated claims. Host retrieval stays outside the C core. No paid
-scorer or retrieval-quality promotion is claimed by these source checks.
+Source writers now purge registered disposable cache artifacts and sidecars under
+a shared cache lease before publication. Indexed queries scrub superseded
+scope/view payloads using SQLite core and FTS5 secure deletion. Correlation reads
+the current eligible projection directly instead of retaining another copied
+payload cache. Exact structured decoding no longer invents metadata or upgrades
+unknown schemas during evidence reads.
+
+Saved recaps carry versioned input/evidence manifests. Current list reads validate
+the source revision set and eligible evidence; changed or unverifiable outputs
+remain explicitly historical. Original assistant text and bounded provider
+identity/usage are retained in immutable outcomes; current input provenance never
+claims semantic support. Oversized/failed provider results and concurrent input
+corrections preserve incomplete receipts without retries. This closes these
+specific current consumers, not generic conclusion propagation or direct-call
+crash admission. See [cache boundaries](MEMORY.md#snapshot-and-cache-boundaries)
+and [recap contract](MEMORY.md#memory-recaps-llm-summaries).
+
+Next extend archive expiry, bounded hard forgetting/receipt compaction, generic
+conclusion/claim validators and evidence-preserving handoffs. Invalidation must
+never replay external effects. Registered-file removal is not forensic storage
+erasure; retained originals still occupy disk. Host retrieval stays outside the
+C core. No paid scorer or retrieval-quality promotion is claimed by these source
+checks. Keep those remaining authority gates ahead of quality promotion.
 
 The [SAG2 paper v2](https://arxiv.org/html/2610.22588v2) and
 [reference implementation](https://github.com/Zleap-AI/SAG-Benchmark/tree/main/sag2)

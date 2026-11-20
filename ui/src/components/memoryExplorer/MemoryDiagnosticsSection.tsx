@@ -21,7 +21,7 @@ export default function MemoryDiagnosticsSection(props: Props) {
               disabled={props.correlation.indexBusy || !props.canQuery}
               onClick={() => void props.correlation.buildIndex()}
             >
-              {props.correlation.indexBusy ? "Indexing…" : "Build index"}
+              {props.correlation.indexBusy ? "Checking…" : "Check current sources"}
             </button>
             <button
               className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"

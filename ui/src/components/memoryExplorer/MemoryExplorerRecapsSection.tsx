@@ -12,7 +12,7 @@ export default function MemoryExplorerRecapsSection(props: Props) {
   const generated = r.result && "input" in r.result ? r.result : null;
   const { recaps: _recaps, summary_text: _summary, prompt: _prompt, structured_items: _structured, daily_items: _daily, ...responseMetadata } = (r.result || {}) as Record<string, unknown>;
   const options: [string, string, (value: string) => void][] = [
-    ["Summary character limit", r.summaryMaxChars, r.setSummaryMaxChars],
+    ["Summary text limit (bytes)", r.summaryMaxChars, r.setSummaryMaxChars],
     ["Model override", r.model, r.setModel],
     ["Summary kind", r.kind, r.setKind],
     ["Max items", r.maxItems, r.setMaxItems],
@@ -31,6 +31,7 @@ export default function MemoryExplorerRecapsSection(props: Props) {
         <button className="workspace-button tool-primary" type="submit" disabled={busy || !props.canQuery}>{r.listBusy ? "Loading…" : "Browse summaries"}</button>
         {r.result ? <button className="workspace-button" type="button" disabled={busy} onClick={r.clear}>Clear</button> : null}
       </div>
+      <label className="tool-checks"><input type="checkbox" checked={r.history} onChange={(event) => r.setHistory(event.target.checked)} />Show history</label>
     </form>
     <details className="tool-details" data-testid="memory-create-summary">
       <summary>Create a summary</summary>
@@ -59,7 +60,7 @@ export default function MemoryExplorerRecapsSection(props: Props) {
     <ToolError error={r.error} />
     <div className="tool-results" aria-live="polite" aria-busy={busy}>
       {generated ? <article className="tool-card">
-        <h3>{generated.dry_run ? "Input preview" : generated.recap_path ? "Summary saved" : "Summary created"}</h3>
+        <h3>{generated.dry_run ? "Input preview" : !generated.ok ? "Summary needs review" : generated.recap_path ? "Summary saved" : "Summary created"}</h3>
         {generated.summary_text ? <Markdown text={generated.summary_text} /> : null}
         {generated.dry_run ? <>
           <p className="tool-muted">{generated.input.total_count} source {generated.input.total_count === 1 ? "record" : "records"} selected. Nothing saved.</p>
@@ -72,9 +73,10 @@ export default function MemoryExplorerRecapsSection(props: Props) {
           const { summary_text: _text, ...metadata } = item;
           return <article key={item.recap_path} className="tool-card">
           <h3>{item.kind || "Summary"}{item.ts_utc ? <span className="tool-muted"> · {item.ts_utc}</span> : null}</h3>
+          {!item.source_state?.inputs_current ? <p className="tool-muted">{item.source_state?.state === "stale" ? "Sources changed" : "Sources unverified"}</p> : null}
           {item.summary_text ? <Markdown text={item.summary_text} /> : <p className="tool-muted">No summary text is available for this snapshot.</p>}
           <JsonDetails label="Summary details" value={metadata} />
-        </article>; }) : <p className="tool-empty">No saved summaries match this kind.</p>}
+        </article>; }) : <p className="tool-empty">No summaries with matching sources. Show history to inspect earlier results.</p>}
       </> : !r.error && !busy ? <p className="tool-empty">Browse summaries of earlier work, or create one from saved knowledge.</p> : null}
       {r.result ? <JsonDetails value={responseMetadata} /> : null}
     </div>

@@ -86,6 +86,7 @@ export type MemorySalienceParams = {
 };
 
 export type MemoryRecapsListParams = {
+  view?: "current" | "historical" | "evidence";
   limit?: number;
   includeSummary?: boolean;
   kind?: string;
@@ -116,6 +117,7 @@ export async function apiMemoryCorrelate(
   const tid = String(params.traceId || "").trim();
   if (!tid) throw new Error("missing trace_id");
   const qs = new URLSearchParams();
+  qs.set("view", params.timeline || params.sinceUtcMs !== undefined || params.untilUtcMs !== undefined ? "historical" : "current");
   addQueryParam(qs, "trace_id", tid);
   addQueryParam(qs, "since_utc_ms", params.sinceUtcMs);
   addQueryParam(qs, "until_utc_ms", params.untilUtcMs);
@@ -209,6 +211,7 @@ export async function apiMemoryRecapsList(
   auth?: ApiAuth,
 ): Promise<MemoryRecapsListResp> {
   const qs = new URLSearchParams();
+  qs.set("view", params.view || "current");
   addQueryParam(qs, "limit", params.limit);
   addQueryParam(qs, "include_summary", params.includeSummary);
   addQueryParam(qs, "kind", params.kind);
@@ -226,5 +229,5 @@ export async function apiMemoryRecapsCreate(
     `${base}/api/v1/memory/recaps`,
     daemonFetchInit(auth, { method: "POST", body: JSON.stringify(body ?? {}) }, { "Content-Type": "application/json" }),
   );
-  return memoryResponse(r, MemoryRecapRespSchema);
+  return memoryResponse(r, MemoryRecapRespSchema, true);
 }

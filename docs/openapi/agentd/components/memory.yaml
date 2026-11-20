@@ -236,8 +236,19 @@ MemoryRecapItem:
 
 MemoryRecapsListItem:
   type: object
-  required: [recap_path, bytes]
+  required: [recap_path, bytes, source_state, historical]
   properties:
+    source_state:
+      type: object
+      required: [state, inputs_current, claims_verified]
+      properties:
+        state: { type: string, enum: [current, stale, unverified, unavailable] }
+        inputs_current: { type: boolean }
+        claims_verified: { type: boolean, enum: [false] }
+        reason: { type: string }
+    historical: { type: boolean }
+    evidence: { type: object, additionalProperties: true }
+    original_response_evidence: { type: object, additionalProperties: true }
     recap_path: { type: string }
     bytes: { type: integer, format: int64 }
     ts_utc: { type: string }
@@ -251,6 +262,13 @@ MemoryRecapsListResponse:
   type: object
   required: [ok, memory_root, limit, include_summary, recaps, count]
   properties:
+    view: { type: string, enum: [current, historical, evidence] }
+    validation:
+      type: object
+      properties:
+        excluded_count: { type: integer }
+        incomplete: { type: boolean }
+        state_counts: { type: object, additionalProperties: { type: integer } }
     ok: { type: boolean }
     memory_root: { type: string }
     limit: { type: integer, format: int32 }
@@ -284,8 +302,15 @@ MemoryRecapRequest:
 
 MemoryRecapResponse:
   type: object
-  required: [ok, generated_utc_ms, dry_run, write_file, policy, input, structured_items, daily_items]
+  required: [schema, ok, complete, source_state, generated_utc_ms, dry_run, write_file, policy, input, structured_items, daily_items]
   properties:
+    schema: { type: string, enum: [agent.memory.recap.v2] }
+    complete: { type: boolean }
+    source_state: { type: object, additionalProperties: true }
+    provider_outcome: { type: string, enum: [not_called, completed, failed, unknown] }
+    original_response_evidence: { type: object, additionalProperties: true }
+    publication_uncertain: { type: boolean }
+    dropped_inputs: { type: integer }
     ok: { type: boolean }
     generated_utc_ms: { type: integer, format: int64 }
     ts_utc: { type: string }
@@ -310,10 +335,11 @@ MemoryRecapResponse:
       type: array
       items:
         $ref: "#/components/schemas/MemoryRecapItem"
-    evidence_sources:
-      type: array
-      items:
-        type: string
+    derivation: { type: object, additionalProperties: true }
+    returned_model: { type: string }
+    provider_response_id: { type: string }
+    response_capture_sha256: { type: string }
+    response_capture_complete: { type: boolean }
     prompt: { type: string }
     prompt_truncated: { type: boolean }
     summary_text: { type: string }
@@ -322,58 +348,46 @@ MemoryRecapResponse:
       additionalProperties: true
     recap_path: { type: string }
     recap_bytes: { type: integer, format: int64 }
-    correlation_index:
-      $ref: "#/components/schemas/MemoryCorrelationIndexMeta"
+
 
 
 MemoryCorrelationIndexBuildRequest:
   type: object
   additionalProperties: false
   properties:
-    daily_days: { type: integer, format: int32 }
-    max_daily_entries: { type: integer, format: int32 }
-    max_structured_checkpoints: { type: integer, format: int32 }
-    max_structured_entries: { type: integer, format: int32 }
-    max_entries_per_token: { type: integer, format: int32 }
-    max_recaps: { type: integer, format: int32 }
-    value_excerpt_chars: { type: integer, format: int32 }
+    daily_days: { type: integer, minimum: 0, maximum: 90 }
     include_structured: { type: boolean }
     include_daily: { type: boolean }
-    include_recaps: { type: boolean }
-
 
 MemoryCorrelationIndexBuildResponse:
   type: object
-  required: [ok, memory_root, generated_utc_ms, index_path, token_count, entry_count, structured_entries, daily_entries, recap_entries]
+  required: [ok, memory_root, generated_utc_ms, engine, view, token_count, entry_count, structured_entries, daily_entries]
   properties:
     ok: { type: boolean }
     memory_root: { type: string }
+    engine: { type: string, enum: [live_projection] }
+    view: { type: string, enum: [current] }
     generated_utc_ms: { type: integer, format: int64 }
     generated_utc: { type: string }
-    index_path: { type: string }
     token_count: { type: integer, format: int64 }
     entry_count: { type: integer, format: int64 }
     structured_entries: { type: integer, format: int64 }
     daily_entries: { type: integer, format: int64 }
-    recap_entries: { type: integer, format: int64 }
     error: { type: string }
-
 
 MemoryCorrelationIndexMeta:
   type: object
   properties:
-    ok: { type: boolean }
-    token: { type: string }
-    index_path: { type: string }
-    generated_utc_ms: { type: integer, format: int64 }
-    generated_utc: { type: string }
-    token_count: { type: integer, format: int64 }
-    entry_count: { type: integer, format: int64 }
-    structured_entries: { type: integer, format: int64 }
-    daily_entries: { type: integer, format: int64 }
-    recap_entries: { type: integer, format: int64 }
+    schema: { type: string, enum: [agent.memory.correlation.v2] }
+    engine: { type: string, enum: [live_projection] }
+    view: { type: string, enum: [current] }
+    as_of_utc: { type: string }
+    matched: { type: integer }
+    incomplete: { type: boolean }
+    input_revisions:
+      type: array
+      items: { type: object, additionalProperties: true }
     error: { type: string }
-
 
 MemoryCorrelateDailyEntry:
   type: object

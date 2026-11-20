@@ -108,6 +108,8 @@ void observation(MemoryPassage *passage) {
     const auto key = trim(clean.substr(2, colon - 2));
     if (key == "ts_utc")
       passage->record["observed_utc"] = trim(clean.substr(colon + 1));
+    if (key == "trace_id" || key == "source")
+      passage->record[key] = trim(clean.substr(colon + 1));
     if (key == "importance") {
       try {
         passage->record["importance"] = std::clamp(std::stoi(trim(clean.substr(colon + 1))), 0, 5);
@@ -246,7 +248,8 @@ bool memory_record_current(const Json::Value &record, const std::string &now) {
   if (!record.isObject() || !record.isMember("value") || record["value"].isNull() ||
       (record.isMember("status") && !record["status"].isString()) ||
       (record.isMember("kind") && !record["kind"].isString()) ||
-      (record.isMember("valid_from") && !record["valid_from"].isString()))
+      (record.isMember("valid_from") && !record["valid_from"].isString()) ||
+      record.isMember("valid_from_utc"))
     return false;
   for (const auto *field : {"deleted", "invalidated"})
     if (record.isMember(field) && (!record[field].isBool() || record[field].asBool()))
@@ -307,49 +310,60 @@ bool memory_view_project(const std::string &path, const MemoryDocument &doc, Mem
     return true;
   }
   Json::Value structured;
-  if (!memory_structured_parse_doc(doc.text, &structured, error))
+  size_t block_end = 0;
+  if (!memory_structured_decode(doc.text, &structured, error, &block_end))
     return false;
-  for (const auto &key : structured["items"].getMemberNames()) {
-    if (out->size() >= 20000)
-      return reject(error, "memory source exceeds passage budget");
-    const auto &record = structured["items"][key];
-    if (!record.isObject())
-      continue;
-    auto add = [&](const Json::Value &value, const std::string &pointer, bool historical) {
-      if (!value.isObject() ||
-          (mode == MemoryViewMode::Current && (historical || !memory_record_current(value, now))))
-        return;
-      auto passage = base(path, doc);
-      passage.key = key;
-      passage.kind = value["kind"].isString() ? value["kind"].asString() : "fact";
-      passage.status = value["status"].isString() ? value["status"].asString() : "unknown";
-      passage.historical = historical || !memory_record_current(value, now);
-      passage.pointer = pointer + "/value";
-      passage.begin = begin;
-      passage.end = end + kEnd.size();
-      passage.line = 1 + int(std::count(doc.text.begin(), doc.text.begin() + begin, '\n'));
-      passage.end_line = passage.line;
-      passage.text = key + " = " + value_text(value["value"]);
-      passage.record_revision = memory_record_revision(value);
-      passage.record = value;
-      passage.record.removeMember("versions");
-      out->push_back(std::move(passage));
-    };
-    const auto pointer = "/items/" + memory_pointer_token(key);
-    add(record, pointer, false);
-    if (mode != MemoryViewMode::Current && record["versions"].isArray()) {
-      for (Json::ArrayIndex i = 0; i < record["versions"].size(); ++i) {
-        if (out->size() >= 20000)
-          return reject(error, "memory source exceeds passage budget");
-        add(record["versions"][i], pointer + "/versions/" + std::to_string(i), true);
+  const bool supported =
+      structured["schema"] == "agent_memory_v2" && structured["items"].isObject();
+  if (!supported && mode == MemoryViewMode::Current)
+    return reject(error, "unsupported current structured memory schema");
+  if (structured["items"].isObject())
+    for (const auto &key : structured["items"].getMemberNames()) {
+      if (out->size() >= 20000)
+        return reject(error, "memory source exceeds passage budget");
+      const auto &record = structured["items"][key];
+      if (!record.isObject())
+        continue;
+      auto add = [&](const Json::Value &value, const std::string &pointer, bool historical) {
+        if (!value.isObject() ||
+            (mode == MemoryViewMode::Current && (historical || !memory_record_current(value, now))))
+          return;
+        auto passage = base(path, doc);
+        passage.key = key;
+        passage.kind = value["kind"].isString() ? value["kind"].asString() : "fact";
+        passage.status = value["status"].isString() ? value["status"].asString() : "active";
+        passage.historical = historical || !supported || !memory_record_current(value, now);
+        if (!supported)
+          passage.eligibility_reason = "unsupported_schema";
+        passage.pointer = pointer + "/value";
+        passage.begin = begin;
+        passage.end = block_end;
+        passage.line = 1 + int(std::count(doc.text.begin(), doc.text.begin() + begin, '\n'));
+        passage.end_line = passage.line;
+        passage.text = key + " = " + value_text(value["value"]);
+        passage.record_revision = memory_record_revision(value);
+        passage.record = value;
+        passage.record.removeMember("versions");
+        out->push_back(std::move(passage));
+      };
+      const auto pointer = "/items/" + memory_pointer_token(key);
+      add(record, pointer, false);
+      if (mode != MemoryViewMode::Current && record["versions"].isArray()) {
+        for (Json::ArrayIndex i = 0; i < record["versions"].size(); ++i) {
+          if (out->size() >= 20000)
+            return reject(error, "memory source exceeds passage budget");
+          add(record["versions"][i], pointer + "/versions/" + std::to_string(i), true);
+        }
       }
     }
-  }
   // The human-readable generated sections repeat state. Only the explicitly
   // retained user-notes block adds independent Markdown evidence.
   const std::string notes_begin = "<!-- AGENT_MEMORY_V1_NOTES_BEGIN -->",
                     notes_end = "<!-- AGENT_MEMORY_V1_NOTES_END -->";
-  const auto notes = doc.text.find(notes_begin), stop = doc.text.find(notes_end);
+  const auto notes = doc.text.find(notes_begin, block_end),
+             stop = notes == std::string::npos
+                        ? std::string::npos
+                        : doc.text.find(notes_end, notes + notes_begin.size());
   if (notes != std::string::npos && stop != std::string::npos && stop > notes)
     raw_passages(path, doc, mode, notes + notes_begin.size(), stop, all, out);
   return true;
@@ -400,7 +414,11 @@ bool memory_view_capture(const std::filesystem::path &input, const std::vector<s
     snapshot->sources.emplace("STRUCTURED.md", std::move(authority));
   }
   Json::Value authority;
-  if (!memory_structured_parse_doc(snapshot->sources.at("STRUCTURED.md").text, &authority, error))
+  if (!(mode == MemoryViewMode::Current
+            ? memory_structured_parse_doc(snapshot->sources.at("STRUCTURED.md").text, &authority,
+                                          error)
+            : memory_structured_decode(snapshot->sources.at("STRUCTURED.md").text, &authority,
+                                       error)))
     return false;
   auto &passages = snapshot->passages;
   for (auto &passage : passages) {
@@ -480,10 +498,12 @@ bool memory_evidence_read(const std::filesystem::path &root, const Json::Value &
     Json::Value structured;
     passage.pointer = span["pointer"].asString();
     bool parsed = false;
-    if (doc.text.find(kBegin) != std::string::npos)
-      parsed = memory_structured_parse_doc(doc.text, &structured, error);
+    if (markdown && doc.text.find(kBegin) != std::string::npos)
+      parsed = memory_structured_decode(doc.text, &structured, error);
     else {
       Json::CharReaderBuilder reader;
+      reader["rejectDupKeys"] = true;
+      reader["failIfExtra"] = true;
       std::istringstream stream(doc.text);
       parsed = Json::parseFromStream(reader, stream, &structured, error);
     }

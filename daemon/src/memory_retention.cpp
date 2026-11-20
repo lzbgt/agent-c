@@ -585,6 +585,10 @@ bool memory_retention_enforce(const DaemonConfig &cfg,
         const auto &record = doc["items"][key];
         if (!memory_record_current(record, as_of))
           continue;
+        if (record.isMember("observed_utc") && !record["observed_utc"].isString()) {
+          maybe_push_error(stats, "invalid structured observation type: " + key);
+          continue;
+        }
         const auto observed = record.get("observed_utc", "").asString();
         const auto updated = record.get("updated_utc", "").isString()
                                  ? record["updated_utc"].asString()

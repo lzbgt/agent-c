@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const checkpoint = { checkpoint_path: "private/checkpoint.json", ts_utc: "2026-11-10T00:00:00Z", ts_utc_ms: 100, sha256: "checkpoint-hash", bytes: 200 };
+const sourceState = { state: "current", inputs_current: true, claims_verified: false };
 const policy = { include_structured: true, include_daily: true, daily_days: 7, max_items: 12, max_structured_items: 6, max_daily_items: 6, half_life_days: 14, importance_weight: 0.35 };
 const queryResult = (prefix = "") => ({
   ok: true, memory_root: "private-memory-root-marker", since_utc_ms: 0, until_utc_ms: 100,
@@ -32,16 +33,16 @@ async function mockMemory(page: Page) {
       if (prefix === "invalid") return route.fulfill({ json: { ok: true, entries: "bad-payload" } });
       response = prefix === "empty" ? { ...queryResult(prefix), entries: [], returned: 0 } : queryResult(prefix);
     }
-    if (path.endsWith("/memory/correlation/index")) response = { ok: true, memory_root: "private-memory-root-marker", generated_utc_ms: 100, index_path: "correlation.json", token_count: 7, entry_count: 14, structured_entries: 8, daily_entries: 4, recap_entries: 2 };
+    if (path.endsWith("/memory/correlation/index")) response = { ok: true, memory_root: "private-memory-root-marker", generated_utc_ms: 100, engine: "live_projection", view: "current", token_count: 7, entry_count: 12, structured_entries: 8, daily_entries: 4 };
     if (path.endsWith("/memory/correlate")) response = { ok: true, trace_id: url.searchParams.get("trace_id"), needle: "trace-42", since_utc_ms: 0, until_utc_ms: 100, entries: queryResult().entries };
     if (path.endsWith("/memory/checkpoints")) response = { ok: true, memory_root: "private-memory-root-marker", since_utc_ms: 0, until_utc_ms: 100, checkpoints: [checkpoint] };
     if (path.endsWith("/memory/index")) response = { ok: true, memory_root: "private-memory-root-marker", daily_days: 7, include_structured: true, include_core: true, include_daily: true, include_session: false, files: [{ tier: "core", path: "CORE.md", bytes: 24, lines: 1, token_estimate: 6 }] };
     if (path.endsWith("/memory/salience")) response = { ok: true, memory_root: "private-memory-root-marker", generated_utc_ms: 100, policy, structured_items: [], daily_items: [], returned: 0 };
     if (path.endsWith("/memory/recaps")) response = method === "GET" ? {
       ok: true, memory_root: "private-memory-root-marker", limit: 20, include_summary: true, count: 1,
-      recaps: [{ recap_path: "private/recap-path-marker", kind: "daily", ts_utc: "2026-11-10T00:00:00Z", bytes: 321, model: "model-metadata-marker", summary_text: "The morning shift finished all inspections." }],
+      recaps: [{ source_state: sourceState, historical: false, recap_path: "private/recap-path-marker", kind: "daily", ts_utc: "2026-11-10T00:00:00Z", bytes: 321, model: "model-metadata-marker", summary_text: "The morning shift finished all inspections." }],
     } : {
-      ok: true, generated_utc_ms: 100, dry_run: body.dry_run, write_file: body.write_file, policy,
+      schema: "agent.memory.recap.v2", complete: true, source_state: sourceState, ok: true, generated_utc_ms: 100, dry_run: body.dry_run, write_file: body.write_file, policy,
       input: { structured_count: 1, daily_count: 0, total_count: 1 },
       structured_items: [{ tier: "structured", key: "project.handover", score: 0.8, text: "Check the coolant before the next shift." }], daily_items: [],
       ...(body.dry_run ? { prompt: "internal-model-prompt-marker" } : { summary_text: "Coolant inspection is ready for the next shift.", ...(body.write_file ? { recap_path: "private/new-recap-path-marker" } : {}) }),
@@ -134,8 +135,8 @@ test("advanced trace, index, schedule and cleanup remain available only on reque
   await page.getByText("Trace correlation & checkpoints", { exact: true }).click();
   const diagnostics = page.getByTestId("memory-diagnostics-section");
   await page.getByTestId("memory-trace-id-input").fill("trace-42");
-  await diagnostics.getByRole("button", { name: "Build index", exact: true }).click();
-  await expect(diagnostics.getByText(/"entry_count": 14/)).toBeVisible();
+  await diagnostics.getByRole("button", { name: "Check current sources", exact: true }).click();
+  await expect(diagnostics.getByText(/"entry_count": 12/)).toBeVisible();
   await diagnostics.getByRole("button", { name: "Correlate", exact: true }).click();
   await expect(diagnostics.getByText(/"trace_id": "trace-42"/)).toBeVisible();
   await diagnostics.getByRole("button", { name: "List", exact: true }).click();
@@ -187,4 +188,48 @@ test("incomplete cleanup preserves confirmed work and keeps receipts collapsed",
   await expect(section.getByText("Cleanup completed", { exact: true })).toHaveCount(0);
   expect(await section.innerText()).not.toMatch(/retired_unconfirmed|retained-original-marker/);
   expect(submissions).toBe(1);
+});
+
+test("summary history identifies changed sources and incomplete generation never replays", async ({ page }) => {
+  const calls = await mockMemory(page);
+  let submissions = 0;
+  await page.route("**/api/v1/memory/recaps**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === "GET") {
+      const history = url.searchParams.get("view") === "historical";
+      return route.fulfill({ json: {
+        ok: true, memory_root: "private", limit: 20, include_summary: true, view: history ? "historical" : "current",
+        validation: { excluded_count: history ? 0 : 1 }, count: history ? 1 : 0,
+        recaps: history ? [{ recap_path: "recaps/recap_original.json", bytes: 100, historical: true,
+          source_state: { state: "stale", inputs_current: false, claims_verified: false }, summary_text: "Earlier shift result." }] : [],
+      } });
+    }
+    submissions++;
+    return route.fulfill({ status: 409, json: {
+      schema: "agent.memory.recap.v2", ok: false, complete: false, generated_utc_ms: 100, dry_run: false, write_file: true, policy,
+      source_state: { state: "stale", inputs_current: false, claims_verified: false },
+      input: { structured_count: 1, daily_count: 0, total_count: 1 }, structured_items: [], daily_items: [],
+      summary_text: "Original generated result remains available.", recap_path: "recaps/recap_outcome.json",
+      original_response_evidence: { id: "immutable-provider-outcome-marker" },
+      error: "Sources changed while the summary was generated. Review the result.",
+    } });
+  });
+  await page.getByRole("button", { name: "Summaries", exact: true }).click();
+  const section = page.getByTestId("memory-recaps-section");
+  await section.getByRole("button", { name: "Browse summaries", exact: true }).click();
+  await expect(section.getByText("No summaries with matching sources. Show history to inspect earlier results.")).toBeVisible();
+  await section.getByLabel("Show history", { exact: true }).check();
+  await section.getByRole("button", { name: "Browse summaries", exact: true }).click();
+  await expect(section.getByText("Sources changed", { exact: true })).toBeVisible();
+  await expect(section.getByText("Earlier shift result.", { exact: true })).toBeVisible();
+  await page.getByTestId("memory-create-summary").locator(":scope > summary").click();
+  await section.getByLabel("Preview inputs only", { exact: true }).uncheck();
+  await section.getByRole("button", { name: "Create & save summary", exact: true }).click();
+  await expect(section.getByText("Summary needs review", { exact: true })).toBeVisible();
+  await expect(section.getByText("Original generated result remains available.", { exact: true })).toBeVisible();
+  await expect(section.getByRole("alert")).toHaveText("Sources changed while the summary was generated. Review the result.");
+  expect(await section.innerText()).not.toMatch(/immutable-provider-outcome-marker|recap_outcome/);
+  expect(submissions).toBe(1);
+  expect(calls.filter((call) => call.method === "POST")).toEqual([]);
 });

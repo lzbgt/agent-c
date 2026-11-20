@@ -1,8 +1,9 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 // Optional callback for surfacing provider retries to UIs/logs.
 // `data_json` is a JSON object string for the event's `data` field.
@@ -29,6 +30,10 @@ struct OpenAIClientConfig {
   // Note: retries can result in duplicate provider requests if the first attempt succeeded server-side
   // but the response was lost. Keep this small (default: 1).
   int max_retries = 1;
+  // Disable the additional proxy-to-direct attempt for effect-sensitive calls.
+  bool retry_direct_on_proxy_failure = true;
+  // Non-streaming response byte cap. Zero preserves the caller's unlimited policy.
+  size_t max_response_bytes = 0;
   // Exponential backoff tuning for retries.
   // Attempt 0 sleep ~= retry_base_ms (subject to jitter/caps), attempt 1 doubles, etc.
   long retry_base_ms = 250;
@@ -57,12 +62,16 @@ struct OpenAIChatResult {
   std::string assistant_text;  // best-effort extracted
   std::string error_message;   // best-effort extracted (when non-2xx or parse failure)
   bool cancelled = false;
+  bool response_limited = false;
+  bool response_complete = false;
 };
 
 struct OpenAIRawResult {
   long http_status = 0;
   std::string response_body;
   bool cancelled = false;
+  bool response_limited = false;
+  bool response_complete = false;
 };
 
 OpenAIChatResult openai_chat_completions(

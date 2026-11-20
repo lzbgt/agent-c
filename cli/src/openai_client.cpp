@@ -95,12 +95,20 @@ static bool wait_for_retry(RequestCancelCtx& cancel, long sleep_ms) {
 struct RawWriteCtx {
   std::string* response = nullptr;
   RequestCancelCtx* cancel = nullptr;
+  size_t limit = 0;
+  bool limited = false;
 };
 
 static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* ctx = static_cast<RawWriteCtx*>(userdata);
   if (!ctx || !ctx->response || (ctx->cancel && ctx->cancel->requested())) return 0;
-  ctx->response->append(ptr, size * nmemb);
+  const size_t bytes = size * nmemb;
+  if (ctx->limit && bytes > ctx->limit - ctx->response->size()) {
+    ctx->response->append(ptr, ctx->limit - ctx->response->size());
+    ctx->limited = true;
+    return 0;
+  }
+  ctx->response->append(ptr, bytes);
   return size * nmemb;
 }
 
@@ -481,7 +489,7 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     }
 
     std::string response;
-    RawWriteCtx wctx{&response, &cancel};
+    RawWriteCtx wctx{&response, &cancel, cfg.max_response_bytes};
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_POST, 1L);
@@ -512,7 +520,15 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     }
 
     CURLcode rc = curl_easy_perform(curl);
-    if (rc != CURLE_OK && have_proxy && !cancel.requested()) {
+    if (wctx.limited) {
+      result.response_limited = true;
+      result.response_body = std::move(response);
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &result.http_status);
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
+    if (rc != CURLE_OK && have_proxy && cfg.retry_direct_on_proxy_failure && !cancel.requested()) {
       // Proxy can be flaky/unavailable. Retry once with proxy disabled so tests can still run.
       response.clear();
       header_cap.retry_after_ms = 0;
@@ -521,6 +537,14 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
       rc = curl_easy_perform(curl);
     }
 
+    if (wctx.limited) {
+      result.response_limited = true;
+      result.response_body = std::move(response);
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &result.http_status);
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
     if (cancel.requested()) {
       result.cancelled = true;
       result.response_body = response;
@@ -537,6 +561,7 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     // Success path.
     if (rc == CURLE_OK && http_status >= 200 && http_status < 300) {
       result.http_status = http_status;
+      result.response_complete = true;
       result.response_body = response;
       curl_slist_free_all(headers);
       curl_easy_cleanup(curl);
@@ -549,6 +574,7 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
 
     // Populate best-effort result for caller if this is the last attempt.
     if (!can_retry) {
+      result.response_complete = rc == CURLE_OK;
       result.http_status = (rc == CURLE_OK) ? http_status : 0;
       result.response_body = (rc == CURLE_OK) ? response : (std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc));
       curl_slist_free_all(headers);
@@ -620,7 +646,7 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     }
 
     std::string response;
-    RawWriteCtx wctx{&response, &cancel};
+    RawWriteCtx wctx{&response, &cancel, cfg.max_response_bytes};
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
@@ -645,7 +671,15 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     }
 
     CURLcode rc = curl_easy_perform(curl);
-    if (rc != CURLE_OK && have_proxy && !cancel.requested()) {
+    if (wctx.limited) {
+      result.response_limited = true;
+      result.response_body = std::move(response);
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &result.http_status);
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
+    if (rc != CURLE_OK && have_proxy && cfg.retry_direct_on_proxy_failure && !cancel.requested()) {
       response.clear();
       header_cap.retry_after_ms = 0;
       curl_easy_setopt(curl, CURLOPT_PROXY, "");
@@ -653,6 +687,14 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
       rc = curl_easy_perform(curl);
     }
 
+    if (wctx.limited) {
+      result.response_limited = true;
+      result.response_body = std::move(response);
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &result.http_status);
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
     if (cancel.requested()) {
       result.cancelled = true;
       result.response_body = response;
@@ -668,6 +710,7 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
 
     if (rc == CURLE_OK && http_status >= 200 && http_status < 300) {
       result.http_status = http_status;
+      result.response_complete = true;
       result.response_body = response;
       curl_slist_free_all(headers);
       curl_easy_cleanup(curl);
@@ -677,6 +720,7 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     const bool retryable = (rc != CURLE_OK) ? is_retryable_curl_code(rc) : is_retryable_http_status(http_status);
     const bool can_retry = (attempt < max_retries) && retryable;
     if (!can_retry) {
+      result.response_complete = rc == CURLE_OK;
       result.http_status = (rc == CURLE_OK) ? http_status : 0;
       result.response_body = (rc == CURLE_OK) ? response : (std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc));
       curl_slist_free_all(headers);
@@ -783,7 +827,7 @@ static OpenAIStreamResult http_post_json_stream(
     }
 
     CURLcode rc = curl_easy_perform(curl);
-    if (rc != CURLE_OK && have_proxy && !cancel.requested()) {
+    if (rc != CURLE_OK && have_proxy && cfg.retry_direct_on_proxy_failure && !cancel.requested()) {
       // Retry once with proxy disabled.
       wctx.capture.clear();
       agent_sse_parser_reset(&wctx.parser);
@@ -1048,6 +1092,12 @@ OpenAIChatResult openai_chat_completions(
   result.http_status = raw.http_status;
   result.response_body = raw.response_body;
   result.cancelled = raw.cancelled;
+  result.response_limited = raw.response_limited;
+  result.response_complete = raw.response_complete;
+  if (raw.response_limited) {
+    result.error_message = "response byte budget exceeded; outcome unknown";
+    return result;
+  }
   if (raw.cancelled) {
     result.error_message = "cancelled";
     return result;

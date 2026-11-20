@@ -3434,12 +3434,13 @@ export interface paths {
         };
         /**
          * List memory recap snapshots
-         * @description Lists recap JSON snapshots under `memory/recaps/` (newest first).
+         * @description Lists immutable recap artifacts, newest first. Current view revalidates input revisions and evidence eligibility; historical/evidence views retain stale or unverified originals. Input currentness does not establish claim support.
          *     Use `include_summary=true` to include the recap summary text.
          */
         get: {
             parameters: {
                 query?: {
+                    view?: "current" | "historical" | "evidence";
                     limit?: number;
                     include_summary?: boolean;
                     kind?: string;
@@ -3498,13 +3499,13 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Recap failed */
-                500: {
+                /** @description Incomplete result; original provider outcome and any published receipt are retained. Reconcile before another request. */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["MemoryRecapResponse"];
                     };
                 };
             };
@@ -3524,16 +3525,12 @@ export interface paths {
         };
         /**
          * Correlate structured memory evidence by trace_id (bounded)
-         * @description Selects the newest structured checkpoint in the requested time window and returns
-         *     structured keys whose `sources[]` mention `trace:<trace_id>`.
-         *     Responses include `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking
-         *     memory items to trace/workflow/task/job IDs and bounded source excerpts.
-         *     When a correlation index exists, the response also includes `daily_entries`, `recap_entries`,
-         *     and `index` metadata.
+         * @description Current view joins eligible current heads and recent daily observations by exact trace token or colon-delimited child token. Filters apply before the output cap. Original references bind source, revision and span. Historical/evidence views explicitly select checkpoint originals; time windows and timeline require one of those views. Recaps are not correlation inputs.
          */
         get: {
             parameters: {
                 query: {
+                    view?: "current" | "historical" | "evidence";
                     trace_id: components["schemas"]["TraceID"];
                     since_utc_ms?: number;
                     until_utc_ms?: number;
@@ -3579,8 +3576,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Build cross-run correlation index
-         * @description Builds a cross-run correlation index over structured checkpoints, daily observations, and recap evidence.
+         * Inspect current correlation projection
+         * @description Captures eligible current structured heads and recent daily observations, validates revisions and returns counts. This endpoint writes no correlation payload cache.
          */
         post: {
             parameters: {
@@ -8629,6 +8626,21 @@ export interface components {
             source?: string;
         };
         MemoryRecapsListItem: {
+            source_state: {
+                /** @enum {string} */
+                state: "current" | "stale" | "unverified" | "unavailable";
+                inputs_current: boolean;
+                /** @enum {boolean} */
+                claims_verified: false;
+                reason?: string;
+            };
+            historical: boolean;
+            evidence?: {
+                [key: string]: unknown;
+            };
+            original_response_evidence?: {
+                [key: string]: unknown;
+            };
             recap_path: string;
             /** Format: int64 */
             bytes: number;
@@ -8640,6 +8652,15 @@ export interface components {
             summary_text?: string;
         };
         MemoryRecapsListResponse: {
+            /** @enum {string} */
+            view?: "current" | "historical" | "evidence";
+            validation?: {
+                excluded_count?: number;
+                incomplete?: boolean;
+                state_counts?: {
+                    [key: string]: number;
+                };
+            };
             ok: boolean;
             memory_root: string;
             /** Format: int32 */
@@ -8673,6 +8694,19 @@ export interface components {
             importance_weight?: number;
         };
         MemoryRecapResponse: {
+            /** @enum {string} */
+            schema: "agent.memory.recap.v2";
+            complete: boolean;
+            source_state: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            provider_outcome?: "not_called" | "completed" | "failed" | "unknown";
+            original_response_evidence?: {
+                [key: string]: unknown;
+            };
+            publication_uncertain?: boolean;
+            dropped_inputs?: number;
             ok: boolean;
             /** Format: int64 */
             generated_utc_ms: number;
@@ -8692,7 +8726,13 @@ export interface components {
             };
             structured_items: components["schemas"]["MemoryRecapItem"][];
             daily_items: components["schemas"]["MemoryRecapItem"][];
-            evidence_sources?: string[];
+            derivation?: {
+                [key: string]: unknown;
+            };
+            returned_model?: string;
+            provider_response_id?: string;
+            response_capture_sha256?: string;
+            response_capture_complete?: boolean;
             prompt?: string;
             prompt_truncated?: boolean;
             summary_text?: string;
@@ -8702,34 +8742,22 @@ export interface components {
             recap_path?: string;
             /** Format: int64 */
             recap_bytes?: number;
-            correlation_index?: components["schemas"]["MemoryCorrelationIndexMeta"];
         };
         MemoryCorrelationIndexBuildRequest: {
-            /** Format: int32 */
             daily_days?: number;
-            /** Format: int32 */
-            max_daily_entries?: number;
-            /** Format: int32 */
-            max_structured_checkpoints?: number;
-            /** Format: int32 */
-            max_structured_entries?: number;
-            /** Format: int32 */
-            max_entries_per_token?: number;
-            /** Format: int32 */
-            max_recaps?: number;
-            /** Format: int32 */
-            value_excerpt_chars?: number;
             include_structured?: boolean;
             include_daily?: boolean;
-            include_recaps?: boolean;
         };
         MemoryCorrelationIndexBuildResponse: {
             ok: boolean;
             memory_root: string;
+            /** @enum {string} */
+            engine: "live_projection";
+            /** @enum {string} */
+            view: "current";
             /** Format: int64 */
             generated_utc_ms: number;
             generated_utc?: string;
-            index_path: string;
             /** Format: int64 */
             token_count: number;
             /** Format: int64 */
@@ -8738,27 +8766,21 @@ export interface components {
             structured_entries: number;
             /** Format: int64 */
             daily_entries: number;
-            /** Format: int64 */
-            recap_entries: number;
             error?: string;
         };
         MemoryCorrelationIndexMeta: {
-            ok?: boolean;
-            token?: string;
-            index_path?: string;
-            /** Format: int64 */
-            generated_utc_ms?: number;
-            generated_utc?: string;
-            /** Format: int64 */
-            token_count?: number;
-            /** Format: int64 */
-            entry_count?: number;
-            /** Format: int64 */
-            structured_entries?: number;
-            /** Format: int64 */
-            daily_entries?: number;
-            /** Format: int64 */
-            recap_entries?: number;
+            /** @enum {string} */
+            schema?: "agent.memory.correlation.v2";
+            /** @enum {string} */
+            engine?: "live_projection";
+            /** @enum {string} */
+            view?: "current";
+            as_of_utc?: string;
+            matched?: number;
+            incomplete?: boolean;
+            input_revisions?: {
+                [key: string]: unknown;
+            }[];
             error?: string;
         };
         MemoryCorrelateDailyEntry: {
@@ -10895,14 +10917,22 @@ export interface components {
             limit?: number;
         };
         /**
-         * @description Deterministic memory correlation configuration for `kind:memory_correlate`.
+         * @description Deterministic current evidence correlation for `kind:memory_correlate`.
+         *     Historical/evidence view explicitly reads checkpoint originals; time windows require one of those views.
          *
-         *     The engine scans rolling structured checkpoints under `memory/checkpoints/structured_*.json` and returns
-         *     entries whose `record.sources[]` contains a substring `trace:<trace_id>`. Results include
+         *     Current view projects eligible heads and recent daily observations. Historical/evidence view scans
+         *     checkpoint originals. Exact trace tokens and colon-delimited child tokens match. Results include
          *     `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking memory items to
          *     trace/workflow/task/job IDs and bounded source excerpts.
          */
         WorkflowMemoryCorrelateSpec: {
+            /**
+             * @default current
+             * @enum {string}
+             */
+            view: "current" | "historical" | "evidence";
+            structured_path?: string;
+            key_prefix?: string;
             /** @description If omitted, the engine uses the workflow trace_id. */
             trace_id?: string;
             /**
@@ -10917,7 +10947,7 @@ export interface components {
             until_utc_ms?: number;
             /**
              * Format: int32
-             * @description Max entries to return per checkpoint (default 50; clamped 1..500).
+             * @description Max entries in the current structured/daily result or per historical checkpoint (default 50; clamped 1..500).
              */
             max_entries?: number;
             /** @description If true, returns multiple checkpoints (up to 50) instead of only the newest in-window checkpoint. */

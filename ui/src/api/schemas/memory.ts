@@ -59,21 +59,11 @@ const MemoryQueryEntrySchema = z
   })
   .passthrough();
 
-const MemoryCorrelationIndexMetaSchema: z.ZodType<MemoryCorrelationIndexMeta> = z
-  .object({
-    ok: z.boolean().optional(),
-    token: z.string().optional(),
-    index_path: z.string().optional(),
-    generated_utc_ms: z.number().int().nonnegative().optional(),
-    generated_utc: z.string().optional(),
-    token_count: z.number().int().nonnegative().optional(),
-    entry_count: z.number().int().nonnegative().optional(),
-    structured_entries: z.number().int().nonnegative().optional(),
-    daily_entries: z.number().int().nonnegative().optional(),
-    recap_entries: z.number().int().nonnegative().optional(),
-    error: z.string().optional(),
-  })
-  .passthrough();
+const MemoryCorrelationIndexMetaSchema: z.ZodType<MemoryCorrelationIndexMeta> = z.object({
+  engine: z.literal("live_projection").optional(), view: z.literal("current").optional(),
+  matched: z.number().int().nonnegative().optional(), incomplete: z.boolean().optional(),
+  error: z.string().optional(),
+}).passthrough();
 
 const MemoryCorrelateDailyEntrySchema: z.ZodType<MemoryCorrelateDailyEntry> = z
   .object({
@@ -94,7 +84,6 @@ const MemoryCorrelateRecapEntrySchema: z.ZodType<MemoryCorrelateRecapEntry> = z
     ts_utc: z.string().optional(),
     ts_utc_ms: z.number().int().nonnegative().optional(),
     summary_excerpt: z.string().optional(),
-    evidence_sources: z.array(z.string()).optional(),
   })
   .passthrough();
 
@@ -166,9 +155,16 @@ const MemoryRecapItemSchema: z.ZodType<MemoryRecapItem> = z
   })
   .passthrough();
 
+const MemorySourceStateSchema = z.object({
+  state: z.enum(["current", "stale", "unverified", "unavailable"]),
+  inputs_current: z.boolean(), claims_verified: z.literal(false), reason: z.string().optional(),
+}).passthrough().refine((state) => state.inputs_current === (state.state === "current"));
+
 const MemoryRecapsListItemSchema: z.ZodType<MemoryRecapsListItem> = z
   .object({
     recap_path: z.string(),
+    source_state: MemorySourceStateSchema,
+    historical: z.boolean(),
     bytes: z.number().int().nonnegative(),
     ts_utc: z.string().optional(),
     ts_utc_ms: z.number().int().nonnegative().optional(),
@@ -223,12 +219,12 @@ export const MemoryCorrelationIndexRespSchema: z.ZodType<MemoryCorrelationIndexR
     memory_root: z.string(),
     generated_utc_ms: z.number().int().nonnegative(),
     generated_utc: z.string().optional(),
-    index_path: z.string(),
+    engine: z.literal("live_projection"),
+    view: z.literal("current"),
     token_count: z.number().int().nonnegative(),
     entry_count: z.number().int().nonnegative(),
     structured_entries: z.number().int().nonnegative(),
     daily_entries: z.number().int().nonnegative(),
-    recap_entries: z.number().int().nonnegative(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
@@ -337,6 +333,8 @@ export const MemoryRecapsListRespSchema: z.ZodType<MemoryRecapsListResp> = z
 export const MemoryRecapRespSchema: z.ZodType<MemoryRecapResp> = z
   .object({
     ok: z.boolean(),
+    schema: z.literal("agent.memory.recap.v2"), complete: z.boolean(),
+    source_state: MemorySourceStateSchema,
     generated_utc_ms: z.number().int().nonnegative(),
     ts_utc: z.string().optional(),
     model: z.string().optional(),
@@ -353,16 +351,14 @@ export const MemoryRecapRespSchema: z.ZodType<MemoryRecapResp> = z
       .passthrough(),
     structured_items: z.array(MemoryRecapItemSchema),
     daily_items: z.array(MemoryRecapItemSchema),
-    evidence_sources: z.array(z.string()).optional(),
     prompt: z.string().optional(),
     prompt_truncated: z.boolean().optional(),
     summary_text: z.string().optional(),
     summary: UnknownRecordSchema.optional(),
     recap_path: z.string().optional(),
     recap_bytes: z.number().int().nonnegative().optional(),
-    correlation_index: MemoryCorrelationIndexMetaSchema.optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
   })
-  .passthrough();
+  .passthrough().refine((report) => report.ok === report.complete, "Inconsistent recap completion state.");

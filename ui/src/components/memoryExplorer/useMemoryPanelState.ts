@@ -158,6 +158,8 @@ export type MemorySalienceState = {
 };
 
 export type MemoryRecapsState = {
+  history: boolean;
+  setHistory: React.Dispatch<React.SetStateAction<boolean>>;
   limit: string;
   setLimit: React.Dispatch<React.SetStateAction<string>>;
   includeSummary: boolean;
@@ -311,6 +313,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
   const [recapsWriteFile, setRecapsWriteFile] = React.useState(true);
   const [recapsKind, setRecapsKind] = React.useState("");
   const [recapsKindFilter, setRecapsKindFilter] = React.useState("");
+  const [recapsHistory, setRecapsHistory] = React.useState(false);
   const [recapsModel, setRecapsModel] = React.useState("");
   const [recapsSummaryMaxChars, setRecapsSummaryMaxChars] = React.useState("1200");
   const [recapsIncludeStructured, setRecapsIncludeStructured] = React.useState(true);
@@ -561,6 +564,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
           limit: parsePositiveInt(recapsLimit, 20),
           includeSummary: recapsIncludeSummary,
           kind: recapsKindFilter.trim() || undefined,
+          view: recapsHistory ? "historical" : "current",
         },
         args.auth,
       );
@@ -571,7 +575,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
     } finally {
       setRecapsListBusy(false);
     }
-  }, [args.auth, base, canQuery, recapsIncludeSummary, recapsKindFilter, recapsLimit]);
+  }, [args.auth, base, canQuery, recapsIncludeSummary, recapsKindFilter, recapsLimit, recapsHistory]);
 
   const runRecapsGenerate = React.useCallback(async () => {
     setRecapsError(null);
@@ -608,8 +612,8 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
     setRecapsGenerateBusy(true);
     try {
       const res = await apiMemoryRecapsCreate(base, payload, args.auth);
-      if (!res.ok) throw new Error(res.error || "recap generation failed");
       setRecapsResult(res);
+      if (!res.ok) setRecapsError(res.error || "Summary needs review.");
     } catch (e) {
       setRecapsError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -864,6 +868,7 @@ export function useMemoryPanelState(args: MemoryPanelStateArgs): MemoryPanelStat
       },
     },
     recaps: {
+      history: recapsHistory, setHistory: setRecapsHistory,
       limit: recapsLimit,
       setLimit: setRecapsLimit,
       includeSummary: recapsIncludeSummary,

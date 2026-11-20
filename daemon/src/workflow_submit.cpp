@@ -1421,8 +1421,29 @@ void workflow_submit_handle(
 
 	      const auto& mc = t["memory_correlate"];
 	      Json::Value mc2(Json::objectValue);
+              for (const auto *name : {"structured_path", "key_prefix"}) {
+                if (mc.isMember(name)) {
+                  if (!mc[name].isString()) {
+                    resp->status = 400;
+                    resp->body = json_error_body(std::string("memory_correlate.") + name +
+                                                 " must be a string");
+                    return;
+                  }
+                  mc2[name] = mc[name];
+                }
+              }
+              if (mc.isMember("view")) {
+                if (!mc["view"].isString() ||
+                    (mc["view"] != "current" && mc["view"] != "historical" &&
+                     mc["view"] != "evidence")) {
+                  resp->status = 400;
+                  resp->body = json_error_body("invalid memory_correlate.view");
+                  return;
+                }
+                mc2["view"] = mc["view"];
+              }
 
-	      if (mc.isMember("trace_id")) {
+              if (mc.isMember("trace_id")) {
 	        if (!mc["trace_id"].isString() && !mc["trace_id"].isNull()) {
 	          resp->status = 400;
 	          Json::Value o(Json::objectValue);

@@ -68,6 +68,7 @@ tasks = [
     "kind": "memory_correlate",
     "depends_on": ["M"],
     "memory_correlate": {
+      "view": "historical",
       # Intentionally omit trace_id to validate default: workflow trace_id.
       "since_utc_ms": now_ms - 5000,
       "until_utc_ms": now_ms + 60000,

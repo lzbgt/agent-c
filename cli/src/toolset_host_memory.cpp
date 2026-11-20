@@ -322,23 +322,6 @@ static std::string extract_block_body(const std::string& s, const std::string& b
   return s.substr(body_a, body_b - body_a);
 }
 
-static bool parse_json_object_str(const std::string& s, Json::Value* out_obj, std::string* out_err) {
-  if (out_err) out_err->clear();
-  if (out_obj) *out_obj = Json::Value(Json::objectValue);
-  if (!out_obj) return false;
-
-  std::string errs;
-  Json::CharReaderBuilder rb;
-  std::istringstream iss(s);
-  Json::Value v;
-  if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) {
-    if (out_err) *out_err = errs.empty() ? "invalid json" : errs;
-    return false;
-  }
-  *out_obj = v;
-  return true;
-}
-
 static bool json_array_contains_string_ci(const Json::Value& arr, const std::string& s) {
   if (!arr.isArray()) return false;
   const std::string t = to_lower_ascii(trim_ascii(s));
@@ -525,82 +508,106 @@ static std::string build_structured_memory_file_text(const Json::Value& doc, con
   return oss.str();
 }
 
-bool memory_structured_parse_doc(const std::string& file_text, Json::Value* out_doc, std::string* out_err) {
-  if (out_err) out_err->clear();
-  if (out_doc) *out_doc = Json::Value(Json::objectValue);
-  if (!out_doc) return false;
-
-  const auto begin = file_text.find(kAgentMemoryV1Begin), end = file_text.find(kAgentMemoryV1End);
-  if ((begin != std::string::npos || end != std::string::npos) &&
-      (begin == std::string::npos || end == std::string::npos || end <= begin)) {
-    if (out_err) *out_err = "incomplete structured memory machine block";
+// Decode the stored object without migration: evidence pointers must address
+// fields that actually exist in these bytes. Delimiters inside JSON strings are data.
+bool memory_structured_decode(const std::string &text, Json::Value *doc, std::string *error,
+                              size_t *block_end) {
+  if (error)
+    error->clear();
+  if (block_end)
+    *block_end = 0;
+  if (!doc)
     return false;
-  }
-  const std::string body = extract_block_body(file_text, kAgentMemoryV1Begin, kAgentMemoryV1End);
-  if (trim_ascii(body).empty()) {
-    if (begin != std::string::npos) {
-      if (out_err) *out_err = "empty structured memory machine block";
-      return false;
+  *doc = Json::Value(Json::objectValue);
+  const auto fail = [&](const std::string &why) {
+    if (error)
+      *error = why;
+    return false;
+  };
+  size_t begin = std::string::npos;
+  for (size_t pos = 0; pos < text.size();) {
+    const auto end = text.find('\n', pos);
+    if (trim_ascii(text.substr(pos, end == std::string::npos ? end : end - pos)) ==
+        kAgentMemoryV1Begin) {
+      begin = end == std::string::npos ? text.size() : end + 1;
+      break;
     }
-    // Initialize empty doc.
-    Json::Value doc(Json::objectValue);
-    doc["schema"] = "agent_memory_v2";
-    doc["items"] = Json::Value(Json::objectValue);
-    *out_doc = doc;
+    if (end == std::string::npos)
+      break;
+    pos = end + 1;
+  }
+  if (begin == std::string::npos) {
+    if (text.find(kAgentMemoryV1Begin) != std::string::npos ||
+        text.find(kAgentMemoryV1End) != std::string::npos)
+      return fail("incomplete structured memory machine block");
+    (*doc)["schema"] = "agent_memory_v2";
+    (*doc)["items"] = Json::Value(Json::objectValue);
     return true;
   }
-  Json::Value doc;
-  std::string perr;
-  if (!parse_json_object_str(body, &doc, &perr)) {
-    if (out_err) *out_err = perr.empty() ? "failed to parse structured memory json" : perr;
-    return false;
-  }
-  if (!doc.isMember("schema") || !doc["schema"].isString()) doc["schema"] = "agent_memory_v2";
-  if (!doc.isMember("items") || !doc["items"].isObject()) {
-    if (out_err) *out_err = "structured memory requires an items object";
-    return false;
-  }
-
-  // Best-effort upgrade to v2 fields for deterministic versioning/evidence merge.
-  // Keep markers as V1 for backwards compatibility (only schema + payload evolve).
-  const std::string schema = doc["schema"].isString() ? doc["schema"].asString() : "agent_memory_v2";
-  if (schema != "agent_memory_v2") {
-    doc["schema"] = "agent_memory_v2";
-  }
-  Json::Value& items = doc["items"];
-  for (const auto& key : items.getMemberNames()) {
-    Json::Value& it = items[key];
-    if (!it.isObject()) continue;
-    if (!it.isMember("versions") || !it["versions"].isArray()) it["versions"] = Json::Value(Json::arrayValue);
-    if (it.isMember("supersedes") && !it["supersedes"].isArray()) {
-      Json::Value arr(Json::arrayValue);
-      if (it["supersedes"].isString() && !trim_ascii(it["supersedes"].asString()).empty()) {
-        arr.append(trim_ascii(it["supersedes"].asString()));
-      }
-      it["supersedes"] = arr;
-    }
-    if (!it.isMember("sources") || !it["sources"].isArray()) {
-      it["sources"] = Json::Value(Json::arrayValue);
-      if (it.isMember("source") && it["source"].isString() && !trim_ascii(it["source"].asString()).empty()) {
-        it["sources"].append(trim_ascii(it["source"].asString()));
+  auto first = text.find_first_not_of(" \t\r\n", begin);
+  if (first == std::string::npos || text[first] != '{')
+    return fail("expected structured memory JSON object");
+  bool quoted = false, escaped = false;
+  size_t end = first;
+  int depth = 0;
+  for (; end < text.size(); ++end) {
+    const char c = text[end];
+    if (quoted) {
+      if (escaped)
+        escaped = false;
+      else if (c == '\\')
+        escaped = true;
+      else if (c == '"')
+        quoted = false;
+    } else if (c == '"')
+      quoted = true;
+    else if (c == '{' || c == '[') {
+      if (++depth > 128)
+        return fail("structured memory JSON depth exceeds 128");
+    } else if (c == '}' || c == ']') {
+      if (--depth == 0) {
+        ++end;
+        break;
       }
     }
-    if (!it.isMember("observed_utc") || !it["observed_utc"].isString()) {
-      if (it.isMember("updated_utc") && it["updated_utc"].isString()) it["observed_utc"] = it["updated_utc"];
-      else it["observed_utc"] = "";
-    }
-    if (!it.isMember("valid_from") && it.isMember("valid_from_utc") && it["valid_from_utc"].isString()) {
-      it["valid_from"] = it["valid_from_utc"];
-    }
-    if (it.isMember("valid_from_utc")) it.removeMember("valid_from_utc");
   }
-
-  *out_doc = doc;
+  const auto marker = text.find_first_not_of(" \t\r\n", end);
+  if (depth != 0 || quoted || marker == std::string::npos ||
+      text.compare(marker, std::string(kAgentMemoryV1End).size(), kAgentMemoryV1End) != 0)
+    return fail("incomplete structured memory machine block");
+  const size_t stop = marker + std::string(kAgentMemoryV1End).size();
+  if (stop < text.size() && text[stop] != '\r' && text[stop] != '\n')
+    return fail("invalid structured memory end marker");
+  Json::CharReaderBuilder reader;
+  reader["rejectDupKeys"] = true;
+  reader["failIfExtra"] = true;
+  reader["allowComments"] = false;
+  reader["stackLimit"] = 128;
+  std::istringstream input(text.substr(first, end - first));
+  if (!Json::parseFromStream(reader, input, doc, error) || !doc->isObject())
+    return fail("invalid structured memory JSON object");
+  if (block_end)
+    *block_end = stop;
   return true;
 }
-
-static std::string extract_user_notes_md(const std::string& file_text) {
-  const std::string notes = extract_block_body(file_text, kAgentMemoryV1NotesBegin, kAgentMemoryV1NotesEnd);
+bool memory_structured_parse_doc(const std::string &text, Json::Value *doc, std::string *error) {
+  if (!memory_structured_decode(text, doc, error))
+    return false;
+  if ((*doc)["schema"] != "agent_memory_v2" || !(*doc)["items"].isObject()) {
+    if (error)
+      *error = "current structured memory requires agent_memory_v2 and an items object";
+    return false;
+  }
+  return true;
+}
+static std::string extract_user_notes_md(const std::string &text) {
+  Json::Value original;
+  std::string error;
+  size_t end = 0;
+  if (!memory_structured_decode(text, &original, &error, &end))
+    return "";
+  const auto notes =
+      extract_block_body(text.substr(end), kAgentMemoryV1NotesBegin, kAgentMemoryV1NotesEnd);
   return trim_ascii(notes).empty() ? "" : notes;
 }
 
@@ -1831,7 +1838,8 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
 
   Json::Value doc;
   std::string derr;
-  if (!memory_structured_parse_doc(content, &doc, &derr)) {
+  if (!(view == MemoryViewMode::Current ? memory_structured_parse_doc(content, &doc, &derr)
+                                        : memory_structured_decode(content, &doc, &derr))) {
     return write_envelope(out_result, false, std::string("failed to parse structured memory doc: ") + derr, Json::Value(Json::objectValue));
   }
 
@@ -1962,7 +1970,6 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     Json::Value out_rec = m.rec;
     if (!include_versions && out_rec.isMember("versions")) out_rec.removeMember("versions");
     if (!include_sources && out_rec.isMember("sources")) out_rec.removeMember("sources");
-    if (out_rec.isMember("source")) out_rec.removeMember("source"); // v1 legacy field (keep output v2-clean)
 
     Json::Value row(Json::objectValue);
     row["key"] = m.key;

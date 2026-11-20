@@ -70,7 +70,7 @@ std::string signature(const MemoryViewSnapshot &snapshot) {
     agent_sha256_update(&state, length, sizeof(length));
     agent_sha256_update(&state, value.data(), value.size());
   };
-  feed("memory-view-v1");
+  feed("memory-view-v2-secure-cache");
   feed(memory_view_name(snapshot.mode));
   for (const auto &source : snapshot.sources) {
     feed(source.first);
@@ -88,7 +88,11 @@ std::string signature(const MemoryViewSnapshot &snapshot) {
 }
 bool indexed(const MemoryViewSnapshot &snapshot, const std::string &query, int limit, int cap,
              std::vector<MemorySearchHit> *hits, std::string *error) {
-  const auto path = snapshot.root / ".memory_retrieval_v1.sqlite3";
+  MemoryCacheLease cache_lease;
+  if (cache_lease.begin(snapshot.root, {}, error) != MemoryStoreStatus::Ok ||
+      !cache_lease.discard_obsolete(error) || !memory_view_validate(snapshot, error))
+    return false;
+  const auto path = snapshot.root / ".memory_retrieval_v2.sqlite3";
   std::error_code ec;
   if (std::filesystem::is_symlink(std::filesystem::symlink_status(path, ec))) {
     if (error)
@@ -119,13 +123,27 @@ bool indexed(const MemoryViewSnapshot &snapshot, const std::string &query, int l
     return false;
   }
   sqlite3_busy_timeout(db.db, 500);
+  if (sqlite3_libversion_number() < 3042000) {
+    if (error)
+      *error = "FTS secure-delete requires SQLite 3.42 or newer";
+    return false;
+  }
   if (!sql(db,
+           "PRAGMA journal_mode=DELETE;PRAGMA secure_delete=1;PRAGMA temp_store=MEMORY;"
            "CREATE TABLE IF NOT EXISTS view_meta(signature TEXT NOT NULL);"
            "CREATE VIRTUAL TABLE IF NOT EXISTS eligible_passages USING fts5(content,evidence_id "
            "UNINDEXED,tokenize='unicode61');"
+           "INSERT INTO eligible_passages(eligible_passages,rank) VALUES('secure-delete',1);"
            "BEGIN IMMEDIATE;",
            error))
     return false;
+  Statement secure;
+  if (!prepare(db, "PRAGMA secure_delete;", &secure, error) ||
+      sqlite3_step(secure.value) != SQLITE_ROW || sqlite3_column_int(secure.value, 0) != 1) {
+    if (error)
+      *error = "SQLite secure_delete was not enabled";
+    return false;
+  }
   bool committed = false;
   struct Rollback {
     Database &db;

@@ -2095,9 +2095,12 @@
     tags: [memory]
     summary: List memory recap snapshots
     description: |
-      Lists recap JSON snapshots under `memory/recaps/` (newest first).
+      Lists immutable recap artifacts, newest first. Current view revalidates input revisions and evidence eligibility; historical/evidence views retain stale or unverified originals. Input currentness does not establish claim support.
       Use `include_summary=true` to include the recap summary text.
     parameters:
+      - in: query
+        name: view
+        schema: { type: string, enum: [current, historical, evidence], default: current }
       - in: query
         name: limit
         required: false
@@ -2142,25 +2145,23 @@
           application/json:
             schema:
               $ref: "#/components/schemas/ErrorResponse"
-      "500":
-        description: Recap failed
+      "409":
+        description: Incomplete result; original provider outcome and any published receipt are retained. Reconcile before another request.
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ErrorResponse"
+              $ref: "#/components/schemas/MemoryRecapResponse"
 
 /api/v1/memory/correlate:
   get:
     tags: [memory]
     summary: Correlate structured memory evidence by trace_id (bounded)
     description: |
-      Selects the newest structured checkpoint in the requested time window and returns
-      structured keys whose `sources[]` mention `trace:<trace_id>`.
-      Responses include `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking
-      memory items to trace/workflow/task/job IDs and bounded source excerpts.
-      When a correlation index exists, the response also includes `daily_entries`, `recap_entries`,
-      and `index` metadata.
+      Current view joins eligible current heads and recent daily observations by exact trace token or colon-delimited child token. Filters apply before the output cap. Original references bind source, revision and span. Historical/evidence views explicitly select checkpoint originals; time windows and timeline require one of those views. Recaps are not correlation inputs.
     parameters:
+      - in: query
+        name: view
+        schema: { type: string, enum: [current, historical, evidence], default: current }
       - in: query
         name: trace_id
         required: true
@@ -2202,9 +2203,9 @@
 /api/v1/memory/correlation/index:
   post:
     tags: [memory]
-    summary: Build cross-run correlation index
+    summary: Inspect current correlation projection
     description: |
-      Builds a cross-run correlation index over structured checkpoints, daily observations, and recap evidence.
+      Captures eligible current structured heads and recent daily observations, validates revisions and returns counts. This endpoint writes no correlation payload cache.
     requestBody:
       required: false
       content:

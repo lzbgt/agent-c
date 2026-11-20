@@ -57,6 +57,7 @@ import json, os, pathlib
 root = pathlib.Path(os.environ["MEM_ROOT"])
 checkpoint = next((root / "checkpoints").glob("structured_*.json"))
 doc = json.loads(checkpoint.read_text())["doc"]
+doc["schema"] = "agent_memory_v2"
 (root / "STRUCTURED.md").write_text("<!-- AGENT_MEMORY_V1_BEGIN -->\n" + json.dumps(doc) + "\n<!-- AGENT_MEMORY_V1_END -->\n")
 PY_CURRENT
 

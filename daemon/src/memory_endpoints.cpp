@@ -4,14 +4,15 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "memory_checkpoints.h"
-#include "memory_correlation_index.h"
-#include "memory_correlation_graph.h"
 #include "memory_consolidator.h"
+#include "memory_correlation_graph.h"
+#include "memory_correlation_index.h"
 #include "memory_recaps.h"
 #include "memory_retention.h"
 #include "memory_salience.h"
-#include "workflow_memory_query.h"
 #include "session_id_util.h"
+#include "workflow_memory_correlate.h"
+#include "workflow_memory_query.h"
 
 #include <json/json.h>
 
@@ -167,26 +168,6 @@ void handle_memory_consolidate_endpoint(
   Json::Value o(Json::objectValue);
   o["ok"] = true;
   o["data"] = report;
-  if (!opt.dry_run) {
-    MemoryCorrelationIndexReport idx_rep;
-    std::string idx_err;
-    MemoryCorrelationIndexOptions idx_opt = memory_correlation_index_default_options();
-    if (memory_correlation_index_build(memory_root_from_cfg(cfg), idx_opt, &idx_rep, &idx_err)) {
-      Json::Value ix(Json::objectValue);
-      ix["ok"] = true;
-      ix["generated_utc_ms"] = (Json::Int64)idx_rep.generated_utc_ms;
-      if (!idx_rep.generated_utc.empty()) ix["generated_utc"] = idx_rep.generated_utc;
-      ix["index_path"] = idx_rep.index_path;
-      ix["token_count"] = (Json::Int64)idx_rep.token_count;
-      ix["entry_count"] = (Json::Int64)idx_rep.entry_count;
-      o["correlation_index"] = ix;
-    } else if (!idx_err.empty()) {
-      Json::Value ix(Json::objectValue);
-      ix["ok"] = false;
-      ix["error"] = idx_err;
-      o["correlation_index"] = ix;
-    }
-  }
   resp->body = json_stringify(o);
   return;
 }
@@ -349,216 +330,27 @@ void handle_memory_correlate_endpoint(
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
 
-  const auto trace_id = query_get(req.query, "trace_id");
-  const std::string tid = trace_id && !trace_id->empty() ? *trace_id : "";
-  if (tid.empty()) {
-    resp->status = 400;
-    resp->body = json_error_body("missing trace_id");
-    return;
-  }
-
-  int64_t since_ms = 0;
-  int64_t until_ms = INT64_MAX;
-  if (const auto v = query_get(req.query, "since_utc_ms"); v && !v->empty()) {
-    try { since_ms = (int64_t)std::stoll(*v); } catch (...) { since_ms = 0; }
-  }
-  if (const auto v = query_get(req.query, "until_utc_ms"); v && !v->empty()) {
-    try { until_ms = (int64_t)std::stoll(*v); } catch (...) { until_ms = INT64_MAX; }
-  }
-  if (until_ms < since_ms) std::swap(until_ms, since_ms);
-
-  const auto structured_path_q = query_get(req.query, "structured_path");
-  const std::string structured_path_filter =
-    structured_path_q && !structured_path_q->empty() ? *structured_path_q : "";
-
-  const auto key_prefix_q = query_get(req.query, "key_prefix");
-  const std::string key_prefix =
-    key_prefix_q && !key_prefix_q->empty() ? *key_prefix_q : "";
-
-  int max_entries = 50;
-  if (const auto v = query_get(req.query, "max_entries"); v && !v->empty()) {
-    try { max_entries = (int)std::stol(*v); } catch (...) { max_entries = 50; }
-  }
-  max_entries = std::max(1, std::min(500, max_entries));
-
-  bool timeline = false;
-  if (const auto v = query_get(req.query, "timeline"); v) {
-    if (v->empty()) {
-      timeline = true;
-    } else {
-      std::string s = *v;
-      std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-      timeline = (s == "1" || s == "true" || s == "yes");
-    }
-  }
-
-  const std::filesystem::path mem_root = memory_root_from_cfg(cfg);
-  const std::string needle = std::string("trace:") + tid;
-
-  auto extract_entries = [&](const MemoryCheckpointMeta& meta, Json::Value* out_entries, Json::Value* out_ckinfo) -> bool {
-    if (!out_entries || !out_ckinfo) return false;
-    *out_entries = Json::Value(Json::arrayValue);
-    *out_ckinfo = Json::Value(Json::objectValue);
-    if (meta.checkpoint_path_rel.empty()) return false;
-
-    std::string structured_path2;
-    Json::Value items(Json::nullValue);
-    std::string rerr;
-    if (!memory_read_structured_checkpoint_items(mem_root, meta.checkpoint_path_rel, &structured_path2, &items, &rerr)) return false;
-
-    (*out_ckinfo)["checkpoint_path"] = meta.checkpoint_path_rel;
-    (*out_ckinfo)["structured_path"] = meta.structured_path;
-    (*out_ckinfo)["ts_utc"] = meta.ts_utc;
-    (*out_ckinfo)["ts_utc_ms"] = (Json::Int64)meta.ts_utc_ms;
-    (*out_ckinfo)["sha256"] = meta.sha256;
-    (*out_ckinfo)["bytes"] = (Json::Int64)meta.bytes;
-
-    if (!items.isObject()) return false;
-    std::vector<std::string> keys = items.getMemberNames();
-    std::sort(keys.begin(), keys.end());
-
-    int added = 0;
-    for (const auto& key : keys) {
-      if (added >= max_entries) break;
-      if (!key_prefix.empty() && key.rfind(key_prefix, 0) != 0) continue;
-      const Json::Value rec = items[key];
-      if (!rec.isObject()) continue;
-      const Json::Value sources = rec.isMember("sources") ? rec["sources"] : Json::Value(Json::nullValue);
-      if (!sources.isArray()) continue;
-      bool hit = false;
-      for (Json::ArrayIndex i = 0; i < sources.size(); i++) {
-        if (!sources[i].isString()) continue;
-        const std::string s = sources[i].asString();
-        if (s.find(needle) != std::string::npos) { hit = true; break; }
-      }
-      if (!hit) continue;
-      Json::Value row(Json::objectValue);
-      row["key"] = key;
-      row["record"] = rec;
-      (*out_entries).append(row);
-      added++;
-    }
-    return true;
-  };
-
-  Json::Value out(Json::objectValue);
-  out["ok"] = true;
-  out["trace_id"] = tid;
-  out["needle"] = needle;
-  out["since_utc_ms"] = (Json::Int64)since_ms;
-  out["until_utc_ms"] = (Json::Int64)until_ms;
-  if (!structured_path_filter.empty()) out["structured_path_filter"] = structured_path_filter;
-  if (!key_prefix.empty()) out["key_prefix"] = key_prefix;
-
-  if (!timeline) {
-    bool used_index = false;
-    Json::Value idx_entries(Json::arrayValue);
-    Json::Value idx_meta(Json::objectValue);
-    std::string idx_err;
-    const int idx_limit = std::min(2000, max_entries * 3);
-    if (memory_correlation_index_query(mem_root, needle, idx_limit, &idx_entries, &idx_meta, &idx_err)) {
-      used_index = true;
-      idx_meta["ok"] = true;
-      idx_meta["token"] = needle;
-      out["index"] = idx_meta;
-
-      Json::Value structured_entries(Json::arrayValue);
-      Json::Value daily_entries(Json::arrayValue);
-      Json::Value recap_entries(Json::arrayValue);
-
-      int structured_added = 0;
-      int daily_added = 0;
-      int recap_added = 0;
-
-      for (Json::ArrayIndex i = 0; i < idx_entries.size(); i++) {
-        const Json::Value e = idx_entries[i];
-        if (!e.isObject()) continue;
-        const std::string kind = e.isMember("kind") && e["kind"].isString() ? e["kind"].asString() : "";
-        if (kind == "structured") {
-          if (structured_added >= max_entries) continue;
-          const std::string key = e.isMember("key") && e["key"].isString() ? e["key"].asString() : "";
-          if (key.empty()) continue;
-          if (!key_prefix.empty() && key.rfind(key_prefix, 0) != 0) continue;
-          if (!structured_path_filter.empty()) {
-            const std::string sp = e.isMember("structured_path") && e["structured_path"].isString() ? e["structured_path"].asString() : "";
-            if (sp != structured_path_filter) continue;
-          }
-          Json::Value row(Json::objectValue);
-          row["key"] = key;
-          if (e.isMember("record")) row["record"] = e["record"];
-          if (e.isMember("structured_path")) row["structured_path"] = e["structured_path"];
-          if (e.isMember("checkpoint_path")) row["checkpoint_path"] = e["checkpoint_path"];
-          if (e.isMember("checkpoint_ts_utc")) row["checkpoint_ts_utc"] = e["checkpoint_ts_utc"];
-          if (e.isMember("checkpoint_ts_utc_ms")) row["checkpoint_ts_utc_ms"] = e["checkpoint_ts_utc_ms"];
-          structured_entries.append(row);
-          structured_added++;
-        } else if (kind == "daily") {
-          if (daily_added >= max_entries) continue;
-          daily_entries.append(e);
-          daily_added++;
-        } else if (kind == "recap") {
-          if (recap_added >= max_entries) continue;
-          recap_entries.append(e);
-          recap_added++;
-        }
-      }
-
-      out["entries"] = structured_entries;
-      if (daily_entries.size() > 0) out["daily_entries"] = daily_entries;
-      if (recap_entries.size() > 0) out["recap_entries"] = recap_entries;
-    }
-
-    if (!used_index) {
-      if (!idx_err.empty()) {
-        Json::Value ix(Json::objectValue);
-        ix["ok"] = false;
-        ix["error"] = idx_err;
-        out["index"] = ix;
-      }
-
-      const int ck_limit = 1;
-      std::vector<MemoryCheckpointMeta> metas;
-      std::string lerr;
-      if (!memory_list_structured_checkpoints(mem_root, since_ms, until_ms, structured_path_filter, ck_limit, &metas, &lerr) || metas.empty()) {
-        resp->status = 404;
-        resp->body = json_error_body("no checkpoints in window");
+  Json::Value args;
+  for (const auto *key : {"trace_id", "view", "key_prefix", "structured_path"})
+    if (const auto value = query_get(req.query, key); value)
+      args[key] = *value;
+  for (const auto *key : {"since_utc_ms", "until_utc_ms", "max_entries"}) {
+    if (const auto value = query_get(req.query, key); value) {
+      try {
+        args[key] = Json::Int64(std::stoll(*value));
+      } catch (...) {
+        resp->status = 400;
+        resp->body = json_error_body("invalid correlation integer");
         return;
       }
-
-      const MemoryCheckpointMeta& newest = metas[0];
-      Json::Value entries, ckinfo;
-      if (!extract_entries(newest, &entries, &ckinfo)) {
-        resp->status = 500;
-        resp->body = json_error_body("failed to extract entries from newest checkpoint");
-        return;
-      }
-      out["checkpoint"] = ckinfo;
-      out["entries"] = entries;
     }
-  } else {
-    const int ck_limit = 50;
-    std::vector<MemoryCheckpointMeta> metas;
-    std::string lerr;
-    if (!memory_list_structured_checkpoints(mem_root, since_ms, until_ms, structured_path_filter, ck_limit, &metas, &lerr) || metas.empty()) {
-      resp->status = 404;
-      resp->body = json_error_body("no checkpoints in window");
-      return;
-    }
-    Json::Value timeline_arr(Json::arrayValue);
-    for (size_t i = 0; i < metas.size(); i++) {
-      Json::Value entries, ckinfo;
-      if (!extract_entries(metas[i], &entries, &ckinfo)) continue;
-      Json::Value row(Json::objectValue);
-      row["checkpoint"] = ckinfo;
-      row["entries"] = entries;
-      timeline_arr.append(row);
-      if ((int)timeline_arr.size() >= 50) break;
-    }
-    out["timeline"] = timeline_arr;
   }
-
-  out["relationship_graph"] = memory_correlation_relationship_graph_from_response(tid, out);
-  resp->body = json_stringify(out);
+  if (const auto value = query_get(req.query, "timeline"); value)
+    args["timeline"] = value->empty() || string_to_bool(*value);
+  std::string error;
+  const auto report = workflow_memory_correlate_to_json(cfg.state_dir, "", args, &error);
+  resp->status = report.get("ok", false).asBool() ? 200 : 400;
+  resp->body = json_stringify(report);
 }
 
 void handle_memory_correlation_index_build_endpoint(
@@ -590,34 +382,13 @@ void handle_memory_correlation_index_build_endpoint(
     }
 
     if (args.isMember("daily_days") && args["daily_days"].isInt()) {
-      opt.daily_days = std::max(0, std::min(365, args["daily_days"].asInt()));
-    }
-    if (args.isMember("max_daily_entries") && args["max_daily_entries"].isInt()) {
-      opt.max_daily_entries = std::max(1, std::min(1000, args["max_daily_entries"].asInt()));
-    }
-    if (args.isMember("max_structured_checkpoints") && args["max_structured_checkpoints"].isInt()) {
-      opt.max_structured_checkpoints = std::max(1, std::min(200, args["max_structured_checkpoints"].asInt()));
-    }
-    if (args.isMember("max_structured_entries") && args["max_structured_entries"].isInt()) {
-      opt.max_structured_entries = std::max(1, std::min(2000, args["max_structured_entries"].asInt()));
-    }
-    if (args.isMember("max_entries_per_token") && args["max_entries_per_token"].isInt()) {
-      opt.max_entries_per_token = std::max(1, std::min(2000, args["max_entries_per_token"].asInt()));
-    }
-    if (args.isMember("max_recaps") && args["max_recaps"].isInt()) {
-      opt.max_recaps = std::max(1, std::min(1000, args["max_recaps"].asInt()));
-    }
-    if (args.isMember("value_excerpt_chars") && args["value_excerpt_chars"].isInt()) {
-      opt.value_excerpt_chars = (size_t)std::max(32, std::min(2000, args["value_excerpt_chars"].asInt()));
+      opt.daily_days = std::max(0, std::min(90, args["daily_days"].asInt()));
     }
     if (args.isMember("include_structured") && args["include_structured"].isBool()) {
       opt.include_structured = args["include_structured"].asBool();
     }
     if (args.isMember("include_daily") && args["include_daily"].isBool()) {
       opt.include_daily = args["include_daily"].asBool();
-    }
-    if (args.isMember("include_recaps") && args["include_recaps"].isBool()) {
-      opt.include_recaps = args["include_recaps"].asBool();
     }
   }
 
@@ -637,12 +408,12 @@ void handle_memory_correlation_index_build_endpoint(
   o["memory_root"] = mem_root.string();
   o["generated_utc_ms"] = (Json::Int64)rep.generated_utc_ms;
   if (!rep.generated_utc.empty()) o["generated_utc"] = rep.generated_utc;
-  o["index_path"] = rep.index_path;
+  o["engine"] = "live_projection";
+  o["view"] = "current";
   o["token_count"] = (Json::Int64)rep.token_count;
   o["entry_count"] = (Json::Int64)rep.entry_count;
   o["structured_entries"] = (Json::Int64)rep.structured_entries;
   o["daily_entries"] = (Json::Int64)rep.daily_entries;
-  o["recap_entries"] = (Json::Int64)rep.recap_entries;
   resp->body = json_stringify(o);
 }
 
@@ -933,9 +704,17 @@ void handle_memory_recaps_endpoint(
       include_summary = string_to_bool(*v);
     }
 
-    Json::Value recaps(Json::arrayValue);
+    host_tools_internal::MemoryViewMode view;
+    const auto requested_view = query_get(req.query, "view");
+    if (!host_tools_internal::memory_view_mode(requested_view ? *requested_view : "current",
+                                               &view)) {
+      resp->status = 400;
+      resp->body = json_error_body("invalid recap view");
+      return;
+    }
+    Json::Value recaps(Json::arrayValue), meta;
     std::string err;
-    if (!memory_list_recaps(cfg, limit, include_summary, kind, &recaps, &err)) {
+    if (!memory_list_recaps(cfg, limit, include_summary, kind, view, &recaps, &meta, &err)) {
       resp->status = 500;
       Json::Value o(Json::objectValue);
       o["ok"] = false;
@@ -950,6 +729,8 @@ void handle_memory_recaps_endpoint(
     o["include_summary"] = include_summary;
     o["recaps"] = recaps;
     o["count"] = (Json::Int64)recaps.size();
+    o["view"] = host_tools_internal::memory_view_name(view);
+    o["validation"] = meta;
     resp->body = json_stringify(o);
     return;
   }
@@ -1034,37 +815,13 @@ void handle_memory_recaps_endpoint(
 
   MemoryRecapReport report;
   std::string err;
-  if (!memory_generate_recap(cfg, ocfg, opt, &report, &err)) {
-    resp->status = 500;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["error"] = err.empty() ? "memory recap failed" : err;
-    resp->body = json_stringify(o);
-    return;
-  }
-
-  Json::Value o = memory_recap_report_to_json(report, /*include_prompt=*/report.dry_run);
-  o["ok"] = true;
-  if (!report.dry_run && report.write_file && !report.recap_path_rel.empty()) {
-    MemoryCorrelationIndexReport idx_rep;
-    std::string idx_err;
-    MemoryCorrelationIndexOptions idx_opt = memory_correlation_index_default_options();
-    if (memory_correlation_index_build(memory_root_from_cfg(cfg), idx_opt, &idx_rep, &idx_err)) {
-      Json::Value ix(Json::objectValue);
-      ix["ok"] = true;
-      ix["generated_utc_ms"] = (Json::Int64)idx_rep.generated_utc_ms;
-      if (!idx_rep.generated_utc.empty()) ix["generated_utc"] = idx_rep.generated_utc;
-      ix["index_path"] = idx_rep.index_path;
-      ix["token_count"] = (Json::Int64)idx_rep.token_count;
-      ix["entry_count"] = (Json::Int64)idx_rep.entry_count;
-      o["correlation_index"] = ix;
-    } else if (!idx_err.empty()) {
-      Json::Value ix(Json::objectValue);
-      ix["ok"] = false;
-      ix["error"] = idx_err;
-      o["correlation_index"] = ix;
-    }
-  }
+  const bool complete = memory_generate_recap(cfg, ocfg, opt, &report, &err);
+  if (!complete)
+    report.complete = false;
+  Json::Value o = memory_recap_report_to_json(report, report.dry_run);
+  if (!complete)
+    o["error"] = err.empty() ? "memory recap incomplete" : err;
+  resp->status = complete ? 200 : 409;
   resp->body = json_stringify(o);
 }
 

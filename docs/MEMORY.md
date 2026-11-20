@@ -8,7 +8,7 @@
 - `state_dir/memory/STRUCTURED.md` — machine-maintained structured memory (via `memory_put(entries)`)
 - `state_dir/memory/checkpoints/structured_<ts>_<source>_<revision>.json` — time-stamped structured snapshots (best-effort, rolling)
   - each checkpoint has a deterministic `sha256` surface (exposed by APIs/tools)
-- `state_dir/memory/recaps/recap_<ts>.json` — optional LLM-generated recap snapshots
+- `state_dir/memory/recaps/recap_<opaque-id>.json` — optional LLM-generated recap snapshots
 
 ## Tools
 
@@ -83,7 +83,7 @@ For a changed document, the writer performs these operations in order:
    before it becomes authoritative. A corrupt existing archive object prevents
    replacement when that object is needed to retain the current head.
 3. Create a unique staging file in the destination directory. Write all bytes
-   and sync the file. Recheck the current head, then atomically replace its name
+   and sync the file. Recheck the current head, take the cache lease and durably purge registered disposable caches, then atomically replace its name
    and sync the parent directory. On POSIX, new private directories use mode
    `0700`; staged files and snapshots use `0600`, which the replaced head inherits.
    Existing directory permissions are not rewritten.
@@ -99,8 +99,7 @@ relocating the root does not preserve that identifier. Direct privileged edits,
 in-place writes outside the store, directory replacement and external deletion
 are outside the cooperating-writer guarantee. The final comparison detects an
 observed external change; it is not an OS compare-and-swap against arbitrary
-writers. Revision-checked daily/checkpoint retirement is described below. Persistent
-cache erasure and general forgetting remain separate policy work.
+writers. Revision-checked daily/checkpoint retirement is described below. Registered cache artifacts are purged before publication; general forgetting remains separate policy work.
 
 | Observable result | Meaning and recovery |
 | --- | --- |
@@ -238,21 +237,54 @@ eligible passages, respect `context_lines`, and retain references to the origina
 passage/value. They need not contain the entire original. UTF-8 clipping avoids
 partial code points. Budget failures are errors, not silent source truncation.
 
-The FTS5 cache is `.memory_retrieval_v1.sqlite3`, separate from the older unused
-lexical cache. It stores **only the selected eligible projection** for one view
-and source set. A SQLite transaction replaces a different scope/view before
-BM25 is evaluated, so other sessions' rows do not enter scoring statistics.
-Its signature binds policy version, mode, sorted paths/revisions, passage IDs
-and projected text. Fields are streamed into SHA-256 with an eight-byte
-big-endian byte-length prefix. Content changes invalidate it even when file
-mtime is unchanged. POSIX cache mode is `0600`.
+The FTS5 cache is `.memory_retrieval_v2.sqlite3`. It contains only one selected
+eligible scope/view. A transaction replaces a changed projection before BM25
+scoring. The signature binds policy version, mode, paths/revisions, passage IDs
+and text using SHA-256 over length-prefixed fields. POSIX mode is `0600`.
+SQLite 3.42 or newer with FTS5 is required for the indexed path. The connection
+uses `journal_mode=DELETE`, `temp_store=MEMORY`, verifies `secure_delete=1` and
+sets FTS5 `secure-delete=1`. FTS token deletion and core page scrubbing are separate
+controls; see [FTS5 secure deletion](https://www.sqlite.org/fts5.html#the_secure_delete_configuration_option)
+and [SQLite secure_delete](https://www.sqlite.org/pragma.html#pragma_secure_delete).
+Older/unavailable SQLite falls back with a visible `index_error`.
 
-The SQLite busy wait is bounded to 500 ms. Missing FTS5, unavailable storage or
-query/index errors use the **same captured eligible passages** for substring
-fallback; `index_error` remains visible. No fallback scans raw history. A source
-change still fails closed. Root-wide physical deletion/forget policy and persistent
-cache erasure are separate from query eligibility; old cache files are not read
-or migrated by this implementation.
+A cross-process cache lease at `.locks/cache.lock` bounds acquisition to 500 ms.
+Writers take the root writer lock, then the cache lease; readers take only the
+cache lease. Readers never wait for the writer lock. Source replacement,
+retirement and new immutable auxiliary publication remove these registered
+application artifacts **before** publishing the change and hold the lease through
+that boundary:
+
+- `.memory_index.sqlite3`, `.memory_retrieval_v1.sqlite3`,
+  `.memory_correlation.sqlite3` and `.memory_retrieval_v2.sqlite3`;
+- their `-journal`, `-wal` and `-shm` sidecars;
+- `.memory_correlation.json`.
+
+The root directory is synced after removal. Disposable cache bytes are not
+archived. Original source bytes remain under the separate revision policy.
+Current readers also discard obsolete cache names. The next FTS query rebuilds
+from eligible captured sources. This coarse invalidation favors a single clear
+publication boundary over incremental cache maintenance; frequent writes can
+increase query rebuild cost. It does not claim storage-device, snapshot or backup
+erasure. Mixed old/new executables and privileged out-of-protocol writes are not
+qualified; use a fresh deployment when that is authorized.
+
+Cache contention or an invalid cache artifact prevents the source change with a
+visible error. A partial purge is harmless because caches are rebuildable. On
+`memory_busy`, reread the source before retrying. An unexpected directory/link at
+a registered cache path requires local inspection; the store never follows it or
+removes unrelated files. Index/storage/query failures use the same eligible
+captured passages for substring fallback and retain `index_error`. A source change
+still discards the result. An identical-byte no-op needs no publication purge.
+
+Structured decoding preserves exact stored JSON. It rejects duplicate keys,
+bounds nesting to 128 and scans quoted strings before recognizing the outer end
+marker. Current reads/writes require `agent_memory_v2` and an `items` object;
+unsupported schemas remain available through explicit historical/evidence reads. Records with the obsolete `valid_from_utc` alias are ineligible in current view; a read never silently removes a time constraint.
+Missing fields are not synthesized during reading, so a JSON Pointer cannot cite
+invented metadata. Only explicit notes after the complete machine block enter
+independent Markdown retrieval. A write may deliberately add current-schema
+fields, producing a new revision.
 
 ### Reproduce retrieval checks
 
@@ -271,8 +303,7 @@ sections/markers, source-set changes in a warm cache, Chinese/code identifiers,
 mtime-preserving corrections, source deletion, same-content wrong scopes,
 altered spans, exact originals and all four context modes. A real temporary
 daemon checks current versus checkpoint reads and a correction during a synthetic
-provider response. It makes exactly two loopback fixture calls; it does not use
-credentials or a live model. A failed recap does not publish or replay its call.
+provider response. It makes exactly five loopback fixture calls, including an oversized response, HTTP 503 and an output-token limit; it does not use private credentials or a live model. Incomplete provider outcomes remain historical receipts without replay.
 These checks establish eligibility/binding behavior, not retrieval recall,
 supported-answer accuracy, MCU behavior or a paid scorer baseline.
 
@@ -441,7 +472,7 @@ Use this sequence to create or replace a fact:
    time do not choose a winner.
 2. To replace an existing key, read it through `memory_structured_query` and copy
    the row's `record_revision`. This is SHA-256 of compact JsonCpp serialization
-   of the complete normalized record, including its history and provenance.
+   of the complete parsed stored record, including its history and provenance. Reads do not migrate or manufacture record fields.
    It differs from the raw file's `data.revision`; another key's change does not
    invalidate it. For an inactive head use an explicit historical/evidence query.
    Create a new JSON marker on one line:
@@ -689,13 +720,14 @@ measure free disk space. The report preserves errors (up to 50, with
 `errors_dropped` for overflow), per-source outcomes and the actual
 `structured_write_response` when a deprecation write is attempted.
 
-Structured age policy reads the authoritative `STRUCTURED.md`, uses the shared parser's normalized
-observation time (or known update-time fallback for missing/ill-typed observation
-metadata), and submits
-one revision-checked deprecation batch. Unknown or malformed timestamp strings are not treated as fresh observations.
-The normalized metadata does not prove an event date. The batch changes only eligible string-valued records and is
-bounded to 200 entries (default 50); remaining eligible entries are explicit
-pending work. Confirmed key lists/counts remain separate from selected keys.
+Structured age policy reads authoritative `STRUCTURED.md`. It uses stored
+`observed_utc`, or explicitly falls back to stored `updated_utc` when observation
+time is missing/empty. An ill-typed observation field is reported and skipped;
+malformed calendar strings are also reported and skipped. No read-time migration
+creates an observation date. These metadata are not proof of an event date. One
+revision-checked batch changes only eligible string-valued records, bounded to
+200 entries (default 50). Remaining candidates stay pending; confirmed key
+lists/counts remain separate from selection.
 
 ### Bounds, pruning and verification
 
@@ -752,54 +784,133 @@ host, repeat these checks and qualify its filesystem's unlink/fsync semantics.
 
 ## Memory recaps (LLM summaries)
 
-For operator-triggered summaries, agentd can generate recap snapshots from salience-ranked memory:
+Recaps are generated interpretations, not authoritative facts. `POST
+/api/v1/memory/recaps` selects current salience inputs. `dry_run=true` previews
+whole inputs without calling a model or saving originals. The configured
+`summary_model` is used unless the request supplies `model`/`summary_model`.
+Saving requires `tools=host` and Full host policy. No production model or schedule
+is enabled by this source change.
 
-- `POST /api/v1/memory/recaps` — generate a recap (LLM) or `dry_run` to preview
-- `GET /api/v1/memory/recaps` — list recap snapshots under `memory/recaps/`
+### Derive and preserve an outcome
 
-Recaps use `summary_model` by default and can override with `model` or `summary_model` per request.
-Each recap JSON includes the prompt inputs, the recap summary (JSON + text), and the ranked items used.
-Recaps include exact item `evidence` references, `source`/`evidence_sources` IDs
-and a persisted `input_revisions` manifest. Inputs are validated again after the
-provider response and before publication. A changed input rejects that result
-without repeating the call. The manifest enables later stale-input checks;
-provenance alone does not validate generated claims. Existing historical recap
-inspection remains available, while automatic current context does not inject
-recap text. No recap schedule or production model is enabled by this source change.
+[`memory_recaps.cpp`](../daemon/src/memory_recaps.cpp) uses
+[`memory_derivation.cpp`](../cli/src/memory_derivation.cpp) for reusable provenance:
 
-Optional request fields:
-- `kind`: label the recap (e.g. `daily`, `weekly`, `manual`), used in the recap filename.
-List filtering:
-- `GET /api/v1/memory/recaps?kind=daily` filters the recap list by kind. Recaps without an explicit kind are treated as `manual`.
+1. Capture current inputs and choose whole item blocks within a 12,000-byte
+   prompt. Omitted items produce `input_incomplete`/`dropped_inputs`; IDs and
+   UTF-8 are not cut mid-item. The selected evidence includes supporting marker
+   originals. Provenance above 6 MiB stops before a model call.
+2. Save `derivation` with schema `agent.memory.derivation.v1`, policy
+   `agent.memory.view.v1`, current-view UTC cutoff, exact input path/source/revision
+   rows and immutable evidence references. Under the existing writer lock, retain
+   actual captured originals before the provider call when saving is requested.
+3. Make at most one provider request: no retry/backoff or proxy-to-direct replay,
+   at most 60 seconds, default 1,024 output tokens and maximum 2,048. Non-streaming
+   response capture stops at 1 MiB. Cancellation is shared with the caller/engine.
+   These are limits, not a claim that the provider honors token requests.
+4. Keep the exact returned assistant text, including token-limited partial output, as `model_response`. Token-limit/provider errors keep generation incomplete. `summary_text` is
+   a UTF-8-safe display excerpt of 200–6,000 bytes, selected by the existing
+   `summary_max_chars` request setting (its unit is bytes). Record actual returned
+   model/response ID and token usage when present, separately from requested
+   model. `response_capture_sha256` hashes captured response-body bytes;
+   `response_capture_complete=false` means the hash covers only the captured
+   prefix, not a complete provider result. Oversize/transport uncertainty does
+   not become a completed result or trigger another call.
+5. Recheck input revisions after the response and under the publication writer
+   lock. Save an immutable `agent.memory.recap.v2` artifact at
+   `recaps/recap_<opaque-id>.json` through the existing atomic store. The opaque
+   name is not a content hash; `recap_revision` hashes its exact final bytes.
+   Publication retains original assistant text and the manifest once. Item rows
+   refer to evidence IDs rather than copying complete references again.
+6. On changed inputs, empty output or an incomplete provider result, preserve a
+   historical artifact with `generation_status=incomplete`. HTTP 409 retains the
+   full report and any published original-response reference. Directory-sync
+   uncertainty remains `publication_uncertain`; inspect the original path/hash
+   before more work. A local publication failure retains the outcome in the
+   returned report. Never blindly replay the provider request.
 
-Scheduled recaps (disabled by default):
-- `--memory-recap-daily-interval-ms <n>` / `AGENTD_MEMORY_RECAP_DAILY_INTERVAL_MS`
-- `--memory-recap-weekly-interval-ms <n>` / `AGENTD_MEMORY_RECAP_WEEKLY_INTERVAL_MS`
-- `--memory-recap-daily-days <n>` / `AGENTD_MEMORY_RECAP_DAILY_DAYS`
-- `--memory-recap-weekly-days <n>` / `AGENTD_MEMORY_RECAP_WEEKLY_DAYS`
+This path does not yet have a durable **pre-provider admission**. Process death
+before its local outcome receipt, or loss of an unsaved HTTP report, can leave an
+unknown provider outcome. That lifecycle gap remains on the roadmap. Completed
+workflow model journals have a separate, stronger recovery contract.
 
-Scheduled recaps use the same salience tuning as manual recaps, but override `daily_days` per schedule.
+### Read current summaries or inspect history
+
+`GET /api/v1/memory/recaps` defaults to `view=current`. Each list request recaptures
+manifest inputs once, checks exact source IDs/revisions and requires every
+reference to remain eligible with the same complete reference value. A changed
+source conservatively invalidates the summary even if its edited passage was
+not selected. Missing/unsupported manifests, altered spans, wrong scopes and
+incomplete generation cannot enter current output. `source_state` distinguishes
+`current`, `stale`, `unverified` and `unavailable`; `claims_verified` is always
+false. `inputs_current=true` means provenance still matches, not that generated
+claims are supported.
+
+Use `view=historical` or `view=evidence` to inspect identified originals, including
+older unversioned summaries. The response returns exact revision/span references
+for `/summary_text` and `/model_response` when those fields exist. It validates
+input and artifact revisions again before output. No list/invalidation operation
+calls a model or replays another external effect. Current automatic context still
+excludes recaps until claim support is validated.
+
+Listing captures at most 128 artifacts, 64 MiB total and 4,096 directory entries.
+Manifest inputs share the retrieval limit of 128 source paths; each manifest
+permits 20,000 unique evidence references. Exceeding a hard capture cap fails
+explicitly. Output `limit` is 1–200 and excess eligible rows set `incomplete`.
+Archive expiry remains necessary for long-lived large installations. `kind=daily`
+is an optional list filter; absent kind is treated as `manual`.
+
+Scheduled recaps are disabled by default. Existing daily/weekly interval and
+lookback settings still select this same path. A failed attempt advances its
+in-process interval; an existing incomplete saved result seeds the next interval
+after restart. This prevents immediate replay, but is not durable admission or
+a guarantee against all crash-window duplication. Engine stop cancels in-flight
+provider work and leaves original outcome publication eligible to complete.
+
+### Reproduce derived-state checks
+
+From the repository root on the assertion-enabled Linux host build:
+
+```sh
+cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
+cmake --build build-snapshot --target memory_cache_tests agentd -j4
+ctest --test-dir build-snapshot -R '^(memory_cache_tests|memory_retrieval_smoke|agentd_memory_correlate_smoke|agentd_workflow_memory_correlate_smoke|agentd_memory_recaps_smoke)$' --output-on-failure
+```
+
+Pass requires every selected check to succeed. The cache fixture proves immediate
+registered-file removal before another query, sidecar ownership, current rebuild
+scrubbing, bounded contention/fallback, source preservation on failure, exact
+originals and derivation invalidation. The temporary daemon fixture makes five
+synthetic loopback calls: completed result, concurrent correction, 2-MiB response
+HTTP 503 and a token-limited partial completion. It checks immutable outcomes, current/history filtering, the 1-MiB
+capture digest and no provider replay. Browser checks retain HTTP 409 results,
+label changed sources and keep receipts closed. These checks do not establish
+semantic answer accuracy, physical storage erasure, production deployment, MCU
+qualification or paid retrieval improvement.
 
 ## API helpers (correlation)
 
-In addition to the tool surface, `agentd` exposes correlation helpers:
+`GET /api/v1/memory/correlate?trace_id=...` defaults to current view. It captures
+eligible structured heads and recent daily observations, matches exact
+`trace:<id>` or colon-delimited child tokens and validates revisions before
+output. `trace:alpha-other` does not match `trace:alpha`. `structured_path` and
+`key_prefix` restrict candidates before the shared structured/daily result cap; excerpts remain bounded
+and original references preserve full values/relationships. `index.engine` is
+`live_projection`; no correlation payload is copied into a second SQLite/JSON
+cache. Recaps do not participate in this join.
 
-- `GET /api/v1/memory/checkpoints` — list checkpoint snapshots + sha256 (bounded by time window)
-- `GET /api/v1/memory/checkpoints?structured_path=STRUCTURED.md` — optional filter by structured file path
-- `GET /api/v1/memory/correlate?trace_id=...` — find structured keys whose evidence sources mention `trace:<trace_id>`
-  - optional filters: `structured_path=...` and `key_prefix=...`
-  - response includes `relationship_graph` (`agentd.memory.relationship_graph.v1`) linking memory keys to the queried trace via `correlates_trace`, plus workflow/task/job IDs and bounded source-excerpt nodes from evidence text
-  - when the correlation index exists, the response also includes:
-    - `daily_entries`: @obs daily lines linked to the trace_id
-    - `recap_entries`: recap files that cite the correlated structured/daily evidence
-    - `index`: index metadata (generated timestamps + counts)
-- `POST /api/v1/memory/correlation/index` — build a cross-run correlation index (structured + daily + recap evidence)
-  - the daemon also refreshes this index after recap generation or memory consolidation (best-effort)
-  - index path: `memory/.memory_correlation.sqlite3` (SQLite builds) or `memory/.memory_correlation.json` (fallback)
-- `GET /api/v1/memory/query?...&key_prefix=...` — bounded query over the **current view** of structured memory
-  (reads the authoritative head by default; checkpoint windows require explicit historical/evidence view)
-- `GET /api/v1/memory/index` — lightweight index of memory files (paths + size/line/token estimates)
-- `GET /api/v1/memory/salience` — ranked items by recency + importance (structured + @obs daily)
+Explicit `view=historical`/`view=evidence` selects immutable checkpoint originals.
+Time windows and `timeline=true` require one of those views. The native workflow
+helper uses the same implementation; `/api/v1/trace` requests history when a
+memory time window/timeline is supplied. Checkpoint listing remains available at
+`GET /api/v1/memory/checkpoints` with optional `structured_path`.
+
+`POST /api/v1/memory/correlation/index` now inspects/counts the current projection;
+its request accepts `daily_days` (0–90), `include_structured` and `include_daily`.
+It creates no payload cache and is not a prerequisite for correlation. There is
+no automatic correlation rebuild after consolidation or recap generation. The
+response graph (`agentd.memory.relationship_graph.v1`) is a bounded navigation
+view of declared trace/workflow/task relationships, not claim verification.
 
 ## WebUI Memory Explorer
 
@@ -807,7 +918,7 @@ The WebUI exposes a **Memory explorer** panel (collapsible) that directly calls 
 
 - Structured query (`/api/v1/memory/query`)
 - Trace correlation (`/api/v1/memory/correlate`)
-- Correlation index build (`POST /api/v1/memory/correlation/index`)
+- Current correlation inspection (`POST /api/v1/memory/correlation/index`)
 - Checkpoint listing (`/api/v1/memory/checkpoints`)
 
 This panel is intended for operator/debug use and returns raw JSON so you can inspect structured memory state
@@ -817,7 +928,7 @@ and evidence hashes without leaving the UI.
 
 Durable workflows can query memory without invoking an LLM:
 
-- `kind:"memory_correlate"` — bounded correlation by `trace_id` evidence against structured checkpoints; results include the same `relationship_graph` shape as `/api/v1/memory/correlate`
+- `kind:"memory_correlate"` — bounded current correlation by `trace_id`, with explicit historical checkpoint views; results include the same `relationship_graph` shape as `/api/v1/memory/correlate`
 - `kind:"memory_query"` — bounded query of the structured **current view** by `key_prefix` (authoritative head by default; explicit historical/evidence windows select checkpoints)
 
 ## Remaining authority work
@@ -825,8 +936,7 @@ Durable workflows can query memory without invoking an LLM:
 The current view removes explicitly stale candidates and invalidated marker-derived
 heads; durable promotion receipts prevent old observations from undoing later
 corrections. This does not finish general correction/forget semantics. Daily/checkpoint retirement now retains originals under the declared
-[retirement policy](#source-retirement-and-retention); archive expiry remains open. Persistent cache erasure,
-recap/conclusion invalidation at every consumer, bounded hard forgetting and
+[retirement policy](#source-retirement-and-retention); archive expiry remains open. Registered cache purge and recap provenance checks are implemented above. Generic conclusion validation, bounded hard forgetting and
 provenance-preserving handoffs remain open. Invalidating evidence must never
 resubmit a completed external effect. Keep these requirements ahead of the paid
 retrieval-quality pilot; do not interpret green eligibility tests as completion

@@ -162,7 +162,7 @@ print("ok")
 PY
 
 corr="$(curl -fsS --noproxy "*" --max-time 10 \
-  "${DAEMON_URL}/api/v1/memory/correlate?trace_id=${TRACE_ID}&since_utc_ms=${SINCE_MS}&until_utc_ms=${UNTIL_MS}&max_entries=200")"
+  "${DAEMON_URL}/api/v1/memory/correlate?trace_id=${TRACE_ID}&max_entries=200")"
 
 python3 - <<PY
 import json, sys
@@ -171,8 +171,8 @@ if not obj.get("ok"):
   print("correlate not ok", obj, file=sys.stderr)
   raise SystemExit(1)
 idx = obj.get("index") or {}
-if not idx.get("ok"):
-  print("expected correlate to use index", idx, file=sys.stderr)
+if idx.get("engine") != "live_projection" or idx.get("view") != "current":
+  print("expected current live projection", idx, file=sys.stderr)
   raise SystemExit(1)
 entries = obj.get("entries") or []
 keys = {e.get("key") for e in entries if isinstance(e, dict)}
@@ -208,7 +208,7 @@ print("ok")
 PY
 
 corr2="$(curl -fsS --noproxy "*" --max-time 10 \
-  "${DAEMON_URL}/api/v1/memory/correlate?trace_id=${TRACE_ID}&since_utc_ms=${SINCE_MS}&until_utc_ms=${UNTIL_MS}&max_entries=200&structured_path=STRUCTURED.md&key_prefix=wf.test.alpha")"
+  "${DAEMON_URL}/api/v1/memory/correlate?trace_id=${TRACE_ID}&max_entries=200&structured_path=STRUCTURED.md&key_prefix=wf.test.alpha")"
 
 python3 - <<PY
 import json, sys

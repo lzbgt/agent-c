@@ -310,10 +310,15 @@ void handle_trace_lookup_endpoint(
     const int64_t until_utc_ms = query_i64(req, "memory_until_utc_ms", /*default_value=*/INT64_MAX);
     const int max_entries = query_i32(req, "memory_max_entries", /*default_value=*/200);
     const bool timeline = query_bool(req, "memory_timeline", /*default_value=*/false);
-    mc["since_utc_ms"] = (Json::Int64)since_utc_ms;
-    mc["until_utc_ms"] = (Json::Int64)until_utc_ms;
+    const bool history = timeline || query_get(req.query, "memory_since_utc_ms") ||
+                         query_get(req.query, "memory_until_utc_ms");
+    if (history) {
+      mc["since_utc_ms"] = (Json::Int64)since_utc_ms;
+      mc["until_utc_ms"] = (Json::Int64)until_utc_ms;
+    }
     mc["max_entries"] = max_entries;
     mc["timeline"] = timeline;
+    mc["view"] = history ? "historical" : "current";
 
     std::string merr;
     Json::Value mco = workflow_memory_correlate_to_json(cfg.state_dir, trace_id, mc, &merr);

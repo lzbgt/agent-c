@@ -53,7 +53,7 @@ cat > "${mem_root}/checkpoints/structured_${now_utc}.json" <<EOF_IN
 {"schema":"agentd_structured_checkpoint_v1","ts_utc":"${now_utc}","path":"STRUCTURED.md","doc":{"items":{"recap.test.key":{"kind":"fact","value":"Recap summarization should be deterministic","status":"active","updated_utc":"${now_utc}","observed_utc":"${now_utc}","sources":["trace:recap"]}}}}
 EOF_IN
 
-cat > "${mem_root}/recaps/recap_daily_${now_utc}.json" <<EOF_IN
+cat > "${mem_root}/recaps/recap_daily_fixture.json" <<EOF_IN
 {"schema":"agentd_memory_recap_v1","ts_utc":"${now_utc}","ts_utc_ms":0,"model":"stub","kind":"daily","summary_text":"Daily recap stub","structured_items":[],"daily_items":[]}
 EOF_IN
 
@@ -62,6 +62,7 @@ import json, os, pathlib
 root = pathlib.Path(os.environ["MEM_ROOT"])
 checkpoint = next((root / "checkpoints").glob("structured_*.json"))
 doc = json.loads(checkpoint.read_text())["doc"]
+doc["schema"] = "agent_memory_v2"
 (root / "STRUCTURED.md").write_text("<!-- AGENT_MEMORY_V1_BEGIN -->\n" + json.dumps(doc) + "\n<!-- AGENT_MEMORY_V1_END -->\n")
 PY_CURRENT
 
@@ -92,9 +93,9 @@ if not structured:
 if not daily:
   print("expected daily_items", obj, file=sys.stderr)
   raise SystemExit(1)
-sources = obj.get("evidence_sources") or []
+sources = (obj.get("derivation") or {}).get("evidence") or []
 if not sources:
-  print("expected evidence_sources", obj, file=sys.stderr)
+  print("expected immutable evidence", obj, file=sys.stderr)
   raise SystemExit(1)
 prompt = obj.get("prompt") or ""
 if not prompt:
@@ -104,7 +105,7 @@ PY
 
 list_resp="$(curl -fsS --noproxy "*" --max-time 5 \
   -H "Authorization: Bearer ${TOKEN}" \
-  "${DAEMON_URL}/api/v1/memory/recaps?limit=5&kind=daily")"
+  "${DAEMON_URL}/api/v1/memory/recaps?view=historical&limit=5&kind=daily")"
 
 python3 - <<PY
 import json, sys
