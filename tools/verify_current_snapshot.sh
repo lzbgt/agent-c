@@ -32,7 +32,7 @@ npm run build --prefix ui
     e2e/workspace_shell.spec.ts e2e/workflow_sop_library.spec.ts e2e/workflow_decisions.spec.ts e2e/workflow_signals.spec.ts e2e/workflow_conditions.spec.ts e2e/workflow_sop_progress.spec.ts e2e/workflow_budget_visibility.spec.ts e2e/workflow_detail_panel.spec.ts e2e/prompt_bar.spec.ts e2e/scene_view.spec.ts e2e/scene_scope.spec.ts e2e/deployment_auth.spec.ts \
     e2e/workflow_graph_editor.spec.ts e2e/workflow_wait_persisted_ui.spec.ts e2e/workflow_schedules.spec.ts e2e/broker_team_layout.spec.ts e2e/broker_orchestrator_run_panel.spec.ts e2e/broker_goal_ledger.spec.ts \
     e2e/memory_panel.spec.ts e2e/tool_focus.spec.ts e2e/voice_panel.spec.ts e2e/run_diff_panel.spec.ts e2e/approval_queue_panel.spec.ts e2e/broker_trace_lookup.spec.ts \
-    e2e/chat_focus.spec.ts e2e/chat_submission_fence.spec.ts e2e/chat_recovery.spec.ts e2e/job_watcher_recovery.spec.ts e2e/local_job_controls.spec.ts \
+    e2e/chat_focus.spec.ts e2e/chat_submission_fence.spec.ts e2e/chat_recovery.spec.ts e2e/job_watcher_recovery.spec.ts e2e/run_watch_identity.spec.ts e2e/local_job_controls.spec.ts \
     e2e/session_message_pages.spec.ts e2e/session_context_viewer.spec.ts e2e/storage_scope.spec.ts e2e/workflow_submission_recovery.spec.ts e2e/conversation_client_rpc.spec.ts e2e/conversation_ui_action_ack.spec.ts e2e/conversation_rpc_script_eval.spec.ts \
     e2e/broker_codexw_session_lease.spec.ts e2e/broker_codexw_session_events_resume.spec.ts e2e/broker_codexw_session_operators.spec.ts e2e/broker_codexw_artifact_boundary.spec.ts \
     --workers=2 --timeout=45000

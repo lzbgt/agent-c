@@ -22,7 +22,11 @@ future work; the implemented bounded contracts are not those broader features.
 The current consolidation also covers browser chat uncertainty and context
 retrieval. [Chat recovery](docs/CHAT_SUBMISSION_FENCE.md) describes automatic
 bounded read-only original-job lookup, saved watch handoff and independent
-scoped queues. [Session pages](docs/SESSION_MESSAGE_PAGES.md) describe the
+scoped queues. Accepted-job pins and exact-job retirement now outrank delayed
+server preferences; reload checks the saved watch before queue dispatch, and
+metadata sync is context-cancelled and coalesced. The same contract documents
+64-entry capacity, seven-day unpinned history and storage-failure holds.
+[Session pages](docs/SESSION_MESSAGE_PAGES.md) describe the
 optional bounded model-context inspector. Neither feature establishes permanent
 conversation IDs or exactly-once external effects.
 
@@ -68,12 +72,12 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
 
 ## Continue the next concrete requirement
 
-1. First preserve locally accepted current-job identity when delayed server
-   watch preferences carry future timestamps. Add reload/late-response tests;
-   preference timestamps alone must not choose a different job. Then extend
-   effect continuity to remaining uninstrumented preparation/tool paths;
-   add trusted host receipt resolvers and additional device adapters. Keep
-   unknown outcomes explicit and require evidence before recovery.
+1. Extend effect continuity to remaining uninstrumented preparation/native-tool
+   paths. Select a concrete uncovered path from the current model/tool dispatch
+   code, add its durable intent/receipt boundary and verify crash recovery without
+   repeating uncertain work. Trusted host receipt resolvers and additional device
+   adapters remain open. Keep unknown outcomes explicit and require evidence
+   before recovery.
 2. Add permanent conversation identity/history and move remaining consumers to
    bounded retrieval. Keep content idempotency, synchronous-run reconciliation
    and cross-tab/device admission explicit rather than inferring them from traces.

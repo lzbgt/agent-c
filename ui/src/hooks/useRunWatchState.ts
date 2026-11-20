@@ -1,316 +1,180 @@
 import React from "react";
 import {
-  apiBrokerGetClientPrefs,
-  apiBrokerPostClientPrefs,
-  apiGetClientPrefs,
-  apiPostClientPrefs,
-  type AgentEvent,
-  type ApiAuth,
+  apiBrokerGetClientPrefs, apiBrokerPostClientPrefs, apiGetClientPrefs, apiPostClientPrefs,
+  type AgentEvent, type ApiAuth,
 } from "../api";
-import { loadJson, safeObject } from "../jsonUtils";
-import { pruneJobsBySession, UNVERIFIED_JOB_STATUS } from "../jobStore";
+import { readJobWatches, writeJobWatches, UNVERIFIED_JOB_STATUS } from "../jobStore";
 import {
-  extractRunWatchByScope,
-  mergeRunWatchByScope,
-  type RunWatchEntry,
-  runWatchMapsEqual,
-  type RunWatchByScope,
+  extractRunWatchByScope, mergeRunWatchByScope, parseRunWatchByScope,
+  runWatchHints, runWatchMapsEqual, type RunWatchByScope,
 } from "../runWatchPrefs";
-import useLocalStorageState from "./useLocalStorageState";
 import type { JobStoreWriter } from "./runtimePlaneTypes";
 
-const RUN_WATCH_PREFS_KIND = "run_watch";
-const RUN_WATCH_PREFS_VERSION = 1;
-const RUN_WATCH_PERSIST_MIN_INTERVAL_MS = 5000;
+const PREFS_KIND = "run_watch";
+const PERSIST_INTERVAL_MS = 5000;
+const REQUEST_DEADLINE_MS = 5000;
 
-const parseRunWatchByScope = (value: unknown): RunWatchByScope => {
-  const record = safeObject(value);
-  const next: RunWatchByScope = {};
-  for (const [key, entryValue] of Object.entries(record)) {
-    const entryRecord = safeObject(entryValue);
-    if (Object.keys(entryRecord).length === 0) continue;
-    const entry: RunWatchEntry = { ...entryRecord };
-    if (typeof entryRecord.job_id === "string") entry.job_id = entryRecord.job_id;
-    if (typeof entryRecord.cursor === "number" && Number.isFinite(entryRecord.cursor)) entry.cursor = entryRecord.cursor;
-    if (typeof entryRecord.started_unix_ms === "number" && Number.isFinite(entryRecord.started_unix_ms)) {
-      entry.started_unix_ms = entryRecord.started_unix_ms;
-    }
-    if (typeof entryRecord.updated_unix_ms === "number" && Number.isFinite(entryRecord.updated_unix_ms)) {
-      entry.updated_unix_ms = entryRecord.updated_unix_ms;
-    }
-    next[key] = entry;
-  }
-  return next;
-};
-
-type UseRunWatchStateArgs = {
-  activeJobId: string | null;
-  authKey: string;
-  cursorRef: React.MutableRefObject<number>;
-  daemonAuth: ApiAuth;
-  effectiveBase: string;
-  jobStoreKey: string;
-  runWatchCanUse: boolean;
-  runWatchPrefsBase: string;
-  runWatchPrefsClientId: string;
-  sessionId: string;
+type Args = {
+  activeJobId: string | null; authKey: string; cursorRef: React.MutableRefObject<number>;
+  daemonAuth: ApiAuth; effectiveBase: string; jobStoreKey: string;
+  runWatchCanUse: boolean; runWatchPrefsBase: string; runWatchPrefsClientId: string; sessionId: string;
   setActiveJobId: React.Dispatch<React.SetStateAction<string | null>>;
   setJobError: React.Dispatch<React.SetStateAction<string | null>>;
   setJobStatus: React.Dispatch<React.SetStateAction<string | null>>;
   setJobUpdatedMs: React.Dispatch<React.SetStateAction<number | null>>;
   setLiveEvents: React.Dispatch<React.SetStateAction<AgentEvent[]>>;
 };
+type Sync = {
+  key: string; disposed: boolean; pending: boolean; lastSentAt: number;
+  timer: ReturnType<typeof setTimeout> | null; push: AbortController | null;
+  schedule: () => void;
+};
 
-export function useRunWatchState(args: UseRunWatchStateArgs) {
-  const {
-    activeJobId,
-    authKey,
-    cursorRef,
-    daemonAuth,
-    effectiveBase,
-    jobStoreKey,
-    runWatchCanUse,
-    runWatchPrefsBase,
-    runWatchPrefsClientId,
-    sessionId,
-    setActiveJobId,
-    setJobError,
-    setJobStatus,
-    setJobUpdatedMs,
-    setLiveEvents,
-  } = args;
+export function useRunWatchState(args: Args) {
+  const [revision, refresh] = React.useReducer(value => value + 1, 0);
+  const [serverStatus, setServerStatus] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
+  const context = JSON.stringify([args.runWatchCanUse, args.runWatchPrefsBase,
+    args.runWatchPrefsClientId, args.authKey, args.daemonAuth]);
+  const currentContext = React.useRef(context);
+  currentContext.current = context;
+  const sync = React.useRef<Sync | null>(null);
+  const schedule = React.useCallback(() => {
+    const state = sync.current;
+    if (!state || state.disposed || state.key !== currentContext.current) return;
+    state.pending = true;
+    state.schedule();
+  }, []);
 
-  const [jobsBySessionJson, setJobsBySessionJson] = useLocalStorageState("agentui.jobsBySession", "{}");
-  const jobsBySessionJsonRef = React.useRef(jobsBySessionJson);
+  // The checked local write is the authority. React and preference replies are
+  // projections; neither may replace it using a captured pre-request snapshot.
+  const writeJobsBySession = React.useCallback<JobStoreWriter>(mutate => {
+    const previous = readJobWatches();
+    const next = mutate(previous);
+    if (next === previous) return;
+    if (!runWatchMapsEqual(previous, next)) writeJobWatches(next);
+    refresh();
+    schedule();
+  }, [schedule]);
+
   React.useEffect(() => {
-    jobsBySessionJsonRef.current = jobsBySessionJson;
-  }, [jobsBySessionJson]);
+    const changed = () => refresh();
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === "agentui.jobsBySession") changed();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
-  const [runWatchServerStatus, setRunWatchServerStatus] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
-  const runWatchPersistRef = React.useRef<{
-    timer: ReturnType<typeof setTimeout> | null;
-    pending: RunWatchByScope | null;
-    lastSentAt: number;
-  }>({ timer: null, pending: null, lastSentAt: 0 });
-  const runWatchLoadKeyRef = React.useRef<string>("");
-
-  const runWatchMode = React.useMemo(() => {
-    if (!runWatchCanUse) return "local";
-    if (runWatchServerStatus === "error") return "local";
-    if (runWatchServerStatus === "loading") return "server:loading";
-    if (runWatchServerStatus === "ready") return "server";
-    return "server";
-  }, [runWatchCanUse, runWatchServerStatus]);
-
-  const parseJobsBySession = React.useCallback(() => {
-    const jobs = parseRunWatchByScope(loadJson(jobsBySessionJsonRef.current));
-    const pruned = pruneJobsBySession(Date.now(), jobs);
-    if (pruned.changed) {
+  React.useEffect(() => {
+    if (!args.runWatchCanUse) { setServerStatus("idle");return; }
+    const state: Sync = { key: context, disposed: false, pending: false, lastSentAt: -Infinity,
+      timer: null, push: null, schedule: () => {} };
+    sync.current = state;
+    const valid = () => !state.disposed && currentContext.current === context;
+    const flush = async () => {
+      state.timer = null;
+      if (!valid() || !state.pending || state.push) return;
+      state.pending = false;
+      const controller = new AbortController();
+      state.push = controller;
+      state.lastSentAt = performance.now(); // clock changes cannot stall metadata persistence
+      const deadline = setTimeout(() => controller.abort(), REQUEST_DEADLINE_MS);
       try {
-        setJobsBySessionJson(JSON.stringify(pruned.next));
+        const payload = { client_id: args.runWatchPrefsClientId, client_kind: PREFS_KIND,
+          prefs: { run_watch: { version: 1, by_scope: runWatchHints(readJobWatches()) } } };
+        const response = args.daemonAuth.mode === "broker"
+          ? await apiBrokerPostClientPrefs(args.runWatchPrefsBase, payload, args.daemonAuth, controller.signal)
+          : await apiPostClientPrefs(args.runWatchPrefsBase, payload, args.daemonAuth, controller.signal);
+        if (!response.ok) throw new Error("Run watch preferences rejected");
+        if (valid()) setServerStatus("ready");
       } catch {
-        // ignore
-      }
-    }
-    return pruned.next;
-  }, [setJobsBySessionJson]);
-
-  const pushServerRunWatch = React.useCallback(
-    async (nextMap: RunWatchByScope) => {
-      if (!runWatchCanUse) return;
-      const payload = {
-        client_id: runWatchPrefsClientId,
-        client_kind: RUN_WATCH_PREFS_KIND,
-        prefs: { run_watch: { version: RUN_WATCH_PREFS_VERSION, by_scope: nextMap } },
-      };
-      const resp =
-        daemonAuth.mode === "broker"
-          ? await apiBrokerPostClientPrefs(runWatchPrefsBase, payload, daemonAuth)
-          : await apiPostClientPrefs(runWatchPrefsBase, payload, daemonAuth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "run watch prefs update failed");
-      }
-      runWatchPersistRef.current.lastSentAt = Date.now();
-      setRunWatchServerStatus("ready");
-    },
-    [daemonAuth, runWatchCanUse, runWatchPrefsBase, runWatchPrefsClientId],
-  );
-
-  const scheduleRunWatchPersist = React.useCallback(
-    (nextMap: RunWatchByScope) => {
-      if (!runWatchCanUse) return;
-      if (runWatchServerStatus === "error") return;
-      runWatchPersistRef.current.pending = nextMap;
-      if (runWatchPersistRef.current.timer) return;
-      const now = Date.now();
-      const since = now - runWatchPersistRef.current.lastSentAt;
-      const delay = Math.max(RUN_WATCH_PERSIST_MIN_INTERVAL_MS - since, 0);
-      runWatchPersistRef.current.timer = setTimeout(() => {
-        const pending = runWatchPersistRef.current.pending;
-        runWatchPersistRef.current.pending = null;
-        runWatchPersistRef.current.timer = null;
-        if (!pending) return;
-        pushServerRunWatch(pending).catch(() => {
-          setRunWatchServerStatus("error");
-        });
-      }, delay);
-    },
-    [pushServerRunWatch, runWatchCanUse, runWatchServerStatus],
-  );
-
-  const loadServerRunWatch = React.useCallback(async () => {
-    if (!runWatchCanUse) return;
-    setRunWatchServerStatus("loading");
-    try {
-      const resp =
-        daemonAuth.mode === "broker"
-          ? await apiBrokerGetClientPrefs(runWatchPrefsBase, runWatchPrefsClientId, RUN_WATCH_PREFS_KIND, daemonAuth)
-          : await apiGetClientPrefs(runWatchPrefsBase, runWatchPrefsClientId, RUN_WATCH_PREFS_KIND, daemonAuth);
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "run watch prefs fetch failed");
-      }
-      const remoteMap = pruneJobsBySession(Date.now(), extractRunWatchByScope(resp.prefs)).next;
-      const localMap = parseJobsBySession();
-      const merged = mergeRunWatchByScope(localMap, remoteMap);
-      if (!runWatchMapsEqual(merged, localMap)) {
-        try {
-          setJobsBySessionJson(JSON.stringify(merged));
-        } catch {
-          // ignore
-        }
-      }
-      if (!runWatchMapsEqual(merged, remoteMap)) {
-        scheduleRunWatchPersist(merged);
-      }
-      setRunWatchServerStatus("ready");
-    } catch {
-      setRunWatchServerStatus("error");
-    }
-  }, [
-    daemonAuth,
-    parseJobsBySession,
-    runWatchCanUse,
-    runWatchPrefsBase,
-    runWatchPrefsClientId,
-    scheduleRunWatchPersist,
-    setJobsBySessionJson,
-  ]);
-  const loadServerRunWatchRef = React.useRef(loadServerRunWatch);
-
-  React.useEffect(() => {
-    if (!runWatchCanUse) return;
-    const nextKey = `${runWatchPrefsBase}::${runWatchPrefsClientId}::${daemonAuth.mode}::${authKey}`;
-    if (runWatchLoadKeyRef.current === nextKey) return;
-    runWatchLoadKeyRef.current = nextKey;
-    void loadServerRunWatchRef.current();
-  }, [authKey, daemonAuth.mode, runWatchCanUse, runWatchPrefsBase, runWatchPrefsClientId]);
-
-  React.useEffect(() => {
-    loadServerRunWatchRef.current = loadServerRunWatch;
-  }, [loadServerRunWatch]);
-
-  React.useEffect(() => {
-    if (runWatchCanUse) return;
-    runWatchLoadKeyRef.current = "";
-  }, [runWatchCanUse]);
-
-  React.useEffect(
-    () => () => {
-      if (runWatchPersistRef.current.timer) {
-        try {
-          clearTimeout(runWatchPersistRef.current.timer);
-        } catch {
-          // ignore
-        }
-      }
-      runWatchPersistRef.current.timer = null;
-    },
-    [],
-  );
-
-  const writeJobsBySession = React.useCallback<JobStoreWriter>(
-    (mutate) => {
-      setJobsBySessionJson((prevRaw) => {
-        const prev = parseRunWatchByScope(loadJson(String(prevRaw || "")));
-        const next = mutate(prev);
-        scheduleRunWatchPersist(next);
-        try {
-          return JSON.stringify(next);
-        } catch {
-          return JSON.stringify(prev);
-        }
-      });
-    },
-    [scheduleRunWatchPersist, setJobsBySessionJson],
-  );
-
-  React.useEffect(() => {
-    if (activeJobId || !effectiveBase.trim()) return;
-    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
-    if (!sid) return;
-    const jobs = parseJobsBySession();
-    const rec = jobs[jobStoreKey] || jobs[sid];
-    const jobId = typeof rec?.job_id === "string" ? rec.job_id : "";
-    if (!jobId) return;
-
-    if (!jobs[jobStoreKey] && jobs[sid]) {
-      writeJobsBySession((prev) => {
-        if (prev[jobStoreKey]) return prev;
-        const next = { ...prev, [jobStoreKey]: prev[sid] };
-        delete next[sid];
-        return next;
-      });
-    }
-
-    // A saved ID is evidence of what to watch, not evidence that the run is
-    // still executing or finished. Let the existing read-only watcher obtain
-    // that proof; an unavailable lookup must not erase the saved descriptor.
-    cursorRef.current = 0;
-    setJobError(null);
-    setJobStatus(UNVERIFIED_JOB_STATUS);
-    setJobUpdatedMs(null);
-    setLiveEvents([]);
-    setActiveJobId(jobId);
-  }, [
-    activeJobId,
-    cursorRef,
-    effectiveBase,
-    jobStoreKey,
-    parseJobsBySession,
-    sessionId,
-    setActiveJobId,
-    setJobError,
-    setJobStatus,
-    setJobUpdatedMs,
-    setLiveEvents,
-    writeJobsBySession,
-  ]);
-
-  React.useEffect(() => {
-    if (!activeJobId) return;
-    const sid = String(sessionId || "").trim();
-    if (!sid) return;
-    const jobId = activeJobId;
-    const timer = window.setInterval(() => {
-      const cursor = cursorRef.current;
-      writeJobsBySession((prev) => {
-        const current = prev[jobStoreKey];
-        if (!current || current.job_id !== jobId) return prev;
-        if (current.cursor === cursor) return prev;
-        return { ...prev, [jobStoreKey]: { ...current, cursor, updated_unix_ms: Date.now() } };
-      });
-    }, 1000);
-    return () => {
-      try {
-        window.clearInterval(timer);
-      } catch {
-        // ignore
+        if (valid()) { setServerStatus("error");state.pending = false; }
+      } finally {
+        clearTimeout(deadline);
+        state.push = null;
+        if (valid()) state.schedule();
       }
     };
-  }, [activeJobId, cursorRef, jobStoreKey, sessionId, writeJobsBySession]);
+    state.schedule = () => {
+      if (!valid() || !state.pending || state.push || state.timer) return;
+      const delay = Math.max(PERSIST_INTERVAL_MS - (performance.now() - state.lastSentAt), 0);
+      state.timer = setTimeout(() => { void flush(); }, delay);
+    };
 
-  return {
-    runWatchMode,
-    writeJobsBySession,
-  };
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), REQUEST_DEADLINE_MS);
+    setServerStatus("loading");
+    void (async () => {
+      try {
+        const response = args.daemonAuth.mode === "broker"
+          ? await apiBrokerGetClientPrefs(args.runWatchPrefsBase, args.runWatchPrefsClientId, PREFS_KIND, args.daemonAuth, controller.signal)
+          : await apiGetClientPrefs(args.runWatchPrefsBase, args.runWatchPrefsClientId, PREFS_KIND, args.daemonAuth, controller.signal);
+        if (!valid() || controller.signal.aborted) return;
+        if (!response.ok) throw new Error("Run watch preferences unavailable");
+        const remote = parseRunWatchByScope(extractRunWatchByScope(response.prefs));
+        const local = readJobWatches(); // read after the response; acceptance may have happened meanwhile
+        const merged = mergeRunWatchByScope(local, remote);
+        if (!runWatchMapsEqual(merged, local)) { writeJobWatches(merged);refresh(); }
+        if (!runWatchMapsEqual(runWatchHints(merged), remote)) schedule();
+        setServerStatus("ready");
+      } catch { if (valid()) setServerStatus("error"); }
+      finally { clearTimeout(deadline); }
+    })();
+    return () => {
+      state.disposed = true;
+      controller.abort();state.push?.abort();
+      clearTimeout(deadline);
+      if (state.timer) clearTimeout(state.timer);
+      state.timer = null;state.pending = false;
+      if (sync.current === state) sync.current = null;
+    };
+    // The context includes every transport/authorization input. Session changes
+    // share one authority's preferences and do not retarget a pending request.
+  }, [context, schedule]);
+
+  const selectedScope = React.useRef(args.jobStoreKey);
+  React.useLayoutEffect(() => {
+    if (selectedScope.current === args.jobStoreKey) return;
+    selectedScope.current = args.jobStoreKey;
+    args.cursorRef.current = 0;
+    args.setActiveJobId(null);args.setJobStatus(null);args.setJobError(null);
+    args.setJobUpdatedMs(null);args.setLiveEvents([]);
+  }, [args.jobStoreKey]);
+
+  React.useEffect(() => {
+    if (args.activeJobId || !args.effectiveBase.trim() || !args.sessionId.trim()) return;
+    try {
+      const watches = readJobWatches();
+      const entry = watches[args.jobStoreKey] || watches[args.sessionId];
+      if (!entry?.job_id || entry.local_state === "retired") return;
+      if (!watches[args.jobStoreKey] && watches[args.sessionId]) {
+        writeJobsBySession(previous => {
+          if (previous[args.jobStoreKey]) return previous;
+          const next = { ...previous, [args.jobStoreKey]: previous[args.sessionId] };
+          delete next[args.sessionId];return next;
+        });
+      }
+      args.cursorRef.current = 0;
+      args.setJobError(null);args.setJobStatus(UNVERIFIED_JOB_STATUS);
+      args.setJobUpdatedMs(null);args.setLiveEvents([]);args.setActiveJobId(entry.job_id);
+    } catch { setServerStatus("error"); } // preserve unavailable/invalid local state
+  }, [args.activeJobId, args.effectiveBase, args.jobStoreKey, args.sessionId, revision, writeJobsBySession]);
+
+  React.useEffect(() => {
+    if (!args.activeJobId || !args.sessionId.trim()) return;
+    const job = args.activeJobId;
+    const timer = setInterval(() => {
+      try {
+        writeJobsBySession(previous => {
+          const entry = previous[args.jobStoreKey];
+          if (!entry || entry.job_id !== job || entry.local_state === "retired" || entry.cursor === args.cursorRef.current) return previous;
+          return { ...previous, [args.jobStoreKey]: { ...entry, cursor: args.cursorRef.current, updated_unix_ms: Date.now() } };
+        });
+      } catch { setServerStatus("error"); }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [args.activeJobId, args.jobStoreKey, args.sessionId, writeJobsBySession]);
+
+  return { runWatchMode: !args.runWatchCanUse || serverStatus === "error" ? "local"
+    : serverStatus === "loading" ? "server:loading" : "server", writeJobsBySession };
 }

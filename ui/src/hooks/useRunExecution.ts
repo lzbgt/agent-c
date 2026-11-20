@@ -6,7 +6,7 @@ import { apiRun, apiRunAsync, type ApiAuth, type RunRequest, type RunResponse, t
 import type { Attachment } from "../components/PromptBar";
 import { safeObject } from "../jsonUtils";
 import type { JobStoreWriter } from "./runtimePlaneTypes";
-import { persistAcceptedJobWatch } from "../jobStore";
+import { hasSavedJobWatch, persistAcceptedJobWatch } from "../jobStore";
 
 export type QueuedRun = { prompt: string; attachments: Attachment[]; queued_unix_ms: number };
 
@@ -146,6 +146,7 @@ export default function useRunExecution(args: RunExecutionArgs) {
     retry: false,
     mutationFn: async (vars: { prompt: string; attachments: Attachment[]; originScope: string }) => {
       if (vars.originScope !== jobStoreKey) throw new Error("Chat context changed before dispatch");
+      if (hasSavedJobWatch(jobStoreKey, sessionId || "default")) throw new Error("Original job still requires its native receipt");
       const maxStepsTrim = String(maxSteps ?? "").trim();
       const parsedMaxSteps =
         maxStepsTrim.length === 0
@@ -308,7 +309,7 @@ export default function useRunExecution(args: RunExecutionArgs) {
     onSuccess: (value, submitted) => {
       if (value.mode === "async" && value.job.ok && value.job.job_id) {
         const watches = persistAcceptedJobWatch(value.originScope, value.job.job_id);
-        writeJobsBySession(() => watches);
+        writeJobsBySession(previous => ({ ...previous, [value.originScope]: watches[value.originScope] }));
       }
       if (value.mode === "sync" || (value.job.ok && value.job.job_id)) fence.finish(value.originScope, value.traceId);
       if (fence.currentScope.current !== value.originScope) return;
@@ -360,7 +361,7 @@ export default function useRunExecution(args: RunExecutionArgs) {
       // Persist the existing job before releasing dispatch, including reloads
       // where the original POST response was never received.
       const watches = persistAcceptedJobWatch(jobStoreKey, found.job_id);
-      writeJobsBySession(() => watches);
+      writeJobsBySession(previous => ({ ...previous, [jobStoreKey]: watches[jobStoreKey] }));
       setActiveJobId(found.job_id);
       setJobStatus(found.status);
       cursorRef.current = 0;
@@ -392,7 +393,7 @@ export default function useRunExecution(args: RunExecutionArgs) {
   );
 
   React.useEffect(() => {
-    if (activeJobId || run.isPending || fence.isBlocked()) return;
+    if (activeJobId || run.isPending || fence.isBlocked() || hasSavedJobWatch(jobStoreKey, sessionId || "default")) return;
     if (!Array.isArray(runQueue) || runQueue.length === 0) return;
     if (dequeueInFlightRef.current) return;
     const next = runQueue[0];
@@ -412,18 +413,18 @@ export default function useRunExecution(args: RunExecutionArgs) {
       .finally(() => {
         dequeueInFlightRef.current = false;
       });
-  }, [activeJobId, run.isPending, runQueue, run, fence.pending, jobStoreKey, setJobNotice, setRunQueue, setPrompt]);
+  }, [activeJobId, run.isPending, runQueue, run, fence.pending, jobStoreKey, sessionId, setJobNotice, setRunQueue, setPrompt]);
 
   const handleDirectRunRequest = React.useCallback(
     async (vars: { prompt: string; attachments: Attachment[] }) => {
       if (fence.isBlocked()) { setJobNotice("Chat submission unresolved. Inspect its trace before continuing."); return; }
-      if (activeJobId || run.isPending) {
+      if (activeJobId || run.isPending || hasSavedJobWatch(jobStoreKey, sessionId || "default")) {
         enqueueRun(vars);
         return;
       }
       run.mutate({ ...vars, originScope: jobStoreKey });
     },
-    [activeJobId, enqueueRun, run, fence.pending, jobStoreKey, setJobNotice],
+    [activeJobId, enqueueRun, run, fence.pending, jobStoreKey, sessionId, setJobNotice],
   );
 
   return {

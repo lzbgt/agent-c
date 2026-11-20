@@ -256,7 +256,10 @@ test("an empty HTTP success is not a Stop receipt; native completion while unloa
 async function savedFixtureWatcher(page: Page): Promise<boolean> {
   return page.evaluate((expected) => {
     const jobs = JSON.parse(JSON.parse(localStorage.getItem("agentui.jobsBySession") || '"{}"'));
-    return Object.values(jobs).some((entry) => (entry as { job_id?: string })?.job_id === expected);
+    return Object.values(jobs).some((entry) => {
+      const watch = entry as { job_id?: string; local_state?: string };
+      return watch?.job_id === expected && watch.local_state !== "retired";
+    });
   }, jobId);
 }
 

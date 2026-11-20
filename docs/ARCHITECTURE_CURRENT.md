@@ -96,8 +96,10 @@ Prefer one worker for sequential work. Add specialists only for independent bran
 Submission recovery and execution continuation are separate contracts. The
 browser now saves a scoped trace receipt before chat dispatch, performs bounded
 read-only original-job lookup after response loss, and saves the accepted job
-watch before releasing the submission guard. It never retries a POST to infer
-whether the original ran. Generation-fenced context pages are available in an
+watch before releasing the submission guard. Local acceptance pins and exact-job
+retirement outrank delayed preference hints independently of timestamps. Queue
+dispatch reads the checked store before React restores a job on reload. It never
+retries a POST to infer whether the original ran. Generation-fenced context pages are available in an
 optional one-page inspector; they do not establish append-only conversation
 identity. See [chat recovery](CHAT_SUBMISSION_FENCE.md) and
 [session pages](SESSION_MESSAGE_PAGES.md).

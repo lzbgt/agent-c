@@ -1,4 +1,4 @@
-import type { RunWatchByScope, RunWatchEntry } from "./runWatchPrefs";
+import { parseRunWatchByScope, type RunWatchByScope, type RunWatchEntry } from "./runWatchPrefs";
 
 export const JOB_STORE_MAX = 64;
 export const JOB_STORE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -7,20 +7,46 @@ export const UNVERIFIED_JOB_RECEIPT = "Run receipt unverified. Waiting for the n
 
 // Complete the durable handoff before a submission uncertainty fence is removed.
 // The existing React preference uses a JSON string encoded inside localStorage.
-export function persistAcceptedJobWatch(scope: string, jobId: string, startedMs = Date.now()) {
+function parseLocalWatches(value: unknown): RunWatchByScope {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Saved job watches are invalid; submission remains held");
+  }
+  const jobs = value as RunWatchByScope;
+  const parsed = parseRunWatchByScope(jobs, true);
+  if (Object.keys(parsed).length !== Object.keys(jobs).length || Object.values(jobs).some(entry =>
+    entry.local_state !== undefined && entry.local_state !== "accepted" && entry.local_state !== "retired")) {
+    throw new Error("Saved job watches are invalid; submission remains held");
+  }
+  return parsed;
+}
+
+export function readJobWatches(): RunWatchByScope {
   const stored = localStorage.getItem("agentui.jobsBySession");
   const encoded = stored === null ? "{}" : JSON.parse(stored);
   if (typeof encoded !== "string") throw new Error("Saved job watches are invalid; submission remains held");
-  const jobs = JSON.parse(encoded);
-  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) throw new Error("Saved job watches are invalid; submission remains held");
-  // Current acceptance outranks cached timestamps, including a clock rollback.
-  // Prune older watches first, then reserve the last slot for this exact job.
-  const previous = pruneJobsBySession(Date.now(), jobs, JOB_STORE_MAX - 1).next;
-  const next = { ...previous, [scope]: { job_id: jobId, cursor: 0, started_unix_ms: startedMs } };
+  return pruneJobsBySession(Date.now(), parseLocalWatches(JSON.parse(encoded))).next;
+}
+
+export function writeJobWatches(jobs: RunWatchByScope): RunWatchByScope {
+  const next = pruneJobsBySession(Date.now(), parseLocalWatches(jobs)).next;
   const value = JSON.stringify(JSON.stringify(next));
   localStorage.setItem("agentui.jobsBySession", value);
-  if (localStorage.getItem("agentui.jobsBySession") !== value) throw new Error("Unable to save accepted job; submission remains held");
+  if (localStorage.getItem("agentui.jobsBySession") !== value) throw new Error("Unable to save job watch; submission remains held");
   return next;
+}
+
+export function persistAcceptedJobWatch(scope: string, jobId: string, startedMs = Date.now()) {
+  return writeJobWatches({ ...readJobWatches(), [scope]: {
+    job_id: jobId, cursor: 0, started_unix_ms: startedMs, local_state: "accepted",
+  } });
+}
+
+export function hasSavedJobWatch(scope: string, sessionId?: string): boolean {
+  try {
+    const jobs = readJobWatches();
+    const entry = jobs[scope] || (sessionId ? jobs[sessionId] : undefined);
+    return Boolean(entry?.job_id && entry.local_state !== "retired");
+  } catch { return true; } // Unavailable storage never authorizes queue dispatch.
 }
 
 export function isTerminalJobStatus(status: string | null | undefined): status is "done" | "error" | "cancelled" | "interrupted" {
@@ -37,6 +63,7 @@ export function pruneJobsBySession(
   for (const [key, value] of Object.entries(jobs)) {
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const tsRaw =
+      value.local_state === "retired" && typeof value.retired_unix_ms === "number" ? value.retired_unix_ms :
       typeof value.updated_unix_ms === "number"
         ? value.updated_unix_ms
         : typeof value.started_unix_ms === "number"
@@ -45,11 +72,11 @@ export function pruneJobsBySession(
     entries.push({ key, value, ts: Number.isFinite(tsRaw) ? tsRaw : 0 });
   }
 
-  const next: RunWatchByScope = {};
+  const next: RunWatchByScope = Object.create(null);
   let changed = false;
 
   for (const e of entries) {
-    if (ttlMs > 0 && e.ts > 0 && nowMs - e.ts > ttlMs) {
+    if (e.value.local_state !== "accepted" && ttlMs > 0 && e.ts > 0 && nowMs - e.ts > ttlMs) {
       changed = true;
       continue;
     }
@@ -58,19 +85,22 @@ export function pruneJobsBySession(
 
   const keys = Object.keys(next);
   if (maxEntries > 0 && keys.length > maxEntries) {
-    const sorted = keys
+    const accepted = keys.filter(key => next[key].local_state === "accepted");
+    if (accepted.length > maxEntries) throw new Error("Too many unfinished job watches; preserve existing receipts before continuing");
+    const sorted = keys.filter(key => next[key].local_state !== "accepted")
       .map((key) => {
         const v = next[key];
         const tsRaw =
+          v.local_state === "retired" && typeof v.retired_unix_ms === "number" ? v.retired_unix_ms :
           typeof v?.updated_unix_ms === "number"
             ? v.updated_unix_ms
             : typeof v?.started_unix_ms === "number"
               ? v.started_unix_ms
               : 0;
-        return { key, ts: Number.isFinite(tsRaw) ? tsRaw : 0 };
+        return { key, retired: v.local_state === "retired" ? 1 : 0, ts: Number.isFinite(tsRaw) ? tsRaw : 0 };
       })
-      .sort((a, b) => b.ts - a.ts);
-    const keep = new Set(sorted.slice(0, maxEntries).map((e) => e.key));
+      .sort((a, b) => b.retired - a.retired || b.ts - a.ts);
+    const keep = new Set([...accepted, ...sorted.slice(0, maxEntries - accepted.length).map((e) => e.key)]);
     for (const key of keys) {
       if (!keep.has(key)) {
         delete next[key];

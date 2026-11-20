@@ -34,14 +34,64 @@ watch store before its matching submission receipt is cleared. This write is
 also read back. If saving the watch fails, the receipt remains held and recovery
 can read the original job after storage becomes usable. React and server-side
 watch preferences remain projections; scheduling their update alone is not
-durable browser handoff. The cache keeps at most 64 watches and reserves a slot
-for current acceptance before considering cached timestamps; a clock rollback
-cannot evict the just-accepted job. A synchronous terminal response clears its
-receipt even when the run reports failure. An uncertain synchronous response
-stays held.
+durable browser handoff. Accepted jobs remain pinned until their matching native
+terminal result is received and their retirement is saved. A synchronous
+terminal response clears its receipt even when the run reports failure. An
+uncertain synchronous response stays held.
 
 The unused async-to-sync fallback helper was removed. A transport or parsing
 error never switches execution endpoints or issues a second POST.
+
+## Keep the accepted job authoritative
+
+`agentui.jobsBySession` is the single checked local job-watch store. Its outer
+JSON value is a string containing the JSON scope map. Scope includes the selected
+connection and session. React reads this store; it does not keep a competing
+best-effort preference copy that can overwrite a newer acceptance.
+
+| Local entry | Meaning | Preference reconciliation |
+| --- | --- | --- |
+| `local_state: "accepted"` | This browser saved a positive native acceptance or validated original-job lookup. | Preserve the exact job ID and local cursor regardless of remote timestamps. |
+| `local_state: "retired"`, `retired_unix_ms` | A terminal native result for this exact job was received and the checked local write completed. | Preserve the marker; do not restore a remote watch for this scope. |
+| No local state tag | A saved recovery hint, without native acceptance proof. | Keep an existing local selection; import remote hints only for absent scopes. |
+
+A server preference is a hint, not a run receipt. Its parser strips local state
+tags and unknown fields, ignores invalid entries and accepts only safe
+nonnegative integer cursors/times. A future timestamp never chooses a different
+job. A delayed preference GET merges against a fresh local read after its reply,
+so acceptance in another session while that GET was pending remains intact.
+
+A native completion retires only the matching job ID. A late completion for an
+older job cannot retire its replacement. The watcher saves retirement before
+clearing the selected job; a failed storage write retains the original watch
+and continues read-only reconciliation. Direct sends and automatic queue
+dispatch synchronously inspect saved watches, including before mutation
+submission. This closes the reload interval before React restores the selected
+job. A missing result or unavailable/invalid local storage never releases queued
+execution. Other scopes continue independently.
+
+The store holds at most **64 entries**. Accepted entries do not expire and cannot
+be evicted to make room for hints. Attempting to save a 65th accepted scope
+fails before changing the stored map; an already accepted request retains its
+submission receipt for reconciliation. Resolve original jobs and save their
+terminal results to release pinned capacity. Retired markers outrank hints when
+capacity is needed. Unpinned hints and retirement markers expire after **seven
+days** using their saved update/start or retirement time, and remaining unpinned
+entries can be evicted at the capacity limit. The retirement history is bounded:
+a marker removed by expiry, eviction or clearing storage cannot prevent a stale
+server hint from returning. Such a hint still authorizes only native reads, never
+an execution retry. Wall-clock changes can affect this cache retention; they
+cannot expire an accepted pin or select another job over a retained local entry.
+
+Metadata uploads omit retirement entries and local authority tags. They are
+coalesced to the latest local state, with at most one client request in flight
+per preference context and a **five-second monotonic-clock interval** between
+starts. Preference GETs and POSTs have **five-second deadlines**. Changing the
+preference endpoint, client ID or authorization aborts that context's requests,
+cancels its queued timer and fences late replies. A new context reads and uploads
+its own current hints. Failed sync falls back to local watch operation; this is
+best-effort metadata persistence, not a server write-order or cross-device
+admission protocol. A timed-out server write may still commit after client abort.
 
 ## Automatic read-only recovery
 
@@ -138,13 +188,18 @@ For focused browser verification, run from `ui/`:
 AGENT_E2E_PREFER_DEVSTACK=0 AGENT_E2E_RECORD=0 \
 AGENT_E2E_BROWSER_EXECUTABLE=/path/to/installed/chromium \
   npx playwright test e2e/chat_submission_fence.spec.ts \
-    e2e/chat_recovery.spec.ts --workers=2
+    e2e/chat_recovery.spec.ts e2e/run_watch_identity.spec.ts \
+    e2e/job_watcher_recovery.spec.ts e2e/local_job_controls.spec.ts --workers=2
 ```
 
 The tests mount the actual React run hook with intercepted transport. They cover
 automatic original-job adoption, delayed/missing receipts, bounded reads,
 StrictMode reload, storage failure, invalid metadata and changed-session/auth
-late responses. Native Python fixtures start temporary authenticated daemons
+late responses. The combined watch/dispatch/stream fixture also checks delayed
+future-dated preferences in direct and broker modes, old accepted pins on reload,
+exact native completion, independent scopes, local storage faults, authority
+tag stripping, capacity/retention and coalesced synchronization after clock
+rollback. Native Python fixtures start temporary authenticated daemons
 with loopback providers and disposable SQLite state; they exercise admission
 failure, process death, duplicate IDs, restart uncertainty and durable Stop.
 No production service or real provider is used. A browser fixture pass is not
@@ -154,5 +209,8 @@ Implementation: [`useRunExecution`](../ui/src/hooks/useRunExecution.ts),
 [`useChatJobRecovery`](../ui/src/hooks/useChatJobRecovery.ts),
 [`chatJobLookup`](../ui/src/api/chatJobLookup.ts),
 [`jobStore`](../ui/src/jobStore.ts),
+[`watch preferences`](../ui/src/runWatchPrefs.ts),
+[`watch synchronization`](../ui/src/hooks/useRunWatchState.ts),
+[`native result watching`](../ui/src/hooks/useJobStreaming.ts),
 [`run admission`](../daemon/src/run_endpoints.cpp) and
 [`job lookup/cancellation`](../daemon/src/job_endpoints.cpp).

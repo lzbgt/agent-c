@@ -115,9 +115,10 @@ export async function apiGetClientPrefs(
   clientId: string,
   clientKind: string,
   auth?: ApiAuth,
+  signal?: AbortSignal,
 ): Promise<ClientPrefs> {
   const qs = new URLSearchParams({ client_id: clientId, client_kind: clientKind });
-  const r = await fetch(`${base}/api/v1/client/prefs?${qs.toString()}`, daemonFetchInit(auth));
+  const r = await fetch(`${base}/api/v1/client/prefs?${qs.toString()}`, daemonFetchInit(auth, { signal }));
   const j = await parseJsonOrThrow(r);
   return ClientPrefsSchema.parse(j);
 }
@@ -126,11 +127,12 @@ export async function apiPostClientPrefs(
   base: string,
   req: ClientPrefsUpdateReq,
   auth?: ApiAuth,
+  signal?: AbortSignal,
 ): Promise<ClientPrefs> {
   const payload = ClientPrefsUpdateReqSchema.parse(req);
   const r = await fetch(
     `${base}/api/v1/client/prefs`,
-    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload), signal }, { "Content-Type": "application/json" }),
   );
   const j = await parseJsonOrThrow(r);
   return ClientPrefsSchema.parse(j);

@@ -19,7 +19,7 @@ production services were restarted.
 - **External process signals (source only):** single-use waits accept authenticated JSON objects up to 16 KiB. Explicit early-delivery opt-in opens one exact action slot atomically with submission; buffered input never advances dependencies, conditions or readiness. Expiry starts only at activation. Atomic wait/yield and immutable receipt/wakeup preserve independent work, replay, restart and owner cancellation. Future SOP iterations have separate slots; skipped/failed/stopped actions expose unused input honestly. Guided authoring and collapsed read-only metadata are included. No input before submission, general inbox, broadcast or per-publisher authorization is implied. See [signal contract](WORKFLOW_SIGNALS.md).
 - **Durable process decisions:** explicit configured continue/fail choices, worker-free waits without consumed attempts or budget grants, immutable answer/wakeup transactions and idempotent receipts. Expiry and owner stops remain authoritative. The review template and run cards expose only configured choices; lost responses retain the same delivery. This is not person-level role approval. See [decision contract](WORKFLOW_DECISIONS.md).
 - **Bounded conversation snapshots (source only):** authenticated, generation-fenced SQL pages cap 200 rows and 2 MiB raw text/media without truncation. The optional history inspector fetches 50 messages lazily, keeps one page, and discards a changed generation instead of mixing results. Other chat/audit consumers are separate; this is not append-only history. See [session pages](SESSION_MESSAGE_PAGES.md).
-- **Chat submission recovery (source only):** a scoped secret-free receipt precedes POST. Lost asynchronous replies and reloads trigger at most three bounded authenticated GETs to find the original job, never another execution POST. Its watch is saved before clearing the guard; malformed, missing or ambiguous receipts remain held. Session/auth changes fence late responses, and keyed browser state no longer carries queues into another scope. Native insert-only admission, restart uncertainty and durable cancellation are checked in the same verification lane. See [chat recovery](CHAT_SUBMISSION_FENCE.md).
+- **Chat submission recovery (source only):** a scoped secret-free receipt precedes POST. Lost asynchronous replies and reloads trigger at most three bounded authenticated GETs to find the original job, never another execution POST. Its watch is saved before clearing the guard; malformed, missing or ambiguous receipts remain held. Local accepted-job pins and exact-job retirement outrank delayed server hints independently of timestamps. Reload reads the checked watch before queue dispatch; completion storage failures retain the original watch. Preference synchronization coalesces writes with monotonic throttling, request deadlines and context cancellation. Accepted watches cannot expire or be evicted; unpinned history remains bounded. Session/auth changes fence late responses, and keyed browser state no longer carries queues into another scope. Native insert-only admission, restart uncertainty and durable cancellation are checked in the same verification lane. See [chat recovery](CHAT_SUBMISSION_FENCE.md).
 - **Workflow submission recovery (source only):** secret-free client receipt persistence precedes POST; lost responses and reloads retain identity and block another composer submission. Authenticated session-scoped GET lookup finds the original workflow without executing. Missing/unsupported lookup never triggers a retry. Explicit warned local receipt release is not workflow cancellation. Native crash/restart and browser fault injection verify the boundary.
 - **Saved SOP library:** authenticated daemon-local immutable versions, canonical conflict detection, metadata pagination and exact-version reads. `sop_ref` pins verified source into each run snapshot; creating a new version cannot alter an active run. The composer saves and loads references without implicit execution. Known inline credential fields are rejected; ordinary task/policy validation still runs on submission.
 - **Guided SOP authoring (source only):** the composer edits process names/versions, ordered stages, sequential or parallel actions, model instructions, waits and review questions without requiring raw JSON. Decisions expose choice IDs/labels/outcomes and expiry; fixed waits use exact UTC milliseconds independent of browser timezone. Exact browser-authored definitions are tested through real temporary-daemon save/pin/run and continue/fail delivery. Advanced action fields survive guided edits; raw configuration remains available. Editing never saves or runs implicitly, and new model actions start with tools disabled. This is not a deployment claim.
@@ -72,36 +72,32 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The canonical verifier now includes CLI session-store preservation, native
-session paging and durable job admission/lookup/cancellation, alongside browser
-context paging, chat/workflow submission recovery and job-watcher regressions.
-This removes the gap between supported source contracts and the default checks.
-On 2026-11-20, the complete expanded verifier passed **49 native/CLI/API
-checks**, all Go broker/gateway packages, generated OpenAPI/type checks, the
-production UI build and **130 browser checks**. The separate core-only Debug
-lane passed. Repository guards, local documentation links/anchors and whitespace
-checks also passed. No production service or real provider was exercised.
+The canonical verifier includes CLI session-store preservation, native session
+paging and durable job admission/lookup/cancellation, alongside browser context
+paging, chat/workflow submission recovery and job-watcher regressions. On
+2026-11-20 the current source passed **49 native/CLI/API checks**, all Go
+broker/gateway packages, generated OpenAPI/type checks, the production UI build
+and **141 browser checks**. Repository guards, changed-document local links/
+anchors and whitespace checks passed. No production service or real provider
+was exercised.
 
-Recovery checks cover lost acceptance, delayed/missing/ambiguous metadata,
-response size and state validation, StrictMode reload, storage failure,
-cross-session/auth late responses and accepted-watch preservation with a full
-future-timestamp cache. Keyed-storage tests verify selected-scope loading and
-rejection of stale setters. The promoted native fixtures exercise actual daemon
-admission, restart uncertainty, trace lookup and durable cancellation.
+Eleven added browser cases combine the actual watch-state, dispatch and native
+stream hooks. They cover delayed future-dated preferences in direct and broker
+modes, reload of old accepted jobs without another execution POST, queue release
+only after exact-job retirement, independent scopes, stripped remote authority
+tags, bounded retention/capacity, invalid/unavailable storage, late authorization
+responses, serialized metadata writes after clock rollback and failed completion
+storage followed by read-only recovery. Existing recovery, captured-output,
+responsive layout and voice fixtures remain in the same lane.
 
-The session-store fixture now claims an exclusive temporary directory instead
-of reusing deterministic random names; five repeated runs passed. Connection
-tests explicitly open the new connection's own workflow view, and the keyboard
-fixture waits for an enabled composer before testing IME-safe submission. These
-changes preserve the actual isolation and input assertions.
-
-Local receipts: `build/consolidated_snapshot_complete_20261120.log`,
-`build/consolidated_core_20261120.log`,
-`build/consolidated_repo_guards_20261120.log` and
-`build/consolidated_session_store_repeat.log`. The
-[source qualification receipt](verification/consolidation-20261120.json)
-pins source `a575cf4` and the checked native/UI artifact identities. Its later
-documentation-only receipt commit does not change those runtime sources.
+Current local receipts: `build/watch_identity_snapshot_20261120.log`,
+`build/watch_identity_repo_guards.log` and
+`build/watch_identity_documentation.log`. The previous consolidation's separate
+core-only Debug lane and five repeated session-store tests passed at source
+`a575cf4`; those extra lanes were not repeated for this client-only change.
+Their [dated qualification receipt](verification/consolidation-20261120.json)
+retains actual native/UI hashes and the original 130-browser result. That older
+receipt is not qualification of the current watch-state implementation.
 
 Earlier milestone counts and fault-injection narratives are retained in
 [the dated qualification archive](reports/qualification-through-20261118.md).

@@ -2,7 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import useRunExecution from "../src/hooks/useRunExecution";
-import useLocalStorageState from "../src/hooks/useLocalStorageState";
+import { readJobWatches, writeJobWatches } from "../src/jobStore";
 import type { RunWatchByScope } from "../src/runWatchPrefs";
 export function mount(options: { async?: boolean; strict?: boolean; emptyQueue?: boolean } = {}) {
     const node = document.createElement("div"); document.body.append(node);
@@ -17,7 +17,6 @@ export function mount(options: { async?: boolean; strict?: boolean; emptyQueue?:
       const [session, setSession] = React.useState("fence-test");
       const [auth, setAuth] = React.useState({});
       const [notice, setNotice] = React.useState<string | null>(null);
-      const [, setWatches] = useLocalStorageState("agentui.jobsBySession", "{}");
       const noop = () => {};
       const value = useRunExecution({
         activeJobId: active, effectiveBase: location.origin, daemonAuth: auth,
@@ -28,7 +27,7 @@ export function mount(options: { async?: boolean; strict?: boolean; emptyQueue?:
         setActiveJobId: setActive, setComposerTaskNonce: noop, setJobError: noop, setJobNotice: setNotice,
         setJobStatus: noop, setJobUpdatedMs: noop, setLastCompletedPrompt: noop,
         setLastRunPrompt: noop, setLiveEvents: noop, setResult: noop,
-        writeJobsBySession: (mutate: (previous: RunWatchByScope) => RunWatchByScope) => setWatches(previous => JSON.stringify(mutate(JSON.parse(previous)))),
+        writeJobsBySession: (mutate: (previous: RunWatchByScope) => RunWatchByScope) => { writeJobWatches(mutate(readJobWatches())); },
         auditRefetch: noop, sessionsRefetch: noop,
       } as any);
       (window as any).chatFenceTest = { queue, prompt, active, notice,

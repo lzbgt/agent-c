@@ -93,7 +93,7 @@ cd ..
 tools/verify_current_snapshot.sh
 ```
 
-The canonical lane covers native/CLI/API contracts, Go broker/gateway packages, browser workflows, generated OpenAPI types and the production UI build. It includes chat submission recovery, durable job admission/cancellation, bounded session pages and CLI snapshot preservation. Browser cases also cover greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings and responsive workflow tools. Dated results and qualification limits are recorded in the [current snapshot](docs/CURRENT_SNAPSHOT.md#verification-evidence).
+The canonical lane covers native/CLI/API contracts, Go broker/gateway packages, browser workflows, generated OpenAPI types and the production UI build. It includes chat submission recovery, accepted-job preservation across preference sync and reload, durable job admission/cancellation, bounded session pages and CLI snapshot preservation. Browser cases also cover greeting clarity, streaming handoff, repeated identical turns, IME-safe sends, hidden metadata, subject-oriented settings and responsive workflow tools. Dated results and qualification limits are recorded in the [current snapshot](docs/CURRENT_SNAPSHOT.md#verification-evidence).
 
 For the embedded-safe build:
 

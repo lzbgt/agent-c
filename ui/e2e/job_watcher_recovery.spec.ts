@@ -9,7 +9,7 @@ for (const fetchMode of [false,true]) {
   await page.goto("/");await page.evaluate(async mode=>{(await import("/e2e/jobWatcherHarness.tsx")).mount(mode);},fetchMode);
   await expect.poll(()=>page.evaluate(()=>(window as any).watchTest?.result?.assistant_text)).toBe("stream-result");
   const state=await page.evaluate(()=>(window as any).watchTest);
-  expect(state.active).toBe(null);expect(state.stored.scope).toBeUndefined();expect(polls).toBe(0);
+  expect(state.active).toBe(null);expect(state.stored.scope).toMatchObject({job_id:"original",local_state:"retired"});expect(polls).toBe(0);
  });
 }
 

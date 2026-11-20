@@ -10,6 +10,7 @@ import {
   type JobResp,
   type RunResponse,
 } from "../api";
+import { retireJobWatch } from "../runWatchPrefs";
 import { safeJsonParse, safeObject } from "../jsonUtils";
 import { appendLiveEvents, capLiveEvents } from "../liveEvents";
 import { isTerminalJobStatus, UNVERIFIED_JOB_RECEIPT, UNVERIFIED_JOB_STATUS } from "../jobStore";
@@ -126,6 +127,12 @@ export default function useJobStreaming(args: JobStreamingArgs) {
       setJobNotice(UNVERIFIED_JOB_RECEIPT);
     };
 
+    const saveRetirement = () => {
+      if (String(sessionId || "").trim()) {
+        writeJobsBySession(prev => retireJobWatch(prev, jobStoreKey, jobId));
+      }
+    };
+
     const startPolling = () => {
       (async () => {
         // Poll job progress + stream events via cursor.
@@ -170,18 +177,12 @@ export default function useJobStreaming(args: JobStreamingArgs) {
               await sleep(2000);
               continue;
             }
+            try { saveRetirement(); }
+            catch { markReceiptUnverified();await sleep(2000);continue; }
             setResult(job.result);
             setLastCompletedPrompt(lastRunPromptRef.current);
             setJobNotice(null);
             setActiveJobId(null);
-            const sid = String(sessionId || "").trim();
-            if (sid) {
-              writeJobsBySession((prev) => {
-                const nextm = { ...prev };
-                delete nextm[jobStoreKey];
-                return nextm;
-              });
-            }
             void auditRefetch();
             void sessionsRefetch();
             return;
@@ -245,18 +246,11 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             }
             // Use the native terminal result, not the existence of a request or
             // an empty historical row, to release the saved watcher.
+            saveRetirement();
             setResult(job.result);
             setLastCompletedPrompt(lastRunPromptRef.current);
             setJobNotice(null);
             setActiveJobId(null);
-            const sid = String(sessionId || "").trim();
-            if (sid) {
-              writeJobsBySession((prev) => {
-                const nextm = { ...prev };
-                delete nextm[jobStoreKey];
-                return nextm;
-              });
-            }
             void auditRefetch();
             void sessionsRefetch();
           } else {
@@ -305,6 +299,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             if (cancelled) return;
             try {
               const data = parseJobDonePayload(String(evt.data || "{}"));
+              saveRetirement();
               setJobStatus(data.status);
               setJobError(data.error);
               setJobNotice(null);
@@ -319,14 +314,6 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             }
             fetchFinished = true;
             setActiveJobId(null);
-            const sid = String(sessionId || "").trim();
-            if (sid) {
-              writeJobsBySession((prev) => {
-                const nextm = { ...prev };
-                delete nextm[jobStoreKey];
-                return nextm;
-              });
-            }
             void auditRefetch();
             void sessionsRefetch();
           }
@@ -379,6 +366,7 @@ export default function useJobStreaming(args: JobStreamingArgs) {
           const message = evt instanceof MessageEvent ? evt : null;
           try {
             const data = parseJobDonePayload(String(message?.data || "{}"));
+            saveRetirement();
             setJobStatus(data.status);
             setJobError(data.error);
             setJobNotice(null);
@@ -393,14 +381,6 @@ export default function useJobStreaming(args: JobStreamingArgs) {
             return;
           }
           setActiveJobId(null);
-          const sid = String(sessionId || "").trim();
-          if (sid) {
-            writeJobsBySession((prev) => {
-              const nextm = { ...prev };
-              delete nextm[jobStoreKey];
-              return nextm;
-            });
-          }
           try {
             es?.close();
           } catch {

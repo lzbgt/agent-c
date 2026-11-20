@@ -723,10 +723,11 @@ export async function apiBrokerGetClientPrefs(
   clientId: string,
   clientKind: string,
   auth?: ApiAuth,
+  signal?: AbortSignal,
 ): Promise<ClientPrefs> {
   const base = brokerBase.replace(/\/+$/, "");
   const qs = new URLSearchParams({ client_id: clientId, client_kind: clientKind });
-  const r = await fetch(`${base}/v1/client_prefs?${qs.toString()}`, daemonFetchInit(auth));
+  const r = await fetch(`${base}/v1/client_prefs?${qs.toString()}`, daemonFetchInit(auth, { signal }));
   const j = await r.json();
   return ClientPrefsSchema.parse(j);
 }
@@ -735,12 +736,13 @@ export async function apiBrokerPostClientPrefs(
   brokerBase: string,
   req: ClientPrefsUpdateReq,
   auth?: ApiAuth,
+  signal?: AbortSignal,
 ): Promise<ClientPrefs> {
   const base = brokerBase.replace(/\/+$/, "");
   const payload = ClientPrefsUpdateReqSchema.parse(req);
   const r = await fetch(
     `${base}/v1/client_prefs`,
-    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload) }, { "Content-Type": "application/json" }),
+    daemonFetchInit(auth, { method: "POST", body: JSON.stringify(payload), signal }, { "Content-Type": "application/json" }),
   );
   const j = await r.json();
   return ClientPrefsSchema.parse(j);
