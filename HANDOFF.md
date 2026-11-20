@@ -72,14 +72,13 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
 
 ## Continue the next concrete requirement
 
-1. Continue memory authority from the [atomic publication contract](docs/MEMORY.md#revision-checked-publication),
-   now implemented and locally qualified. Do not reimplement its writer/archives.
-   Enforce current/history/evidence modes and scope across structured, FTS,
-   fallback, salience and injected context. Bind references to source ID,
-   revision/hash and span with consistent retrieval revisions. Corrections and
-   deletions must invalidate derived eligibility and conclusions without replaying
-   effects. Daily rotation/deletion, multi-file fences and Windows runtime
-   durability remain unqualified; Linux process death is not a power-loss test.
+1. Continue general correction/forget propagation after the [shared memory view contract](docs/MEMORY.md#current-views-and-original-evidence).
+   Reuse the store, projector, exact original reader and revision checks. Add
+   durable observation/promotion provenance so an old marker cannot undo a later
+   correction during consolidation. Then close retained-source retirement,
+   persistent cache erasure and recap/conclusion validation at every consumer.
+   Keep history/forget policy explicit; invalidation never replays an external
+   effect. Linux fixtures do not qualify Windows runtime or storage power loss.
 2. Then implement bounded lexical multi-hop retrieval with a pluggable scorer.
    The [architecture evaluation gate](docs/ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
    records the owner-authorized TypeSafe/Jev canary and 20-question pilot bounds.

@@ -600,6 +600,11 @@ WorkflowMemorySearchSpec:
 
     This maps to the host tool `memory_search` (see `cli/src/toolset_host_memory.cpp`).
   properties:
+    view:
+      type: string
+      enum: [current, historical, evidence]
+      default: current
+      description: Current hard-filters inactive and superseded records before retrieval. Historical/evidence explicitly identify original records.
     query:
       type: string
       description: Required search string.
@@ -617,7 +622,7 @@ WorkflowMemorySearchSpec:
     context_lines:
       type: integer
       format: int32
-      description: Snippet context lines around matches in substr mode (default 2).
+      description: Maximum neighboring lines within eligible passages. Retrieval never expands into ineligible raw neighbors.
     max_snippet_chars:
       type: integer
       format: int32
@@ -640,6 +645,11 @@ WorkflowMemoryTimelineSpec:
 
     Provide either `citation` (`path:line`) or explicit `path` + `line`.
   properties:
+    view:
+      type: string
+      enum: [current, historical, evidence]
+      default: current
+      description: Current hard-filters inactive and superseded records before retrieval. Historical/evidence explicitly identify original records.
     citation:
       type: string
       description: Citation string in the form `path:line` (preferred when derived from memory_search).
@@ -669,6 +679,11 @@ WorkflowMemoryStructuredQuerySpec:
 
     Note: the server requires at least one filter (`key`, `key_prefix`, non-empty `kinds[]`, or `source_contains`) to avoid accidental full dumps.
   properties:
+    view:
+      type: string
+      enum: [current, historical, evidence]
+      default: current
+      description: Current hard-filters inactive and superseded records before retrieval. Historical/evidence explicitly identify original records.
     path:
       type: string
       description: Relative memory Markdown path under the daemon memory directory (default `STRUCTURED.md`).
@@ -714,13 +729,13 @@ WorkflowMemoryStructuredQuerySpec:
       items: { type: string }
     status:
       type: string
-      description: Status filter (default `active`). Use `any` to include deprecated.
+      description: Status filter within the selected view. Current never includes deprecated; use historical/evidence explicitly to inspect them.
     include_sources:
       type: boolean
       description: Include `sources[]` in returned records (default true).
     include_versions:
       type: boolean
-      description: Include `versions[]` history in returned records (default false).
+      description: Include historical versions as separate identified rows (default false; requires historical/evidence view).
     limit:
       type: integer
       format: int32
@@ -762,9 +777,14 @@ WorkflowMemoryQuerySpec:
   description: |
     Deterministic structured memory query configuration for `kind:memory_query`.
 
-    The engine reads the newest structured checkpoint under `memory/checkpoints/structured_*.json`
-    in a bounded time window and returns keys filtered by optional `key_prefix`.
+    Current reads the authoritative structured head. Historical/evidence reads the newest original checkpoint
+    in the requested time window. Time-window fields require historical/evidence view. Results carry exact original evidence references.
   properties:
+    view:
+      type: string
+      enum: [current, historical, evidence]
+      default: current
+      description: Current hard-filters inactive and superseded records before retrieval. Historical/evidence explicitly identify original records.
     since_utc_ms:
       type: integer
       format: int64

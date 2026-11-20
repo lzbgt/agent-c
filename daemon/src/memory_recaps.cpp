@@ -65,14 +65,7 @@ bool status_is_inactive(const std::string& status) {
 }
 
 std::string safe_item_source(const MemorySalienceItem& item) {
-  if (item.tier == "daily") {
-    std::ostringstream oss;
-    if (!item.path.empty()) oss << item.path;
-    if (item.line > 0) oss << "#L" << item.line;
-    return oss.str();
-  }
-  if (!item.key.empty()) return std::string("structured:") + item.key;
-  return "";
+  return item.evidence["id"].isString() ? item.evidence["id"].asString() : "";
 }
 
 std::vector<std::string> collect_evidence_sources(const MemorySalienceReport& rep) {
@@ -104,7 +97,7 @@ std::string build_recap_prompt(const MemorySalienceReport& rep, bool* out_trunca
   const size_t max_prompt_chars = 12000;
   std::ostringstream oss;
   oss << "Memory items (ranked by recency + importance). Summarize only what appears below.\n";
-  oss << "Each item includes a source; include citations in square brackets (e.g. [daily/2026-02-24.md#L12] or [structured:foo]).\n\n";
+  oss << "Each item includes an immutable evidence ID; cite that exact ID in square brackets.\n\n";
 
   if (!rep.structured_items.empty()) {
     oss << "[structured]\n";
@@ -180,6 +173,7 @@ Json::Value salience_items_to_json(const std::vector<MemorySalienceItem>& items)
     row["score"] = item.score;
     row["text"] = item.text;
     row["source"] = safe_item_source(item);
+    row["evidence"] = item.evidence;row["historical"] = item.historical;
     arr.append(row);
   }
   return arr;
@@ -321,7 +315,7 @@ bool memory_generate_recap(
     "  request, investigated, learned, completed, next_steps, files_read, files_modified, notes.\n"
     "Use strings for request/investigated/learned/completed/notes.\n"
     "Use arrays of strings for next_steps, files_read, files_modified.\n"
-    "Include citations in square brackets using the provided sources (e.g. [daily/2026-02-24.md#L12] or [structured:key]).\n"
+    "Include citations in square brackets using the exact provided evidence IDs.\n"
     "If information is missing, use empty strings/arrays.\n"
     "Do not invent facts.\n";
 
@@ -365,6 +359,10 @@ bool memory_generate_recap(
     rep.summary_json_ok = false;
   }
 
+  if (!host_tools_internal::memory_view_validate(rep.salience.snapshot, out_err)) {
+    *out_report = rep; // Preserve the original result for inspection, never as current state.
+    return false;
+  }
   if (opt.write_file) {
     const std::filesystem::path recap_dir = mem_root / "recaps";
     std::filesystem::create_directories(recap_dir, ec);
@@ -390,6 +388,12 @@ bool memory_generate_recap(
     input["daily_count"] = (Json::Int64)rep.salience.daily_items.size();
     input["total_count"] = (Json::Int64)(rep.salience.structured_items.size() + rep.salience.daily_items.size());
     doc["input"] = input;
+    Json::Value inputs(Json::arrayValue);
+    for (const auto& source : rep.salience.snapshot.sources) {
+      Json::Value entry;entry["path"] = source.first;entry["revision"] = source.second.revision;entry["source_id"] = source.second.source_id;inputs.append(entry);
+    }
+    doc["input_revisions"] = inputs;
+
     {
       Json::Value sources(Json::arrayValue);
       for (const auto& s : collect_evidence_sources(rep.salience)) sources.append(s);

@@ -96,6 +96,7 @@ export async function apiMemoryQuery(
   auth?: ApiAuth,
 ): Promise<MemoryQueryResp> {
   const qs = new URLSearchParams();
+  addQueryParam(qs, "view", params.sinceUtcMs !== undefined || params.untilUtcMs !== undefined ? "historical" : "current");
   addQueryParam(qs, "since_utc_ms", params.sinceUtcMs);
   addQueryParam(qs, "until_utc_ms", params.untilUtcMs);
   addQueryParam(qs, "structured_path", params.structuredPath);

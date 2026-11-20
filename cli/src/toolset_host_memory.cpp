@@ -7,6 +7,7 @@
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
 #include "memory_structured.h"
+#include "memory_view.h"
 #endif
 
 #include <algorithm>
@@ -585,7 +586,7 @@ bool memory_structured_parse_doc(const std::string& file_text, Json::Value* out_
     }
     if (!it.isMember("observed_utc") || !it["observed_utc"].isString()) {
       if (it.isMember("updated_utc") && it["updated_utc"].isString()) it["observed_utc"] = it["updated_utc"];
-      else it["observed_utc"] = iso_utc_now();
+      else it["observed_utc"] = "";
     }
     if (!it.isMember("valid_from") && it.isMember("valid_from_utc") && it["valid_from_utc"].isString()) {
       it["valid_from"] = it["valid_from_utc"];
@@ -827,6 +828,14 @@ agent_status_t tool_memory_get(HostToolCtx* ctx, const char* arguments_json, age
     return write_envelope(out_result, false, "invalid args", Json::Value(Json::objectValue));
   }
 
+  if (args.isMember("evidence")) {
+    std::string text, error;Json::Value value;
+    if (!memory_evidence_read(memory_root_from_ctx(ctx), args["evidence"], &text, &value, &error))
+      return write_envelope(out_result, false, error, Json::Value(Json::objectValue));
+    Json::Value data;data["tool"] = "memory_get";data["view"] = "evidence";data["text"] = text;data["value"] = value;
+    data["evidence"] = args["evidence"];data["revision"] = args["evidence"]["revision"];data["source_id"] = args["evidence"]["source_id"];
+    return write_envelope(out_result, true, "", data);
+  }
   const std::string rel_path = args.isMember("path") && args["path"].isString() ? args["path"].asString() : "";
   if (!is_safe_relpath_md(rel_path)) {
     return write_envelope(out_result, false, "missing/invalid string field 'path' (must be a safe relative .md path)", Json::Value(Json::objectValue));
@@ -884,6 +893,7 @@ agent_status_t tool_memory_get(HostToolCtx* ctx, const char* arguments_json, age
 
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_get";
+  data["view"] = "evidence";
   data["memory_root"] = to_generic_string(mem_root);
   data["path"] = rel_path;
   data["abs_path"] = to_generic_string(abs);
@@ -1463,114 +1473,22 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
     tier_tokens[tier] += estimate_tokens(snippet);
   };
 
-  // Prefer ranked search via an on-disk index (SQLite FTS5) when available.
-  const bool use_index = args.isMember("use_index") && args["use_index"].isBool() ? args["use_index"].asBool() : true;
-  std::string mode = "substr";
-  if (use_index && !case_sensitive) {
-    std::vector<MemorySearchHit> hits;
-    std::string ierr;
-    if (memory_index_search_ranked(mem_root, files, query, max_results, max_snippet_chars, &hits, &ierr)) {
-      mode = "fts5";
-      for (const auto& h : hits) {
-        const std::string tier = tier_for_rel(h.path);
-        const std::string citation = h.path + ":" + std::to_string(h.line);
-        Json::Value r(Json::objectValue);
-        r["path"] = h.path;
-        r["line"] = h.line;
-        r["snippet"] = h.snippet;
-        r["score"] = h.score;
-        r["tier"] = tier;
-        r["citation"] = citation;
-        results.append(r);
-        record_tier(tier, r);
-      }
-    }
+  const bool use_index = args.get("use_index", true).asBool();
+  MemoryViewMode view;
+  if (!args["view"].isNull() && !args["view"].isString()) return write_envelope(out_result, false, "invalid memory view", Json::Value(Json::objectValue));
+  if (!memory_view_mode((args["view"].isNull() ? "current" : args["view"].asString()), &view)) return write_envelope(out_result, false, "view must be current, historical or evidence", Json::Value(Json::objectValue));
+  std::string mode, retrieval_error, index_error;
+  std::vector<MemorySearchHit> hits;
+  if (!memory_retrieve(mem_root, files, query, view, use_index, case_sensitive, max_results, max_snippet_chars, &hits, &mode, &retrieval_error, &index_error, context_lines))
+    return write_envelope(out_result, false, retrieval_error, Json::Value(Json::objectValue));
+  for (const auto& hit : hits) {
+    Json::Value row;
+    row["path"] = hit.path;row["line"] = hit.line;row["snippet"] = hit.snippet;row["score"] = hit.score;
+    row["tier"] = tier_for_rel(hit.path);row["citation"] = hit.path + ":" + std::to_string(hit.line);
+    row["view"] = memory_view_name(view);row["historical"] = hit.passage.historical;
+    row["evidence"] = memory_passage_evidence(hit.passage);
+    results.append(row);record_tier(row["tier"].asString(), row);
   }
-
-  if (mode == "fts5") {
-    if (order != "ranked") {
-      apply_timeline_order(&results, order);
-      if (tiered) {
-        auto it = tier_results.find("daily");
-        if (it != tier_results.end()) apply_timeline_order(&it->second, order);
-      }
-    }
-    Json::Value data(Json::objectValue);
-    data["tool"] = "memory_search";
-    data["mode"] = mode;
-    data["order"] = order;
-    data["memory_root"] = to_generic_string(mem_root);
-    data["query"] = query;
-    data["files_scanned"] = (Json::Int64)files.size();
-    data["results"] = results;
-    if (tiered) {
-      Json::Value tiers(Json::objectValue);
-      for (const auto& tier : tier_order) {
-        Json::Value t(Json::objectValue);
-        t["results"] = tier_results[tier];
-        t["token_estimate"] = (Json::Int64)tier_tokens[tier];
-        tiers[tier] = t;
-      }
-      data["tiers"] = tiers;
-    }
-    data["output"] = "memory_search mode=" + mode + " order=" + order + " results=" + std::to_string((unsigned)results.size());
-    return write_envelope(out_result, true, "", data);
-  }
-
-  for (const auto& c : candidates) {
-    if ((int)results.size() >= max_results) break;
-    std::filesystem::path abs(c.abs_path);
-    std::ifstream in(abs, std::ios::binary);
-    if (!in.is_open()) continue;
-    std::stringstream ss;
-    ss << in.rdbuf();
-    std::string content = ss.str();
-    if (content.size() > 1024 * 1024) {
-      content.resize(1024 * 1024);
-    }
-    std::vector<std::string> lines;
-    {
-      std::istringstream iss(content);
-      std::string line;
-      while (std::getline(iss, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        lines.push_back(std::move(line));
-        if (lines.size() > 20000) break;
-      }
-    }
-    for (size_t i = 0; i < lines.size(); i++) {
-      if ((int)results.size() >= max_results) break;
-      const std::string hay = case_sensitive ? lines[i] : to_lower_ascii(lines[i]);
-      if (hay.find(q) == std::string::npos) continue;
-
-      const int line_no = (int)i + 1;
-      const int lo = std::max(1, line_no - context_lines);
-      const int hi = std::min((int)lines.size(), line_no + context_lines);
-      std::ostringstream snip;
-      for (int ln = lo; ln <= hi; ln++) {
-        if (ln > lo) snip << "\n";
-        snip << lines[(size_t)ln - 1];
-      }
-      std::string snippet = snip.str();
-      if ((int)snippet.size() > max_snippet_chars) {
-        snippet.resize((size_t)max_snippet_chars);
-      }
-
-      const std::string rel_s = c.rel_path.empty() ? memory_relpath(abs, mem_root) : c.rel_path;
-      const std::string tier = tier_for_rel(rel_s);
-      const std::string citation = rel_s + ":" + std::to_string(line_no);
-
-      Json::Value r(Json::objectValue);
-      r["path"] = rel_s;
-      r["line"] = line_no;
-      r["snippet"] = snippet;
-      r["tier"] = tier;
-      r["citation"] = citation;
-      results.append(r);
-      record_tier(tier, r);
-    }
-  }
-
   if (order != "ranked") {
     apply_timeline_order(&results, order);
     if (tiered) {
@@ -1582,6 +1500,9 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_search";
   data["mode"] = mode;
+  data["view"] = memory_view_name(view);
+  if (!hits.empty()) data["as_of_utc"] = hits.front().passage.evaluated_utc;
+  if (!index_error.empty()) data["index_error"] = index_error;
   data["order"] = order;
   data["memory_root"] = to_generic_string(mem_root);
   data["query"] = query;
@@ -1643,44 +1564,57 @@ agent_status_t tool_memory_timeline(HostToolCtx* ctx, const char* arguments_json
     return write_envelope(out_result, false, "invalid path", Json::Value(Json::objectValue));
   }
 
-  std::ifstream in(abs, std::ios::binary);
-  if (!in.is_open()) {
-    return write_envelope(out_result, false, "file not found", Json::Value(Json::objectValue));
+  MemoryViewMode view;
+  if (!args["view"].isNull() && !args["view"].isString()) return write_envelope(out_result, false, "invalid memory view", Json::Value(Json::objectValue));
+  if (!memory_view_mode((args["view"].isNull() ? "current" : args["view"].asString()), &view)) return write_envelope(out_result, false, "invalid memory view", Json::Value(Json::objectValue));
+  MemoryDocument document;std::string read_error;
+  if (args.isMember("revision") && !args["revision"].isString()) return write_envelope(out_result, false, "invalid revision", Json::Value(Json::objectValue));
+  auto read_status = args.isMember("revision")
+    ? memory_document_read_revision(mem_root, rel_path, args["revision"].asString(), &document, &read_error)
+    : memory_document_read(mem_root, rel_path, &document, &read_error);
+  if (read_status != MemoryStoreStatus::Ok || !document.exists) return write_envelope(out_result, false, read_error.empty() ? "memory source missing" : read_error, Json::Value(Json::objectValue));
+  std::vector<MemoryPassage> passages;
+  if (!memory_view_project(rel_path, document, view, memory_view_now_utc(), &passages, &read_error)) return write_envelope(out_result, false, read_error, Json::Value(Json::objectValue));
+  MemoryViewSnapshot timeline_snapshot;
+  if (view == MemoryViewMode::Current) {
+    if (!memory_view_capture(mem_root, {abs.string()}, view, &timeline_snapshot, &read_error)) return write_envelope(out_result, false, read_error, Json::Value(Json::objectValue));
+    passages = timeline_snapshot.passages;
   }
-
   const int start_line = std::max(1, line - context_lines);
-  const int end_line = line + context_lines;
-  int cur_line = 0;
-  int last_included = 0;
-  std::ostringstream snippet;
-  bool saw_line = false;
-  bool first_line = true;
-  std::string raw;
-  while (std::getline(in, raw)) {
-    if (!raw.empty() && raw.back() == '\r') raw.pop_back();
-    cur_line++;
-    if (cur_line < start_line) continue;
-    if (cur_line > end_line) break;
-    if (!first_line) snippet << "\n";
-    first_line = false;
-    snippet << raw;
-    last_included = cur_line;
-    if (cur_line == line) saw_line = true;
+  const int end_line = line > INT32_MAX - context_lines ? INT32_MAX : line + context_lines;
+  int last_included = 0, cur_line = 0;bool saw_line = false;
+  std::string text;Json::Value evidence(Json::arrayValue);
+  for (const auto& passage : passages) {
+    if (passage.end_line < start_line || passage.line > end_line) continue;
+    if (passage.line <= line && passage.end_line >= line) saw_line = true;
+    if (!passage.pointer.empty()) {
+      text += passage.text + "\n";evidence.append(memory_passage_evidence(passage));last_included = passage.line;
+    } else {
+      std::istringstream input(passage.text);std::string raw;int number = passage.line;size_t offset = passage.begin;
+      while (std::getline(input, raw)) {
+        const auto count = raw.size() + (offset + raw.size() < passage.end ? 1 : 0);
+        if (number >= start_line && number <= end_line) {
+          auto slice = passage;slice.begin = offset;slice.end = offset + count;slice.line = number;slice.end_line = number;
+          text += raw + "\n";evidence.append(memory_passage_evidence(slice));last_included = number;
+        }
+        offset += count;++number;
+      }
+    }
+    cur_line = std::max(cur_line, passage.end_line);
   }
-
-  if (!saw_line) {
-    return write_envelope(out_result, false, "line out of range", Json::Value(Json::objectValue));
+  if (!saw_line || text.empty()) return write_envelope(out_result, false, "line is absent or ineligible in this view; use an explicit historical/evidence reference", Json::Value(Json::objectValue));
+  if (view == MemoryViewMode::Current && !memory_view_validate(timeline_snapshot, &read_error))
+    return write_envelope(out_result, false, read_error, Json::Value(Json::objectValue));
+  if (view == MemoryViewMode::Current || !args.isMember("revision")) {
+    MemoryDocument current;
+    if (memory_document_read(mem_root, rel_path, &current, &read_error) != MemoryStoreStatus::Ok || current.revision != document.revision)
+      return write_envelope(out_result, false, "memory changed during timeline retrieval", Json::Value(Json::objectValue));
   }
-
-  std::string text = snippet.str();
-  bool truncated = false;
-  if ((int)text.size() > max_chars) {
-    text.resize((size_t)max_chars);
-    truncated = true;
-  }
-
+  const bool truncated = text.size() > size_t(max_chars);
+  text = memory_view_clip(text, size_t(max_chars));
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_timeline";
+  data["view"] = memory_view_name(view);data["revision"] = document.revision;data["source_id"] = document.source_id;data["evidence"] = evidence;
   data["path"] = rel_path;
   data["line"] = line;
   data["start_line"] = start_line;
@@ -1745,8 +1679,11 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     }
   }
 
+  MemoryViewMode view;
+  if (!args["view"].isNull() && !args["view"].isString()) return write_envelope(out_result, false, "invalid memory view", Json::Value(Json::objectValue));
+  if (!memory_view_mode((args["view"].isNull() ? "current" : args["view"].asString()), &view)) return write_envelope(out_result, false, "invalid memory view", Json::Value(Json::objectValue));
   const std::string status_filter_raw =
-    args.isMember("status") && args["status"].isString() ? to_lower_ascii(trim_ascii(args["status"].asString())) : "active";
+    args.isMember("status") && args["status"].isString() ? to_lower_ascii(trim_ascii(args["status"].asString())) : (view == MemoryViewMode::Current ? "active" : "any");
   const std::string status_filter = status_filter_raw.empty() ? "active" : status_filter_raw;
 
   const bool include_sources =
@@ -1754,6 +1691,8 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
   const bool include_versions =
     args.isMember("include_versions") && args["include_versions"].isBool() ? args["include_versions"].asBool() : false;
 
+  if (view == MemoryViewMode::Current && include_versions)
+    return write_envelope(out_result, false, "include_versions requires historical or evidence view", Json::Value(Json::objectValue));
   int limit = args.isMember("limit") && args["limit"].isInt() ? args["limit"].asInt() : 50;
   limit = std::max(1, std::min(200, limit));
 
@@ -1864,6 +1803,7 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
   };
 
   struct Match {
+    MemoryPassage passage;
     std::string key;
     Json::Value rec;
     std::string updated_utc;
@@ -1873,13 +1813,19 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
   std::vector<Match> matches;
   matches.reserve(128);
 
-  for (const auto& k : items.getMemberNames()) {
+  std::vector<MemoryPassage> eligible;
+  const auto as_of = memory_view_now_utc();
+  if (!memory_view_project(rel_path, snapshot, view, as_of, &eligible, &derr)) return write_envelope(out_result, false, derr, Json::Value(Json::objectValue));
+  for (const auto& passage : eligible) {
+    if (passage.pointer.empty() || (!include_versions && passage.pointer.find("/versions/") != std::string::npos)) continue;
+    const auto& k = passage.key;
+
     if (!key_n.empty()) {
       if (key_norm(k) != key_n) continue;
     } else if (!prefix_match(k)) {
       continue;
     }
-    const Json::Value rec = items[k];
+    const Json::Value rec = passage.record;
     if (!rec.isObject()) continue;
     const std::string kind = rec.isMember("kind") && rec["kind"].isString() ? rec["kind"].asString() : "fact";
     const std::string status = rec.isMember("status") && rec["status"].isString() ? rec["status"].asString() : "active";
@@ -1898,34 +1844,35 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
 
     Match m;
     m.key = k;
+    m.passage = passage;
     m.rec = rec;
     m.updated_utc = upd;
     m.observed_utc = obs;
     m.valid_from = vf;
     matches.push_back(std::move(m));
 
-    if (!key_n.empty() && key_norm(k) == key_n) break;
+
   }
 
   if (order_by == "updated_desc") {
     std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
       if (a.updated_utc != b.updated_utc) return a.updated_utc > b.updated_utc;
-      return a.key < b.key;
+      return a.key != b.key ? a.key < b.key : a.passage.pointer < b.passage.pointer;
     });
   } else if (order_by == "observed_desc") {
     std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
       if (a.observed_utc != b.observed_utc) return a.observed_utc > b.observed_utc;
-      return a.key < b.key;
+      return a.key != b.key ? a.key < b.key : a.passage.pointer < b.passage.pointer;
     });
   } else if (order_by == "valid_from_desc") {
     std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
       if (a.valid_from != b.valid_from) return a.valid_from > b.valid_from;
-      return a.key < b.key;
+      return a.key != b.key ? a.key < b.key : a.passage.pointer < b.passage.pointer;
     });
   } else {
     std::sort(matches.begin(), matches.end(), [&](const Match& a, const Match& b) {
       if (key_case_insensitive) return to_lower_ascii(a.key) < to_lower_ascii(b.key);
-      return a.key < b.key;
+      return a.key != b.key ? a.key < b.key : a.passage.pointer < b.passage.pointer;
     });
   }
 
@@ -1941,12 +1888,18 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     Json::Value row(Json::objectValue);
     row["key"] = m.key;
     row["record"] = out_rec;
+    row["historical"] = m.passage.historical;row["evidence"] = memory_passage_evidence(m.passage);
     results.append(row);
     matched++;
   }
 
+  MemoryDocument current;
+  if (memory_document_read(mem_root, rel_path, &current, &derr) != MemoryStoreStatus::Ok || current.revision != snapshot.revision)
+    return write_envelope(out_result, false, "memory changed during structured retrieval; reread", Json::Value(Json::objectValue));
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_structured_query";
+  data["view"] = memory_view_name(view);
+  data["as_of_utc"] = as_of;
   data["revision"] = snapshot.revision;data["source_id"] = snapshot.source_id;
   data["memory_root"] = to_generic_string(mem_root);
   data["path"] = rel_path;

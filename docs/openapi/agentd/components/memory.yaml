@@ -138,6 +138,11 @@ MemorySalienceStructuredItem:
   type: object
   required: [key, value, score]
   properties:
+    historical: { type: boolean }
+    evidence:
+      type: object
+      description: Original source ID, raw-byte SHA-256 revision and byte span or structured JSON Pointer.
+      additionalProperties: true
     key: { type: string }
     kind: { type: string }
     status: { type: string }
@@ -150,6 +155,11 @@ MemorySalienceDailyItem:
   type: object
   required: [path, line, text, score]
   properties:
+    historical: { type: boolean }
+    evidence:
+      type: object
+      description: Original source ID, raw-byte SHA-256 revision and byte span or structured JSON Pointer.
+      additionalProperties: true
     path: { type: string }
     line: { type: integer, format: int32 }
     text: { type: string }
@@ -162,6 +172,7 @@ MemorySalienceResponse:
   type: object
   required: [ok, memory_root, generated_utc_ms, policy, structured_items, daily_items, returned]
   properties:
+    view: { type: string, enum: [current, historical, evidence] }
     ok: { type: boolean }
     memory_root: { type: string }
     generated_utc_ms: { type: integer, format: int64 }
@@ -428,8 +439,11 @@ MemoryCorrelateResponse:
 
 MemoryQueryResponse:
   type: object
-  required: [ok, memory_root, since_utc_ms, until_utc_ms, limit, returned, checkpoint, entries]
+  required: [ok, memory_root, since_utc_ms, until_utc_ms, limit, returned, entries]
   properties:
+    view: { type: string, enum: [current, historical, evidence] }
+    revision: { type: string }
+    as_of_utc: { type: string }
     ok: { type: boolean }
     memory_root: { type: string }
     since_utc_ms: { type: integer, format: int64 }

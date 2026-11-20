@@ -2035,7 +2035,7 @@
     tags: [memory]
     summary: List salience-ranked memory items (recency + importance)
     description: |
-      Computes a deterministic salience ranking over structured memory checkpoints and daily @obs notes.
+      Computes a deterministic salience ranking over the authoritative structured head and daily @obs notes. Current view excludes inactive/history before scoring.
       Useful for dynamic memory context injection and operator inspection.
     parameters:
       - in: query
@@ -2063,6 +2063,10 @@
         name: max_daily_items
         required: false
         schema: { type: integer, format: int32 }
+      - in: query
+        name: view
+        schema: { type: string, enum: [current, historical, evidence], default: current }
+        description: Current reads the authoritative head and excludes inactive/history before scoring.
       - in: query
         name: half_life_days
         required: false
@@ -2225,9 +2229,13 @@
     tags: [memory]
     summary: Query structured memory current view (bounded)
     description: |
-      Selects the newest structured checkpoint in the requested time window and returns
-      the current structured keys filtered by `key_prefix` (if provided).
+      Current reads the authoritative structured head and excludes inactive/history.
+      Explicit historical/evidence view selects a checkpoint in the requested time window.
+      Results carry original evidence references; checkpoint time windows require historical/evidence view.
     parameters:
+      - in: query
+        name: view
+        schema: { type: string, enum: [current, historical, evidence], default: current }
       - in: query
         name: since_utc_ms
         required: false

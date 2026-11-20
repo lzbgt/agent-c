@@ -1,5 +1,6 @@
 #include "workflow_submit.h"
 #include "memory_store.h"
+#include "memory_view.h"
 #include "workflow_sop.h"
 #include "workflow_sop_registry.h"
 
@@ -1048,6 +1049,19 @@ void workflow_submit_handle(
 	      }
 	      const auto& mt = t["memory_timeline"];
 	      Json::Value mt2(Json::objectValue);
+          if (mt.isMember("revision")) {
+            if (!mt["revision"].isString()) { resp->status = 400;resp->body = json_stringify_compact(Json::Value("invalid memory revision"));return; }
+            mt2["revision"] = mt["revision"];
+          }
+
+          if (mt.isMember("view")) {
+            host_tools_internal::MemoryViewMode mode;
+            if (!mt["view"].isString() || !host_tools_internal::memory_view_mode(mt["view"].asString(), &mode)) {
+              resp->status = 400;resp->body = json_stringify_compact(Json::Value("invalid memory view"));return;
+            }
+            mt2["view"] = mt["view"];
+          }
+
 
 	      std::string rel_path;
 	      int line = 0;
@@ -1141,6 +1155,14 @@ void workflow_submit_handle(
 	      }
 	      const auto& msq = t["memory_structured_query"];
 	      Json::Value msq2(Json::objectValue);
+          if (msq.isMember("view")) {
+            host_tools_internal::MemoryViewMode mode;
+            if (!msq["view"].isString() || !host_tools_internal::memory_view_mode(msq["view"].asString(), &mode)) {
+              resp->status = 400;resp->body = json_stringify_compact(Json::Value("invalid memory view"));return;
+            }
+            msq2["view"] = msq["view"];
+          }
+
 
 	      const std::string path =
 	        msq.isMember("path") && msq["path"].isString() ? trim_copy(msq["path"].asString()) : "STRUCTURED.md";
@@ -1486,6 +1508,14 @@ void workflow_submit_handle(
 
 	      const auto& mq = t["memory_query"];
 	      Json::Value mq2(Json::objectValue);
+          if (mq.isMember("view")) {
+            host_tools_internal::MemoryViewMode mode;
+            if (!mq["view"].isString() || !host_tools_internal::memory_view_mode(mq["view"].asString(), &mode)) {
+              resp->status = 400;resp->body = json_stringify_compact(Json::Value("invalid memory view"));return;
+            }
+            mq2["view"] = mq["view"];
+          }
+
 
 	      if (mq.isMember("since_utc_ms")) {
 	        if (!(mq["since_utc_ms"].isInt64() || mq["since_utc_ms"].isUInt64() || mq["since_utc_ms"].isInt() || mq["since_utc_ms"].isUInt()) && !mq["since_utc_ms"].isNull()) {

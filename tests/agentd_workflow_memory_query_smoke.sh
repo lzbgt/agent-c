@@ -67,7 +67,7 @@ tasks = [
     "task_id": "Q",
     "kind": "memory_query",
     "depends_on": ["M"],
-    "memory_query": {
+    "memory_query": {"view": "historical",
       "since_utc_ms": now_ms - 5000,
       "until_utc_ms": now_ms + 60000,
       "structured_path": "STRUCTURED.md",

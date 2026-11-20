@@ -52,6 +52,14 @@ cat > "${mem_root}/checkpoints/structured_${now_utc}.json" <<EOF_IN
 {"schema":"agentd_structured_checkpoint_v1","ts_utc":"${now_utc}","path":"STRUCTURED.md","doc":{"items":{"salience.test.key":{"kind":"fact","value":"Salience must be deterministic","status":"active","updated_utc":"${now_utc}","observed_utc":"${now_utc}","sources":["trace:salience"]}}}}
 EOF_IN
 
+MEM_ROOT="${mem_root}" python3 - <<'PY_CURRENT'
+import json, os, pathlib
+root = pathlib.Path(os.environ["MEM_ROOT"])
+checkpoint = next((root / "checkpoints").glob("structured_*.json"))
+doc = json.loads(checkpoint.read_text())["doc"]
+(root / "STRUCTURED.md").write_text("<!-- AGENT_MEMORY_V1_BEGIN -->\n" + json.dumps(doc) + "\n<!-- AGENT_MEMORY_V1_END -->\n")
+PY_CURRENT
+
 resp="$(curl -fsS --noproxy "*" --max-time 5 \
   -H "Authorization: Bearer ${TOKEN}" \
   "${DAEMON_URL}/api/v1/memory/salience?daily_days=1&max_items=5")"

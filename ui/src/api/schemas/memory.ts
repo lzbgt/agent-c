@@ -188,7 +188,7 @@ export const MemoryQueryRespSchema: z.ZodType<MemoryQueryResp> = z
     key_prefix: z.string().optional(),
     limit: z.number().int().nonnegative(),
     returned: z.number().int().nonnegative(),
-    checkpoint: MemoryCheckpointMetaSchema,
+    checkpoint: MemoryCheckpointMetaSchema.optional(),
     entries: z.array(MemoryQueryEntrySchema),
     error: z.string().optional(),
     err: z.string().optional(),

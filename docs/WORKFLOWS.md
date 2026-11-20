@@ -728,6 +728,7 @@ For deterministic retrieval of **structured facts/preferences/tasks** (not fuzzy
   "depends_on": ["M"],
   "memory_structured_query": {
     "path": "STRUCTURED.md",
+    "view": "current",
     "key_prefix": "wf.",
     "kinds": ["fact"],
     "status": "active",
@@ -742,6 +743,11 @@ Semantics:
 - Requires the daemon to run with `--tools host` (this task executes the host tool `memory_structured_query`).
 - This is a **read-only** host tool, so it works with `--host-policy readonly` or `--host-policy full`.
 - To avoid accidental full dumps, the server requires at least one filter: `key`, `key_prefix`, non-empty `kinds[]`, or `source_contains`.
+- Current view hard-filters inactive/future records and excludes embedded history.
+  `status=any` does not bypass eligibility. `include_versions=true` requires an
+  explicit historical/evidence view and returns separate labeled rows with exact
+  original references. Copy a row's `evidence` into `memory_get.evidence` for the
+  original value. See [memory views](MEMORY.md#current-views-and-original-evidence).
 - Optional query-plan knobs:
   - `source_contains`: filter by evidence trail (e.g. `trace:<trace_id>...` injected by `memory_put` tasks)
   - `updated_since_utc` / `updated_until_utc`: bound by record `updated_utc` (ISO UTC strings)
@@ -1025,3 +1031,13 @@ See `docs/DB.md` for:
 POST `http_json` tasks now use the durable effect protocol described in [WORKFLOW_EFFECTS.md](WORKFLOW_EFFECTS.md). Default guarded mode refuses blind duplicates; explicit destination idempotency or a matching terminal receipt controls recovery. A task result's explicit `retryable:false` suppresses automatic retries. Task recovery remains at-least-once at other boundaries.
 
 A hard failure no longer removes independent runnable tasks from scheduling. The workflow retains an active status until those branches settle; descendants requiring the failed result remain unexecuted. Receipt reconciliation can requeue only the affected failed action while preserving completed independent work and owner stops.
+
+### Native structured head and checkpoint queries
+
+`kind:"memory_query"` and `GET /api/v1/memory/query` share one authority path.
+Their default `view:"current"` reads the structured head and strips inactive and
+superseded values. Checkpoint windows (`since_utc_ms`, `until_utc_ms`) require an
+explicit `historical` or `evidence` view; they never silently stand in for current
+state. Results include exact source/revision/span references. The WebUI selects
+historical transport when a user supplies its time-window controls. No view
+change resubmits a completed workflow action.

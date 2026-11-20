@@ -57,6 +57,14 @@ cat > "${mem_root}/recaps/recap_daily_${now_utc}.json" <<EOF_IN
 {"schema":"agentd_memory_recap_v1","ts_utc":"${now_utc}","ts_utc_ms":0,"model":"stub","kind":"daily","summary_text":"Daily recap stub","structured_items":[],"daily_items":[]}
 EOF_IN
 
+MEM_ROOT="${mem_root}" python3 - <<'PY_CURRENT'
+import json, os, pathlib
+root = pathlib.Path(os.environ["MEM_ROOT"])
+checkpoint = next((root / "checkpoints").glob("structured_*.json"))
+doc = json.loads(checkpoint.read_text())["doc"]
+(root / "STRUCTURED.md").write_text("<!-- AGENT_MEMORY_V1_BEGIN -->\n" + json.dumps(doc) + "\n<!-- AGENT_MEMORY_V1_END -->\n")
+PY_CURRENT
+
 resp="$(curl -fsS --noproxy "*" --max-time 5 \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \

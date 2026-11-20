@@ -45,8 +45,8 @@ These tools are available when `--tools host` is enabled (subject to `yolo` and 
 Daemon-session memory tools include `memory_get`, `memory_put`, `memory_write`,
 `memory_observe` and retrieval tools. Replacement/upsert requires the exact
 `expected_revision` read from `memory_get`, or `absent` for a new source. All three
-write APIs share the host atomic store; structured appends are rejected. Exact
-retained reads, conflict recovery, storage limits and reproducible crash checks
+write APIs share the host atomic store; structured appends are rejected. Current/historical/evidence retrieval, exact original source/revision/span reads,
+conflict recovery, storage limits and reproducible failure checks
 are owned by [the memory contract](MEMORY.md#revision-checked-publication).
 
 Host policy notes:

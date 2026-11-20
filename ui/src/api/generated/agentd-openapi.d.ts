@@ -3376,7 +3376,7 @@ export interface paths {
         };
         /**
          * List salience-ranked memory items (recency + importance)
-         * @description Computes a deterministic salience ranking over structured memory checkpoints and daily @obs notes.
+         * @description Computes a deterministic salience ranking over the authoritative structured head and daily @obs notes. Current view excludes inactive/history before scoring.
          *     Useful for dynamic memory context injection and operator inspection.
          */
         get: {
@@ -3389,6 +3389,8 @@ export interface paths {
                     max_items?: number;
                     max_structured_items?: number;
                     max_daily_items?: number;
+                    /** @description Current reads the authoritative head and excludes inactive/history before scoring. */
+                    view?: "current" | "historical" | "evidence";
                     half_life_days?: number;
                     importance_weight?: number;
                 };
@@ -3631,12 +3633,14 @@ export interface paths {
         };
         /**
          * Query structured memory current view (bounded)
-         * @description Selects the newest structured checkpoint in the requested time window and returns
-         *     the current structured keys filtered by `key_prefix` (if provided).
+         * @description Current reads the authoritative structured head and excludes inactive/history.
+         *     Explicit historical/evidence view selects a checkpoint in the requested time window.
+         *     Results carry original evidence references; checkpoint time windows require historical/evidence view.
          */
         get: {
             parameters: {
                 query?: {
+                    view?: "current" | "historical" | "evidence";
                     since_utc_ms?: number;
                     until_utc_ms?: number;
                     /** @description Only consider checkpoints whose `path` matches this structured file (e.g. `STRUCTURED.md`). */
@@ -8532,6 +8536,11 @@ export interface components {
             importance_weight: number;
         };
         MemorySalienceStructuredItem: {
+            historical?: boolean;
+            /** @description Original source ID, raw-byte SHA-256 revision and byte span or structured JSON Pointer. */
+            evidence?: {
+                [key: string]: unknown;
+            };
             key: string;
             kind?: string;
             status?: string;
@@ -8541,6 +8550,11 @@ export interface components {
             score: number;
         };
         MemorySalienceDailyItem: {
+            historical?: boolean;
+            /** @description Original source ID, raw-byte SHA-256 revision and byte span or structured JSON Pointer. */
+            evidence?: {
+                [key: string]: unknown;
+            };
             path: string;
             /** Format: int32 */
             line: number;
@@ -8552,6 +8566,8 @@ export interface components {
             importance?: number;
         };
         MemorySalienceResponse: {
+            /** @enum {string} */
+            view?: "current" | "historical" | "evidence";
             ok: boolean;
             memory_root: string;
             /** Format: int64 */
@@ -8767,6 +8783,10 @@ export interface components {
             }[];
         };
         MemoryQueryResponse: {
+            /** @enum {string} */
+            view?: "current" | "historical" | "evidence";
+            revision?: string;
+            as_of_utc?: string;
             ok: boolean;
             memory_root: string;
             /** Format: int64 */
@@ -8787,7 +8807,7 @@ export interface components {
              * @description Number of entries returned.
              */
             returned: number;
-            checkpoint: components["schemas"]["MemoryCheckpointMeta"];
+            checkpoint?: components["schemas"]["MemoryCheckpointMeta"];
             entries: {
                 key: string;
                 record: {
@@ -10716,6 +10736,12 @@ export interface components {
          *     This maps to the host tool `memory_search` (see `cli/src/toolset_host_memory.cpp`).
          */
         WorkflowMemorySearchSpec: {
+            /**
+             * @description Current hard-filters inactive and superseded records before retrieval. Historical/evidence explicitly identify original records.
+             * @default current
+             * @enum {string}
+             */
+            view: "current" | "historical" | "evidence";
             /** @description Required search string. */
             query: string;
             /**
@@ -10732,7 +10758,7 @@ export interface components {
             case_sensitive?: boolean;
             /**
              * Format: int32
-             * @description Snippet context lines around matches in substr mode (default 2).
+             * @description Maximum neighboring lines within eligible passages. Retrieval never expands into ineligible raw neighbors.
              */
             context_lines?: number;
             /**
@@ -10756,6 +10782,12 @@ export interface components {
          *     Provide either `citation` (`path:line`) or explicit `path` + `line`.
          */
         WorkflowMemoryTimelineSpec: {
+            /**
+             * @description Current hard-filters inactive and superseded records before retrieval. Historical/evidence explicitly identify original records.
+             * @default current
+             * @enum {string}
+             */
+            view: "current" | "historical" | "evidence";
             /** @description Citation string in the form `path:line` (preferred when derived from memory_search). */
             citation?: string;
             /** @description Relative memory Markdown path under the daemon memory directory. */
@@ -10784,6 +10816,12 @@ export interface components {
          *     Note: the server requires at least one filter (`key`, `key_prefix`, non-empty `kinds[]`, or `source_contains`) to avoid accidental full dumps.
          */
         WorkflowMemoryStructuredQuerySpec: {
+            /**
+             * @description Current hard-filters inactive and superseded records before retrieval. Historical/evidence explicitly identify original records.
+             * @default current
+             * @enum {string}
+             */
+            view: "current" | "historical" | "evidence";
             /** @description Relative memory Markdown path under the daemon memory directory (default `STRUCTURED.md`). */
             path?: string;
             /** @description Exact record key to fetch (optional). */
@@ -10812,11 +10850,11 @@ export interface components {
             order_by?: string;
             /** @description Optional kinds filter (e.g. `["fact"]`, `["preference"]`, `["task"]`). */
             kinds?: string[];
-            /** @description Status filter (default `active`). Use `any` to include deprecated. */
+            /** @description Status filter within the selected view. Current never includes deprecated; use historical/evidence explicitly to inspect them. */
             status?: string;
             /** @description Include `sources[]` in returned records (default true). */
             include_sources?: boolean;
-            /** @description Include `versions[]` history in returned records (default false). */
+            /** @description Include historical versions as separate identified rows (default false; requires historical/evidence view). */
             include_versions?: boolean;
             /**
              * Format: int32
@@ -10856,10 +10894,16 @@ export interface components {
         /**
          * @description Deterministic structured memory query configuration for `kind:memory_query`.
          *
-         *     The engine reads the newest structured checkpoint under `memory/checkpoints/structured_*.json`
-         *     in a bounded time window and returns keys filtered by optional `key_prefix`.
+         *     Current reads the authoritative structured head. Historical/evidence reads the newest original checkpoint
+         *     in the requested time window. Time-window fields require historical/evidence view. Results carry exact original evidence references.
          */
         WorkflowMemoryQuerySpec: {
+            /**
+             * @description Current hard-filters inactive and superseded records before retrieval. Historical/evidence explicitly identify original records.
+             * @default current
+             * @enum {string}
+             */
+            view: "current" | "historical" | "evidence";
             /**
              * Format: int64
              * @description Lower bound on checkpoint timestamp in UTC milliseconds (inclusive; default 0).

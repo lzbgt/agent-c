@@ -10,7 +10,9 @@ production services were restarted.
 
 - **Requirement-driven broker goals:** explicit agent/deployment/session binding keeps the host ledger authoritative. Success requires evidence-bearing completed requirements, independent work continues past scoped blockers, changed revisions wake managed waits and unchanged progress stops. Single-use admission and exact control CAS prevent duplicate/stale launches. Immutable broker receipts recover the original persisted team run after response loss or restart, never by resending it. Unrecorded host outcomes remain pending, mismatches stop recovery and owner controls are preserved. UI setup, progress and receipt states are included. Managed requirement waits now use bounded server-notified long polling with ordinary reconciliation fallback, coalesced hints, explicit watch caps and cancellation. Every hint triggers fresh goal/ledger checks, not dispatch permission. This remains single-authority coordination, not a durable event stream or reconstruction of an unknown host outcome. See [goal ledger contract](GOAL_WORK_LEDGER.md).
 
-- **Atomic memory publication (source only):** memory replacement/upsert requires the exact SHA-256 revision read from the file, or explicit absence for a new source. Memory tools share a root-wide OS writer lock; required prior originals are retained before synced atomic replacement. Exact historical reads verify their content hash and never substitute current bytes. Consolidation and retention carry the snapshot they derived from; native workflow conflicts stop retry while independent work continues. Checkpoints are auxiliary immutable objects, including separate paths for updates in the same second. Currentness/scope filtering, source/revision/span binding across retrieval and correction propagation remain next. See [memory publication](MEMORY.md#revision-checked-publication).
+- **Atomic memory publication (source only):** memory replacement/upsert requires the exact SHA-256 revision read from the file, or explicit absence for a new source. Memory tools share a root-wide OS writer lock; required prior originals are retained before synced atomic replacement. Exact historical reads verify their content hash and never substitute current bytes. Consolidation and retention carry the snapshot they derived from; native workflow conflicts stop retry while independent work continues. Checkpoints are auxiliary immutable objects, including separate paths for updates in the same second. Scoped retrieval and original references now build on this store; general promotion/forget propagation remains open. See [memory publication](MEMORY.md#revision-checked-publication).
+
+- **Scoped memory views and original evidence (source only):** current/historical/evidence projection is shared by FTS, substring fallback, structured queries, salience and all context modes. Current state is filtered before scoring; only the selected scope/view enters BM25. Content revisions replace timestamp-only refresh. References bind source, revision and byte span/JSON Pointer with exact original reads and checked output frontiers. API/native current queries use the head; historical checkpoints are explicit. Current context excludes unversioned recap/assistant hints and reports unavailable retrieval; recap publication checks inputs after the provider response. See [memory views](MEMORY.md#current-views-and-original-evidence). General promotion provenance, retirement and conclusion/forget propagation remain open.
 
 - **Native remote workflow recovery (source only):** `agentd_call` saves a parent-owned admission before one remote POST, uses a database-scoped server-owned key and resumes only authenticated original-workflow reads. Exact identity/state checks pin the returned workflow; completed receipts save before parent settlement and replay without fresh network grants. Missing/corrupt outcomes remain scoped blockers; API/UI checks cannot replace the target, bypass budgets or revive owner stops. Direct and broker proxy fixtures use real temporary daemons and no provider. See [remote admission](WORKFLOW_EFFECTS.md#durable-remote-workflow-admission).
 
@@ -76,39 +78,38 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The current canonical native selection passed **68 native/CLI/API checks** in
-**102.99 seconds** on 2026-11-20, after the final retained-directory sync review
-and rebuild. It includes the atomic store, memory tools, consolidation,
-retention, workflow queries/writes, budget and correlation fixtures. The same
-selection is now committed in `tools/verify_current_snapshot.sh`.
+The provider-free canonical lane passed **72 native/CLI/API checks**, **141
+browser checks**, all Go broker/gateway packages, generated OpenAPI/type checks
+and the UI production build on 2026-11-20. A final context-failure/CLI-guidance
+review and rebuild was followed by the same complete **72-native selection,
+passing in 105.50 seconds**. The browser/UI/Go results remain from the preceding
+complete run; UI source did not change between those runs.
 
-The preceding complete canonical run passed its then-current 66 native checks,
-all Go broker/gateway packages, generated OpenAPI/type checks, the UI production
-build and **141 browser checks**. The final native repeat added the two refreshed
-budget/fairness fixtures and the directory-sync fix; no UI source changed between
-those runs. The fairness fixture also passed three consecutive focused runs.
-Repository guards, changed-document links/anchors and whitespace checks passed.
-Production services were not exercised.
+The new `memory_view_tests` covers FTS/substr currentness, inactive/future/malformed
+records, embedded history and generated duplicates, raw sections/markers,
+scope changes in a warm cache, Chinese/code identifiers, timestamp-preserving
+correction, source deletion, same-content wrong scopes, altered spans, exact
+originals, all four context modes, source/line budgets and explicit unavailable
+context. `memory_retrieval_smoke` uses a real temporary daemon and two synthetic
+loopback provider calls: current API reads use the head, historical reads use an
+identified checkpoint, successful recaps retain input revisions and a concurrent
+correction rejects publication without repeating the provider call. Existing
+workflow, publication, retention, salience, recap and correlation fixtures remain
+in the canonical lane. Repository guards, changed-document links/anchors and
+whitespace checks passed; production was not exercised.
 
-New failure checks cover stale thread/process writers, concurrent append
-preservation, corrupt or unavailable original archives, cancellation, the 8-MiB
-cap, malformed structured blocks, interrupted publication and real `SIGKILL`
-before/after replacement. Tool and real-daemon tests verify exact original reads,
-separate same-second checkpoints, persisted revision references, one-attempt
-conflict refusal, one-worker independent work and current-head retention despite
-stale checkpoints. These are Linux process-crash checks, not storage power-loss,
-Windows runtime or retrieval-quality evidence.
+Reproduce with the command above or [the retrieval subset](MEMORY.md#reproduce-retrieval-checks).
+Ignored local receipts are `build/memory_view_snapshot_20261120.log`,
+`build/memory_view_native_final.log`, `build/memory_view_focused.log`,
+`build/memory_view_resources.log`, `build/memory_view_documentation.log` and
+`build/memory_view_repo_guards.log`. These are Linux fixture checks, not a
+production SLO, MCU qualification, storage power-loss test or retrieval-quality
+benchmark. No external provider, paid scorer or 9B substitution was used.
 
-Reproduce the full selection with the command above, or the authority subset in
-[MEMORY.md](MEMORY.md#reproduce-the-authority-checks). Ignored local receipts are
-`build/memory_authority_snapshot_20261120.log`,
-`build/memory_authority_native_final.log`,
-`build/memory_authority_fairness.log`,
-`build/memory_authority_documentation.log` and
-`build/memory_authority_repo_guards.log`. The [source qualification receipt](verification/memory-authority-20261120.json)
-pins implementation `f355886`, artifact hashes, commands and remaining limits.
-These fixture timings do not define a production SLO. No paid scorer, live
-provider or 9B substitution was used.
+The [atomic-publication receipt](verification/memory-authority-20261120.json)
+pins `f355886` and its earlier 68-native/141-browser qualification. Its publication
+and process-crash checks remain in the current selection. Older artifact hashes
+do not qualify the new retrieval runtime.
 
 The preceding [remote-workflow receipt](verification/remote-workflow-20261120.json)
 pins `05384a3`; its controller and real-process recovery cases remain in the
@@ -126,15 +127,17 @@ checks do not establish a hosted CI matrix, MCU boot or live-provider behavior.
 
 ## Boundaries and next work
 
-The next owner priority is current/history/evidence eligibility, consistent
-retrieval revisions, source/revision/span references and correction/deletion
-propagation. Atomic publication and retrievable originals are implemented, but do
-not complete that retrieval authority contract. A bounded lexical multi-hop
-experiment follows it, with the unchanged 4B answerer. The
+The next authority gate is durable promotion provenance so old `@mem` observations
+cannot undo later corrections, followed by retained-source retirement, persistent
+cache erasure, recap/conclusion validation at every consumer and bounded forgetting.
+Invalidation must never replay a completed external effect. Declared currentness
+and exact references do not prove arbitrary prose or generated claims true.
+A bounded lexical multi-hop experiment follows the authority gates, with the
+unchanged 4B answerer. The
 [architecture evaluation gate](ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
-records the canary/pilot caps and promotion criteria. TypeSafe endpoint/key use,
-model/pricing verification and measured retrieval quality remain pending; no paid
-provider evaluation was performed for this source milestone.
+records the canary/pilot caps. TypeSafe endpoint/auth/model/pricing verification,
+private-key use and measured retrieval quality remain pending; no paid evaluation
+was performed for this source milestone.
 
 
 This is a coherent implemented slice, not a claim that every item in the architecture is shipped. Current workflows retain single-daemon, at-least-once task recovery. The new effect protocol protects deterministic HTTP POST tasks under its destination/receipt contracts. Submit dedupe and SOP hashes alone still do not prevent duplicate external writes. Device assignment publication is atomic. Ordinary workflow host-model transcripts, session fences, image preparation and sequential delegated children have bounded recovery contracts. Uninstrumented preparation/tool paths, trusted receipt resolvers, additional device adapters, physical execution guarantees and strict provider/adapter resource metering remain correctness work. Workflow reservation/settlement is now atomic, with observed usage and conservative uncertainty kept distinct.

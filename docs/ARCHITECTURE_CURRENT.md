@@ -27,7 +27,7 @@ A human-action blocker is a durable fact about an external prerequisite, with ob
 | Workflow engine | `daemon/src/workflow_engine.h` explicitly documents single-daemon DB ownership and at-least-once task recovery. Submit dedupe, retries, budgets, dataflow and deterministic checks are implemented. | Deterministic HTTP POSTs now have a journal/receipt boundary; device assignment/outbox publication is atomic; deterministic host actions now retain guarded intent/results, and ordinary model-driven host tasks guard incomplete effects. Ephemeral and session-backed ordinary host-model tasks can replay bounded image preparation and verified provider/tool transcripts after provider failure or restart. Sequential delegated host-model children have distinct parent-owned journals and completed-prefix replay; verified partial checkpoints can traverse cached work with no new tool/step grants while fresh calls remain guarded. Session generations fence stale continuations; final conversation and model receipt commit atomically. Unknown host outcomes and physical device receipt guarantees still require trusted adapters. No general saga/compensation or durable arbitrary human-signal state machine is established. |
 | SOP authoring | Versioned stages/actions compile into the existing DAG. The append-only daemon-local registry enforces immutable saved versions; exact references copy verified source into a run snapshot. The composer saves and selects versions without implicit execution. Explicit decision actions persist configured continue/fail choices and release workers while waiting. | Inline SOPs remain ad hoc. Single-delivery JSON signals have exact immutable receipts and opt-in submit-time slots; early input never bypasses dependencies, conditions, expiry-at-activation or owner stops. Bounded per-action conditions compare typed prior results and retain effect-free skip evidence. Arbitrary transitions, subflows, general inbox/broadcast signals, publisher-specific authorization, compensation and active-run migrations remain future work. |
 | Autonomy | Explicit bound goals read the existing host requirement/blocker authority, continue independent work, gate completion on recorded evidence and use single-use dispatch/control CAS. Managed requirement waits use bounded server-notified long polling with periodic fallback; immutable broker admission/receipt records recover an original persisted team run after response loss, while owner stops remain authoritative. Unbound goals retain the legacy role/replanning loop. | Durable replayable event streams, multi-authority handoff and reconstruction of unrecorded host outcomes remain open. Evidence presence and drift timeouts are not semantic proof. See [bound goals](GOAL_WORK_LEDGER.md). |
-| Memory | Revision-checked host publication, a shared OS writer lock, synced atomic replacement and hash-verified original reads now cover the memory tools and structured consolidation/retention. Existing lexical/progressive retrieval, recaps and correlation remain. | Hard currentness/scope eligibility, source/revision/span binding across retrieval and correction/deletion invalidation are next. Inactive salience is still discounted. Publication correctness does not establish retrieval quality. |
+| Memory | Atomic revision-checked publication plus shared current/historical/evidence views, scoped FTS/fallback, hard salience eligibility, original references and revision-fenced context/recap preparation. | General promotion provenance, durable retirement/forget propagation, persistent cache erasure and validation of long-lived summaries/conclusions remain open. Declared eligibility and references are not semantic fact verification or retrieval-quality evidence. |
 | UI/CLI | Existing clients have broad operational coverage, OpenAPI types and replay surfaces. This snapshot modernizes navigation/layout and separates new CLI command handling. | Bound-goal authority/progress UI exists; broader goal authoring, granular timeline debugging, and a completely decomposed legacy CLI remain open. |
 
 The valuable foundation is already here. Keep the C kernel and native hosts, consolidate semantics, and add missing guarantees incrementally. Avoid another parallel orchestration engine or a framework-wide rewrite based on feature checklists.
@@ -112,7 +112,7 @@ CLI `exec`, stdin, `resume`, `sessions`, explicit workspace/session-root selecti
 
 ## Memory authority and retrieval evaluation
 
-**Atomic publication is implemented; retrieval authority remains the next priority.**
+**Atomic publication and scoped retrieval views are implemented; general correction/forget propagation remains next.**
 [`memory_store.cpp`](../cli/src/memory_store.cpp) now supplies one root-wide OS
 writer lock, explicit raw-byte SHA-256 revisions, retained prior originals,
 synced atomic replacement and exact historical lookup. `memory_put` requires
@@ -126,17 +126,25 @@ contract](MEMORY.md#revision-checked-publication) for limits and reproduction.
 The prior unlocked read/truncate/checkpoint path motivated these tests; it did
 not by itself prove a production race. Production remains stopped.
 
-Next, enforce current, historical and evidence modes plus scope before scoring or
-expansion and again at output. A consistent read revision, or detected concurrent
-change, must cover structured search, FTS, fallback, salience and injected context.
-Inactive salience is still discounted, and other current retrieval surfaces can
-still admit historical material. Source IDs and retrievable raw-byte originals
-are a foundation; references still need end-to-end revision/hash/span binding.
-Correction/deletion must invalidate index/cache eligibility, summaries and
-dependent conclusions according to retention policy, without replaying external
-effects. Daily-file deletion and multi-file retrieval fences remain open. Host
-retrieval dependencies remain outside the C core. No retrieval-quality result
-or paid scorer evaluation is claimed by this publication milestone.
+Current/historical/evidence projection is now shared across lexical search,
+substring fallback, structured queries, salience and all context modes. Current
+state is hard-filtered before BM25/salience; the FTS transaction contains only
+that selected scope/view. Content hashes and projection signatures replace
+mtime-only refresh. Original refs bind scope/source, raw-byte revision and
+byte span or JSON Pointer, with exact reads and final revision-set validation.
+Native and API current queries use the authoritative head; checkpoint reads are
+explicitly historical. Automatic context drops unversioned recap/assistant hints,
+reports incomplete retrieval and includes whole evidence references. Recap
+publication checks source revisions after a provider response. See [memory views](MEMORY.md#current-views-and-original-evidence).
+
+General correction/forget propagation remains the next authority gate. Add durable
+promotion provenance so an older marker cannot undo a later correction during
+consolidation. Extend retained-source retirement, persistent cache erasure,
+recap/conclusion validation at every consumer and bounded forgetting, preserving
+history according to policy. Invalidation must never replay external effects.
+Current projection filters declared state; it is not semantic proof of arbitrary
+raw notes or generated claims. Host retrieval stays outside the C core. No paid
+scorer or retrieval-quality promotion is claimed by these source checks.
 
 The [SAG2 paper v2](https://arxiv.org/html/2610.22588v2) and
 [reference implementation](https://github.com/Zleap-AI/SAG-Benchmark/tree/main/sag2)

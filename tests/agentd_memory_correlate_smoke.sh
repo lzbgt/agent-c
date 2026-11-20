@@ -225,7 +225,7 @@ print("ok")
 PY
 
 q="$(curl -fsS --noproxy "*" --max-time 10 \
-  "${DAEMON_URL}/api/v1/memory/query?since_utc_ms=${SINCE_MS}&until_utc_ms=${UNTIL_MS}&limit=50&structured_path=STRUCTURED.md&key_prefix=wf.test.")"
+  "${DAEMON_URL}/api/v1/memory/query?view=historical&since_utc_ms=${SINCE_MS}&until_utc_ms=${UNTIL_MS}&limit=50&structured_path=STRUCTURED.md&key_prefix=wf.test.")"
 
 python3 - <<PY
 import json, sys

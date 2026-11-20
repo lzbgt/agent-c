@@ -1406,16 +1406,17 @@ static void test_memory_tools() {
     args["key"] = "ui.rendering";
     args["include_sources"] = true;
     args["include_versions"] = true;
+    args["view"] = "historical";
     const std::string req = json_stringify(args);
     agent_string_t out{};
     assert(exec.execute(exec.ctx, "memory_structured_query", req.c_str(), &out) == AGENT_OK);
     const Json::Value resp = json_parse(std::string(out.data, out.len));
     assert(resp["ok"].asBool());
     assert(resp["data"]["tool"].asString() == "memory_structured_query");
-    assert(resp["data"]["matched"].asInt() == 1);
+    assert(resp["data"]["matched"].asInt() == 2);
     const Json::Value& rows = resp["data"]["results"];
     assert(rows.isArray());
-    assert(rows.size() == 1);
+    assert(rows.size() == 2);
     assert(rows[0]["key"].asString() == "ui.rendering");
     const Json::Value& rec = rows[0]["record"];
     assert(rec["value"].asString() == "Scene rendering must survive refresh + restart");
@@ -1425,11 +1426,16 @@ static void test_memory_tools() {
     assert(json_array_contains_string(rec["sources"], "test:s1"));
     assert(json_array_contains_string(rec["sources"], "test:s1b"));
     assert(json_array_contains_string(rec["sources"], "test:s2"));
-    assert(rec["versions"].isArray());
-    assert(rec["versions"].size() >= 1);
-    assert(rec["versions"][0]["value"].asString().find("server-owned and refresh-proof") != std::string::npos);
-    assert(json_array_contains_string(rec["versions"][0]["sources"], "test:s0"));
-    assert(json_array_contains_string(rec["versions"][0]["sources"], "test:s0b"));
+    assert(!rec.isMember("versions"));
+    assert(rows[1]["historical"].asBool());
+    assert(rows[1]["record"]["value"].asString().find("server-owned and refresh-proof") != std::string::npos);
+    assert(json_array_contains_string(rows[1]["record"]["sources"], "test:s0"));
+    assert(json_array_contains_string(rows[1]["record"]["sources"], "test:s0b"));
+    Json::Value original_args;original_args["evidence"] = rows[0]["evidence"];
+    agent_string_t original_value{};const auto original_request = json_stringify(original_args);
+    assert(exec.execute(exec.ctx, "memory_get", original_request.c_str(), &original_value) == AGENT_OK);
+    const auto original_receipt = json_parse(std::string(original_value.data, original_value.len));agent_string_free(&original_value);
+    assert(original_receipt["ok"].asBool() && original_receipt["data"]["value"] == rec["value"]);
     agent_string_free(&out);
   }
 
@@ -1442,6 +1448,7 @@ static void test_memory_tools() {
     args["valid_from_since_utc"] = "2026-03-02T00:00:00Z";
     args["include_sources"] = true;
     args["include_versions"] = true;
+    args["view"] = "historical";
     args["order_by"] = "valid_from_desc";
     const std::string req = json_stringify(args);
     agent_string_t out{};

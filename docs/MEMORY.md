@@ -2,7 +2,7 @@
 
 `agentd` (and the `agent` CLI when connected to `agentd` state) uses a **durable memory directory** under the daemon `state_dir`:
 
-- `state_dir/memory/MEMORY.md` — core “always true” memory (facts/preferences/tasks)
+- `state_dir/memory/MEMORY.md` — core notes (keep declared current facts/preferences/tasks here)
 - `state_dir/memory/YYYY-MM-DD.md` — daily append-only log (bounded scan by days)
 - `state_dir/memory/sessions/<session_id>.md` — optional session layer
 - `state_dir/memory/STRUCTURED.md` — machine-maintained structured memory (via `memory_put(entries)`)
@@ -114,10 +114,9 @@ separate policy work.
 retained snapshot. Paged display text omits line terminators and strips trailing
 carriage returns; the reported revision always hashes the original complete bytes. A missing, pruned, linked or corrupt original fails explicitly;
 it never substitutes the latest text. The lookup verifies the archived raw-byte
-hash. The mutable `path:line` citations emitted by older retrieval surfaces still
-need source/revision/span binding. This publication milestone does **not** yet
-provide current/history/evidence eligibility across FTS, fallback, salience,
-recaps or injected context, nor correction propagation into conclusions.
+hash. Retrieval now adds source/revision/span references as described below.
+Original availability is bounded by retention; an immutable identifier does not
+promise indefinite storage or prove that a claim is true.
 
 Consolidation captures the structured head before deriving updates and publishes
 against that revision. It checks the tool's `ok` envelope, not only executor
@@ -155,6 +154,125 @@ Windows runtime/durability qualification has not been performed. For another
 filesystem or platform, rerun these checks and qualify its sync/rename behavior
 before claiming equivalent durability.
 
+## Current views and original evidence
+
+[`memory_view.cpp`](../cli/src/memory_view.cpp) projects captured source bytes into
+eligible passages. A passage is one structured value or a Markdown paragraph/observation
+selected for retrieval. [`memory_index.cpp`](../cli/src/memory_index.cpp), structured
+queries, salience and every context mode reuse this host-side contract. The
+portable C core has no dependency on the projector, SQLite or JsonCpp.
+
+Use `view="current"` for `memory_search`, `memory_structured_query`,
+`memory_timeline`, native `memory_query` tasks and `/api/v1/memory/query` or
+`/api/v1/memory/salience`. This is the default. Use `historical` to inspect older
+or inactive material explicitly. `evidence` exposes identified original records
+without promoting them to current knowledge. `memory_get` is an original-source
+reader: its default raw output is labeled `view="evidence"`, suitable for editing
+and inspection, rather than automatic current-fact injection.
+
+Current eligibility is a declared-state rule, not semantic fact verification:
+
+- Structured records need a non-null value and active status (absent status uses
+  the schema default). Deprecated kinds, inactive/unknown statuses, malformed
+  typed state, deletion/invalidation flags and future or invalid `valid_from`
+  timestamps are excluded **before scoring**. Embedded `versions[]` are excluded.
+- The structured machine block is authoritative. Generated Markdown that repeats
+  its active/deprecated records is not indexed again. Only the explicit retained
+  user-notes block adds independent Markdown passages.
+- Raw Markdown excludes the declared `Deprecated`, `History`, `Historical`,
+  `Superseded`, `Inactive`, `Obsolete`, `Deleted`, `Archived`, `已废弃`, `历史` and
+  `已删除` sections, until the next heading at the same or a higher level.
+  Explicit inactive `@mem` markers are excluded. Fenced/indented code is not
+  interpreted as state headings. Unstructured notes without declared state remain
+  observations; the system cannot infer every factual correction from prose.
+- A raw `@mem` marker whose key already exists in root `STRUCTURED.md` is a
+  promotion input, not an independent current authority. Current views suppress
+  it; other views retain it as `historical=true`, `status=superseded_marker`.
+  The structured head is a checked dependency even when its layer is not returned.
+
+Historical/evidence search uses the selected documents' heads plus their retained
+embedded versions. It does not scan every archived revision. For structured
+queries, `include_versions=true` requires an explicit historical/evidence view
+and returns separate labeled rows, each with its own reference. `status=any`
+cannot bypass current eligibility. Missing observation time stays unknown;
+reading a document no longer assigns the present time to old records.
+
+A result's `evidence` object has schema `agent.memory.evidence.v1` and contains:
+
+| Field | Meaning |
+| --- | --- |
+| `path`, `source_id` | Source within the configured physical memory root; the source ID binds that scope. |
+| `revision` | SHA-256 of the complete original raw bytes, including line endings. |
+| `span.kind=bytes` | Half-open raw byte offsets `begin` and `end`. |
+| `span.kind=json_pointer` | RFC 6901 `pointer` to the exact value in the structured machine JSON, or in an original checkpoint JSON document. `/` and `~` in keys are escaped. |
+| `id` | Server-generated SHA-256 identity over the compact JsonCpp serialization of the reference fields above, before adding `id`. Treat it as opaque; it is not a signature or authorization token. |
+
+To retrieve the original, copy the **entire** returned `evidence` object into
+`memory_get.evidence`. The reader verifies the source scope, raw-byte revision,
+span and identity. It returns `data.value` and `data.text`. A correction cannot
+redirect that reference to the current value. Missing, pruned, linked, corrupt,
+altered or wrong-scope originals fail. Internal cache/lock metadata is not an
+evidence source. `path:line` remains a human locator, not an immutable identity.
+Use `memory_timeline` for current eligible neighbors, and `memory_get(evidence)`
+for exact original evidence. Timeline context never expands into excluded raw
+neighbors. A historical timeline can name an exact retained `revision`.
+
+### Snapshot and cache boundaries
+
+A retrieval captures complete documents, applies eligibility, then verifies the
+selected revision set before returning output. A detected correction/deletion
+clears search results; it does not return a mixture or retry a stale write.
+The snapshot carries the UTC eligibility cutoff; automatic context always uses
+current view. This establishes a checked read frontier, not a lock held until a
+consumer acts and not protection against privileged in-place writes outside the
+store. Consumers of long-lived conclusions still need revision validation.
+
+Limits fail explicitly: 128 selected files, 8 MiB per document, 64 MiB captured
+source bytes, 20,000 lines per document and 20,000 projected passages. The
+structured dependency counts toward captured bytes. Search limits are 1–200
+results, 80–4,000 snippet bytes and 1–4,096 query bytes. Snippet windows stay inside
+eligible passages, respect `context_lines`, and retain references to the original
+passage/value. They need not contain the entire original. UTF-8 clipping avoids
+partial code points. Budget failures are errors, not silent source truncation.
+
+The FTS5 cache is `.memory_retrieval_v1.sqlite3`, separate from the older unused
+lexical cache. It stores **only the selected eligible projection** for one view
+and source set. A SQLite transaction replaces a different scope/view before
+BM25 is evaluated, so other sessions' rows do not enter scoring statistics.
+Its signature binds policy version, mode, sorted paths/revisions, passage IDs
+and projected text. Fields are streamed into SHA-256 with an eight-byte
+big-endian byte-length prefix. Content changes invalidate it even when file
+mtime is unchanged. POSIX cache mode is `0600`.
+
+The SQLite busy wait is bounded to 500 ms. Missing FTS5, unavailable storage or
+query/index errors use the **same captured eligible passages** for substring
+fallback; `index_error` remains visible. No fallback scans raw history. A source
+change still fails closed. Root-wide physical deletion/forget policy and persistent
+cache erasure are separate from query eligibility; old cache files are not read
+or migrated by this implementation.
+
+### Reproduce retrieval checks
+
+Use the host prerequisites and assertion-enabled build described above. From the
+repository root on Linux:
+
+```sh
+cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
+cmake --build build-snapshot --target agentd memory_view_tests host_toolset_tests -j4
+ctest --test-dir build-snapshot -R '^(memory_view_tests|memory_retrieval_smoke|host_toolset_tests|agentd_memory_salience_smoke|agentd_memory_recaps_smoke|agentd_workflow_memory_query_smoke)$' --output-on-failure
+```
+
+Pass requires every selected test to succeed. The fixtures cover FTS and
+substring paths, inactive/future/malformed records, embedded history, raw
+sections/markers, source-set changes in a warm cache, Chinese/code identifiers,
+mtime-preserving corrections, source deletion, same-content wrong scopes,
+altered spans, exact originals and all four context modes. A real temporary
+daemon checks current versus checkpoint reads and a correction during a synthetic
+provider response. It makes exactly two loopback fixture calls; it does not use
+credentials or a live model. A failed recap does not publish or replay its call.
+These checks establish eligibility/binding behavior, not retrieval recall,
+supported-answer accuracy, MCU behavior or a paid scorer baseline.
+
 ## Shared memory scopes
 
 Runs can opt into a **shared memory scope** (for multi-agent collaboration) by setting:
@@ -168,101 +286,59 @@ unless explicitly configured to share a scope.
 
 ## Memory context injection (runs)
 
-When `tools="host"`, agentd can inject a **durable memory context** as a system message before the run:
+When host tools are enabled, automatic context uses the same current snapshot as
+retrieval. Its root is the run's selected memory scope; another session's files,
+global assistant-message hints and unversioned recap summaries are not injected.
+Notes are evidence, not execution instructions or verified conclusions.
 
-- File mode (default): reads Markdown memory files and injects a concise snapshot.
-- Search mode: injects **ranked snippets** (claude-mem style) for the current prompt.
+| `memory_context_mode` | Current behavior |
+| --- | --- |
+| `files` | Eligible passages with exact original references, rather than raw generated Markdown. |
+| `search` | Scoped BM25/substring results from that snapshot; an optional files fallback uses the same projection. |
+| `index` | Eligible passage counts, byte/token estimates and source revisions; no recap or assistant hint text. |
+| `salience` | Recency/importance ranking from the authoritative structured head and daily observations, plus eligible core/session passages. |
 
-Run request knobs (file mode + search mode share the same memory root):
-
-- `memory_context_mode`: `"files"` (default), `"search"`, `"index"` (progressive disclosure; `"progressive"` alias supported), or `"salience"`.
-- `memory_include_structured`, `memory_include_core`, `memory_include_daily`, `memory_include_session`
-- `memory_daily_days` (clamped), `memory_total_cap` (clamped)
-- `memory_search_query` (defaults to prompt when omitted)
-- `memory_search_use_index`, `memory_search_case_sensitive`
-- `memory_search_order` (`ranked` | `newest` | `oldest`; default `ranked`)
-- `memory_search_max_results`, `memory_search_max_snippet_chars`, `memory_search_context_lines`
-- `memory_search_fallback_to_files` (if search yields no hits)
-
-Search mode injects a system message that starts with `DURABLE_MEMORY_SEARCH_CONTEXT` and includes:
-- total durable memory bytes + approximate tokens,
-- the latest recap timestamp/path (if available),
-- a recap hint line (if recaps exist),
-- the latest assistant timestamp + assistant hint (if available),
-- citations in the form `[tier path:line]`.
-
-This makes search results cost-aware and keeps the model aligned with the latest recap summary.
+Existing run controls select core, structured, daily/session layers, daily window,
+result/snippet/context limits, ordering, salience weights and `memory_total_cap`.
+The default output cap is 12,000 bytes, maximum 40,000. Whole evidence blocks fit
+or are omitted; context never cuts a reference in half. A partial context says
+its budget was reached. An unreadable, malformed, changed or over-budget source
+produces `DURABLE_MEMORY_UNAVAILABLE` with the reason and a current-tool reread
+instruction. An empty store simply contributes no memory context. Independent
+work remains possible; these reads do not raise permission requests.
 
 ### Progressive disclosure index mode
 
-`memory_context_mode="index"` injects a lightweight index instead of full content:
+Use the index to choose bounded follow-up reads. The safe sequence is:
 
-```
-DURABLE_MEMORY_INDEX
-- This is a lightweight index of durable memory files on disk.
-- Token estimates are approximate (bytes/4). Use memory_search and memory_get for details.
-- Total memory bytes: 25521 (~tokens=6380)
-- Latest recap: 2026-02-17T12:10:44Z (recaps/recap_2026-02-17T12-10-44Z.json)
-- Recap hint: Ongoing goals + most recent decisions...
-- Latest assistant: 2026-02-18T19:23:11Z
-- Assistant hint: Confirmed deployment changes and pending follow-ups...
-
-[structured STRUCTURED.md] lines=42 bytes=9101 ~tokens=2276
-[core MEMORY.md] lines=18 bytes=2100 ~tokens=525
-[daily 2026-02-14.md] lines=120 bytes=14320 ~tokens=3580
-```
-
-This mirrors the claude-mem style of “show what exists + cost first,” keeping context lean while still
-giving the agent enough signals to fetch the right details on demand.
+1. `memory_search` or `memory_structured_query` in current view.
+2. `memory_get` with the returned `evidence` for the exact original.
+3. `memory_timeline` for eligible current neighbors, if needed.
 
 ### Salience mode (dynamic)
 
-`memory_context_mode="salience"` injects a **ranked, compact** memory summary based on
-recency + importance:
+Salience reads `STRUCTURED.md`, not an optional checkpoint. Inactive material is
+excluded before score calculation. For an eligible item:
 
-- Structured memory: latest checkpoint (`memory/checkpoints/structured_*.json`)
-- Daily observations: `@obs` blocks (importance-tagged)
-
-The daemon computes a deterministic salience score:
-
-```
-score = base_weight * exp(-age_days / half_life_days)
+```text
+score = weight * exp(-age_days / max(0.01, half_life_days))
 ```
 
-Use `/api/v1/memory/salience` to inspect the ranked items and tuning parameters.
-
-Tuning knobs (daemon config / `/api/v1/config/update`):
-
-- `memory.salience_daily_days`
-- `memory.salience_max_items`
-- `memory.salience_structured_max_items`
-- `memory.salience_daily_max_items`
-- `memory.salience_half_life_days`
-- `memory.salience_importance_weight`
+Structured weights are 1.0 for facts, 0.9 for preferences and 1.1 for tasks.
+Observation weight is `1 + importance_weight * importance`, with importance
+clamped to 0–5. Unknown timestamp uses one configured half-life as its scoring
+age and leaves the timestamp empty. Scores indicate ranking relevance, not truth
+or authorization. `/api/v1/memory/salience` returns original references and an
+explicit `view`; the existing policy controls remain available.
 
 ### `memory_search` tiers + citations
 
-`memory_search` results now include:
-
-- `tier`: `core` | `structured` | `session` | `daily` (or `other`)
-- `citation`: `${path}:${line}` (human-readable pointer into mutable content; not immutable evidence)
-
-Ordering:
-- `ranked` (default): preserves FTS5 relevance ordering (or scan order for substring mode).
-- `newest` / `oldest`: reorders **daily** results by date/line while leaving other tiers stable.
-
-### 3-step retrieval (claude-mem style)
-
-For large memory stores, use the progressive workflow:
-
-1) `memory_search` to find relevant citations (`path:line`)
-2) `memory_timeline` with the citation to get a bounded context window
-3) `memory_get` if you need the full file or a larger slice
-
-This keeps context lean while still allowing precise follow-up reads.
-
-For progressive disclosure, set `tiered=true` to group results by tier and get rough token
-estimates per tier (`tiers.<tier>.token_estimate`).
+Results retain `tier` (`core`, `structured`, `session`, `daily` or `other`), the
+human `citation`, score/snippet and grouped token estimates when `tiered=true`.
+They add `view`, `historical` and `evidence`; `as_of_utc` identifies the eligibility
+cutoff when results exist. Ranked ordering preserves BM25/substring order;
+newest/oldest ordering changes only daily results. The original reference, rather
+than a live path and line, is the durable evidence address.
 
 ### Privacy filtering (`<private>` blocks)
 
@@ -278,15 +354,13 @@ Behavior:
 - `memory_put` strips private blocks from full-text input and from structured `entries[].value`.
 - If all content is private, the write is skipped and the tool reports `skipped_private=true`.
 
-## Ranked retrieval (Memory v2)
+## Ranked retrieval
 
-`memory_search` supports a ranked mode backed by an on-disk SQLite index under the memory root:
-
-- index path: `state_dir/memory/.memory_index.sqlite3`
-- default: `use_index=true`
-- scope: results are restricted to the same file set the tool would otherwise scan (`daily_days`, core/session/structured)
-
-When SQLite or FTS5 is unavailable at runtime, `memory_search` automatically falls back to a bounded substring scan.
+The eligibility projection, cache transaction and fallback contract are defined
+in [Snapshot and cache boundaries](#snapshot-and-cache-boundaries). The next
+retrieval-quality experiment is gated in [the architecture](ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation).
+No provider scorer, embedding model or replacement answerer is required for
+current local lexical retrieval.
 
 ## Structured consolidation + checkpoints
 
@@ -461,8 +535,13 @@ For operator-triggered summaries, agentd can generate recap snapshots from salie
 
 Recaps use `summary_model` by default and can override with `model` or `summary_model` per request.
 Each recap JSON includes the prompt inputs, the recap summary (JSON + text), and the ranked items used.
-Recap snapshots now include `evidence_sources` (deduped list of cited sources) and each item includes `source`
-(`structured:<key>` or `daily/path#L<line>`), so summaries can be traced to evidence.
+Recaps include exact item `evidence` references, `source`/`evidence_sources` IDs
+and a persisted `input_revisions` manifest. Inputs are validated again after the
+provider response and before publication. A changed input rejects that result
+without repeating the call. The manifest enables later stale-input checks;
+provenance alone does not validate generated claims. Existing historical recap
+inspection remains available, while automatic current context does not inject
+recap text. No recap schedule or production model is enabled by this source change.
 
 Optional request fields:
 - `kind`: label the recap (e.g. `daily`, `weekly`, `manual`), used in the recap filename.
@@ -494,7 +573,7 @@ In addition to the tool surface, `agentd` exposes correlation helpers:
   - the daemon also refreshes this index after recap generation or memory consolidation (best-effort)
   - index path: `memory/.memory_correlation.sqlite3` (SQLite builds) or `memory/.memory_correlation.json` (fallback)
 - `GET /api/v1/memory/query?...&key_prefix=...` — bounded query over the **current view** of structured memory
-  (reads the newest checkpoint in the requested time window)
+  (reads the authoritative head by default; checkpoint windows require explicit historical/evidence view)
 - `GET /api/v1/memory/index` — lightweight index of memory files (paths + size/line/token estimates)
 - `GET /api/v1/memory/salience` — ranked items by recency + importance (structured + @obs daily)
 
@@ -515,4 +594,17 @@ and evidence hashes without leaving the UI.
 Durable workflows can query memory without invoking an LLM:
 
 - `kind:"memory_correlate"` — bounded correlation by `trace_id` evidence against structured checkpoints; results include the same `relationship_graph` shape as `/api/v1/memory/correlate`
-- `kind:"memory_query"` — bounded query of the structured **current view** by `key_prefix` (reads newest checkpoint)
+- `kind:"memory_query"` — bounded query of the structured **current view** by `key_prefix` (authoritative head by default; explicit historical/evidence windows select checkpoints)
+
+## Remaining authority work
+
+The current view removes explicitly stale candidates and derived cache exposure;
+it does not finish general correction/forget semantics. Automatic consolidation
+still needs durable observation/provenance receipts to prevent an older `@mem`
+marker from being promoted again after a later correction. Daily-file retirement
+must retain required originals under a declared policy. Persistent cache erasure,
+recap/conclusion invalidation at every consumer, bounded hard forgetting and
+provenance-preserving handoffs remain open. Invalidating evidence must never
+resubmit a completed external effect. Keep these requirements ahead of the paid
+retrieval-quality pilot; do not interpret green eligibility tests as completion
+of the broader memory-authority goal.

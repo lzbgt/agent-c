@@ -10,6 +10,7 @@
 #include "memory_recaps.h"
 #include "memory_retention.h"
 #include "memory_salience.h"
+#include "workflow_memory_query.h"
 #include "session_id_util.h"
 
 #include <json/json.h>
@@ -696,97 +697,22 @@ void handle_memory_query_endpoint(
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
 
-  int64_t since_ms = 0;
-  int64_t until_ms = INT64_MAX;
-  if (const auto v = query_get(req.query, "since_utc_ms"); v && !v->empty()) {
-    try { since_ms = (int64_t)std::stoll(*v); } catch (...) { since_ms = 0; }
+  Json::Value query(Json::objectValue);
+  for (const auto* field : {"view", "structured_path", "key_prefix"}) if (const auto value = query_get(req.query, field); value && !value->empty()) query[field] = *value;
+  for (const auto* field : {"since_utc_ms", "until_utc_ms", "limit"}) {
+    if (const auto value = query_get(req.query, field); value && !value->empty()) {
+      try {
+        size_t used = 0;const auto number = std::stoll(*value, &used);
+        if (used != value->size()) throw std::invalid_argument("invalid integer");
+        query[field] = Json::Int64(number);
+      } catch (...) { resp->status = 400;resp->body = json_error_body(std::string("invalid ") + field);return; }
+    }
   }
-  if (const auto v = query_get(req.query, "until_utc_ms"); v && !v->empty()) {
-    try { until_ms = (int64_t)std::stoll(*v); } catch (...) { until_ms = INT64_MAX; }
-  }
-  if (until_ms < since_ms) std::swap(until_ms, since_ms);
+  std::string error;
+  const auto result = workflow_memory_query_to_json(cfg.state_dir, query, &error);
+  if (!result.get("ok", false).asBool()) resp->status = 400;
+  resp->body = json_stringify(result);
 
-  const auto structured_path_q = query_get(req.query, "structured_path");
-  const std::string structured_path_filter =
-    structured_path_q && !structured_path_q->empty() ? *structured_path_q : "";
-
-  const auto key_prefix_q = query_get(req.query, "key_prefix");
-  const std::string key_prefix =
-    key_prefix_q && !key_prefix_q->empty() ? *key_prefix_q : "";
-
-  int limit = 50;
-  if (const auto v = query_get(req.query, "limit"); v && !v->empty()) {
-    try { limit = (int)std::stol(*v); } catch (...) { limit = 50; }
-  }
-  limit = std::max(1, std::min(1000, limit));
-
-  const std::filesystem::path mem_root = memory_root_from_cfg(cfg);
-  if (mem_root.empty()) {
-    resp->status = 500;
-    resp->body = json_error_body("missing memory root");
-    return;
-  }
-  std::vector<MemoryCheckpointMeta> metas;
-  std::string lerr;
-  if (!memory_list_structured_checkpoints(mem_root, since_ms, until_ms, structured_path_filter, /*limit=*/1, &metas, &lerr) || metas.empty()) {
-    resp->status = 404;
-    resp->body = json_error_body("no checkpoints in window");
-    return;
-  }
-  const MemoryCheckpointMeta& newest = metas[0];
-
-  std::string structured_path2;
-  Json::Value items(Json::nullValue);
-  std::string rerr;
-  if (!memory_read_structured_checkpoint_items(mem_root, newest.checkpoint_path_rel, &structured_path2, &items, &rerr)) {
-    resp->status = 500;
-    resp->body = json_error_body("failed to read checkpoint");
-    return;
-  }
-  if (!items.isObject()) {
-    resp->status = 500;
-    resp->body = json_error_body("checkpoint missing doc.items");
-    return;
-  }
-
-  std::vector<std::string> keys = items.getMemberNames();
-  std::sort(keys.begin(), keys.end());
-
-  Json::Value entries(Json::arrayValue);
-  int returned = 0;
-  for (const auto& key : keys) {
-    if (returned >= limit) break;
-    if (!key_prefix.empty() && key.rfind(key_prefix, 0) != 0) continue;
-    const Json::Value rec = items[key];
-    if (!rec.isObject()) continue;
-    Json::Value row(Json::objectValue);
-    row["key"] = key;
-    row["record"] = rec;
-    entries.append(row);
-    returned++;
-  }
-
-  Json::Value out(Json::objectValue);
-  out["ok"] = true;
-  out["memory_root"] = mem_root.generic_string();
-  out["since_utc_ms"] = (Json::Int64)since_ms;
-  out["until_utc_ms"] = (Json::Int64)until_ms;
-  if (!structured_path_filter.empty()) out["structured_path_filter"] = structured_path_filter;
-  if (!key_prefix.empty()) out["key_prefix"] = key_prefix;
-  out["limit"] = limit;
-  {
-    Json::Value ckinfo(Json::objectValue);
-    ckinfo["checkpoint_path"] = newest.checkpoint_path_rel;
-    ckinfo["structured_path"] = newest.structured_path;
-    ckinfo["ts_utc"] = newest.ts_utc;
-    ckinfo["ts_utc_ms"] = (Json::Int64)newest.ts_utc_ms;
-    ckinfo["sha256"] = newest.sha256;
-    ckinfo["bytes"] = (Json::Int64)newest.bytes;
-    out["checkpoint"] = ckinfo;
-  }
-  out["entries"] = entries;
-  out["returned"] = returned;
-  resp->body = json_stringify(out);
 }
 
 void handle_memory_index_endpoint(
@@ -907,6 +833,11 @@ void handle_memory_salience_endpoint(
   }
 
   MemorySaliencePolicy pol;
+  if (const auto view = query_get(req.query, "view"); view) {
+    if (!host_tools_internal::memory_view_mode(*view, &pol.view)) {
+      resp->status = 400;resp->body = json_error_body("view must be current, historical or evidence");return;
+    }
+  }
   pol.include_structured = true;
   pol.include_daily = true;
   pol.daily_days = cfg.memory_salience_daily_days;
@@ -955,6 +886,7 @@ void handle_memory_salience_endpoint(
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["memory_root"] = mem_root.generic_string();
+  out["view"] = host_tools_internal::memory_view_name(pol.view);
   out["generated_utc_ms"] = (Json::Int64)rep.generated_utc_ms;
   {
     Json::Value p(Json::objectValue);
@@ -988,6 +920,7 @@ void handle_memory_salience_endpoint(
     if (!item.ts_utc.empty()) row["updated_utc"] = item.ts_utc;
     row["value"] = item.text;
     row["score"] = item.score;
+    row["evidence"] = item.evidence;row["historical"] = item.historical;
     structured.append(row);
   }
   Json::Value daily(Json::arrayValue);
@@ -997,6 +930,7 @@ void handle_memory_salience_endpoint(
     row["line"] = item.line;
     row["text"] = item.text;
     row["score"] = item.score;
+    row["evidence"] = item.evidence;row["historical"] = item.historical;
     if (!item.ts_utc.empty()) row["ts_utc"] = item.ts_utc;
     if (item.importance >= 0) row["importance"] = item.importance;
     daily.append(row);
