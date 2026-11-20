@@ -86,44 +86,52 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-On 2026-11-20, the complete canonical lane on implementation **`f17968f`**
-passed **75 native/CLI/API checks in 123.81 seconds**, **143 browser checks**,
-all Go broker/gateway packages, generated OpenAPI/type checks and the UI production
-build. The [derived-memory receipt](verification/memory-derived-state-20261120.json)
-pins source, commands, artifacts/log SHA-256 hashes, observed timing and limits.
-Repository guards, changed-document links/anchors and whitespace checks passed.
+On 2026-11-20, implementation **`6c40ad9`** passed **76 native/CLI/API
+checks in 129.20 seconds**, all Go broker/gateway packages, OpenAPI/type checks
+and the UI production build. The initial browser pass had 143 successes and one
+390-pixel scene test timeout: the workspace was blank after reload and the prompt
+was absent. Its keyboard-isolation assertions had already passed. Six focused
+canvas/DOM diagnostic runs passed, followed by a separate full **144-check browser
+rerun** with failure tracing enabled. Root cause remains unconfirmed; no product
+fix is claimed. The canonical verifier now retains failure traces for diagnosis.
+The [archive-expiry receipt](verification/memory-archive-expiry-20261120.json)
+pins source, reproducible commands, artifact/log SHA-256 hashes, observed timings
+and limits. Repository guards, changed-document links/anchors and whitespace
+checks passed.
 
-`memory_cache_tests` checks immediate cache/sidecar removal, no cache archival,
-independent-file preservation, current-view SQLite payload scrubbing, bounded
-contention/fallback, source preservation on failure, derivation invalidation and
-literal JSON original reads. The real temporary-daemon fixture makes five
-loopback calls: completed output, concurrent correction, a 2-MiB response,
-HTTP 503 and a token-limited partial result. It verifies current/history
-filtering and immutable incomplete outcomes without replay. Nine memory browser
-checks cover desktop/mobile layouts, changed-source labels and HTTP 409 result
-preservation with metadata closed. These are synthetic reliability checks, not
-production-loss or retrieval-quality measurements.
+`memory_archive_tests` covers preservation through 130 ordinary corrections,
+zero-default policy, active raw/recap references, metadata intents, corruption,
+linked paths, captured-head changes, readonly policy and bounded cancellation,
+operation/byte/inventory/intent capacity. A combined retirement/expiry pass cannot
+invalidate its own newly issued original references. Competing processes and
+actual `SIGKILL` before/after unlink verify restart visibility and no duplicate
+expiry count. The real temporary-daemon fixture exercises preview/apply and strict
+age types without another provider call. Ten memory browser checks include
+320-pixel layout, fractional-age refusal, a closed zero-default expiry control and
+separate confirmed/protected/uncertain counts with receipts collapsed.
 
-One synthetic cache/derivation fixture run took **1.033383 seconds** with a Linux
-child peak RSS of **34,712 KiB**, including two bounded cache-lock waits. This
-single run is not a production, model or MCU resource limit or a latency SLO.
-Reproduce the canonical command above or the [derived-state subset](MEMORY.md#reproduce-derived-state-checks).
-Ignored logs are `build/memory_derived_snapshot_final.log`,
-`build/memory_derived_focused_commit.log`, `build/memory_derived_browser_focused.log`,
-`build/memory_derived_partial_final.log`, `build/memory_derived_resources.log`,
-`build/memory_derived_documentation.log` and `build/memory_derived_repo_guards.log`.
-The checked-in receipt preserves their identities. No external provider, paid
-scorer, TypeSafe key use, 9B substitution or production deployment is part of this
-lane. Production daemon/gateway remain inactive/disabled; PostgreSQL is exited
-with restart disabled. Application cache removal is not forensic device/backup
-erasure; archived originals remain under the existing revision policy. Direct
-recap pre-provider crash admission, archive expiry and general forgetting remain
-open. Host/browser checks do not prove MCU execution, Windows runtime, storage
-power loss, live-provider behavior or supported-answer accuracy.
+One synthetic archive fixture run took **2.589731 seconds** with a Linux child
+peak RSS of **92,740 KiB**, including capture caps and child-process cases. This is
+not aggregate RAM or a production/model/MCU limit or latency SLO. Reproduce the
+canonical command above or the [archive subset](MEMORY.md#operating-bounds-and-verification).
+Ignored logs include `build/memory_archive_snapshot_final.log`,
+`build/memory_archive_browser_final.log`, `build/memory_archive_scene_diagnostic.log`,
+`build/memory_archive_before_commit.log`, `build/memory_archive_browser_commit.log`,
+`build/memory_archive_resources.log`, `build/memory_archive_documentation.log` and
+`build/memory_archive_repo_guards.log`. The receipt preserves their identities.
 
-The previous [retirement receipt](verification/memory-retirement-20261120.json)
-pins `a419c20`; its process-crash/cancellation and partial-result cases remain in
-the current lane.
+Expiry removes unreferenced original payloads according to an explicit policy.
+It conservatively inventories memory-root documents and pass-local receipts;
+external consumers need active memory pins. Prepared intents are not completion
+proof. Metadata remains, and inode/backup/forensic erasure, storage power loss,
+Windows runtime and MCU execution are not qualified. No live history, production
+configuration, external provider or TypeSafe key was used/changed. The daemon and
+gateway remain inactive/disabled; PostgreSQL is exited with restart disabled.
+The 4B profile is unchanged. No paid retrieval-quality evaluation was performed.
+
+Prior [derived-memory](verification/memory-derived-state-20261120.json) and
+[retirement](verification/memory-retirement-20261120.json) receipts pin `f17968f`
+and `a419c20`; their fault cases remain in the current lane.
 Prior [promotion](verification/memory-promotion-20261120.json),
 [retrieval](verification/memory-views-20261120.json) and
 [publication](verification/memory-authority-20261120.json) receipts pin `9ec12c7`,

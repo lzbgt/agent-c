@@ -1,0 +1,192 @@
+{
+  "checked_at": "2026-11-20T15:20:28.659356+00:00",
+  "source_revision": "6c40ad97f34df37f17ee70c8f682b5c773a96d47",
+  "scope": "Explicit bounded expiry of unreferenced memory-root archives, active/pass-local revision pins, metadata preparation before unlink, honest partial/uncertain cleanup and API/UI integration; ordinary writes preserve original history",
+  "source_qualification": "Canonical native/CLI/API, Go/OpenAPI/UI-build portions passed. The initial browser pass had one blank-after-reload canvas test failure; six focused diagnostic runs and a full 144-check browser rerun are recorded separately. Production remains stopped; no live memory migration, deployment or paid calls.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "cxx": "c++ (GCC) 16.2.1 20260810",
+    "jsoncpp": "1.9.8",
+    "sqlite3": "3.54.0",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "Version 1.58.0"
+  },
+  "commands": [
+    "cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON",
+    "cmake --build build-snapshot --target memory_archive_tests memory_store_tests agentd -j4",
+    "ctest --test-dir build-snapshot -R '^(memory_archive_tests|memory_store_tests|memory_retrieval_smoke|agentd_memory_retention_smoke)$' --output-on-failure",
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 bash build/verify_memory_archive_browser.sh (exact browser block from canonical verifier, with --trace retain-on-failure)",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "initial_canonical_browser_pass": {
+      "passed": 143,
+      "failed": 1,
+      "failure": "390px canvas test: blank workspace after reload; prompt absent; keyboard-isolation assertions had passed; initial trace was disabled"
+    },
+    "scene_diagnostic_checks": 6,
+    "full_browser_rerun_trace": "retain-on-failure",
+    "native_cli_api_checks": 76,
+    "browser_checks": 144,
+    "go_packages": "all canonical packages passed; environment-gated integrations are separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "external_provider_calls": 0,
+    "paid_scorer_calls": 0,
+    "recap_loopback_fixture_calls_per_run": 5,
+    "archive_provider_calls": 0,
+    "retrieval_quality_evaluation": "not run; official TypeSafe endpoint/auth/model/pricing verification, key discovery/use and capped canary/screening remain pending",
+    "changed_document_links_and_anchors": 162
+  },
+  "local_fixture_timings_seconds": {
+    "canonical_native": 129.2,
+    "scene_diagnostic_six_checks": 14.1,
+    "focused_precommit_two_checks": 3.22,
+    "focused_precommit_browser_ten_checks": 15.4
+  },
+  "one_synthetic_unit_resource_run": {
+    "elapsed_seconds": 2.589731,
+    "max_rss_kib": 92740,
+    "measurement": "One Linux child synthetic archive fixture including 64-MiB capture, filesystem/operation/intent caps, concurrent processes and SIGKILL. Not aggregate RAM, production/model/MCU resource limits or an SLO."
+  },
+  "resource_measurement_reproduction": [
+    "python3",
+    "-c",
+    "import resource,subprocess,time; start=time.perf_counter(); subprocess.run([\"build-snapshot/memory_archive_tests\"],check=True); print({\"elapsed_seconds\":time.perf_counter()-start,\"max_rss_kib\":resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss})"
+  ],
+  "coverage": [
+    "130 ordinary source corrections do not silently remove the oldest retained original; zero expiry policy preserves all history.",
+    "Preview leaves payloads and metadata intents unchanged; apply removes eligible archive payloads and retains immutable prepared intents.",
+    "Active Markdown/recap literal revisions protect originals. Combined retirement/expiry protects its own newly issued evidence references until response publication.",
+    "Corrupt originals, linked active sources and detected captured-head changes preserve payloads and remain visible failures.",
+    "Cancellation after intent, expired deadlines, operation limits, 64-MiB capture, 4096-entry inventory and 2048-intent capacity preserve pending originals with explicit status.",
+    "Read-only host policy refuses destructive expiry; active source paths cannot be passed to the low-level archive unlink boundary.",
+    "Competing real processes expire/count one original once. Actual SIGKILL before/after unlink retains one intent and fresh local passes never count an absent archive again.",
+    "Real temporary-daemon API verifies preview/apply, exact intent metadata, strict age types, unchanged active source and no additional provider call.",
+    "Ten memory browser checks include a closed zero-default expiry option, fractional-age rejection before submission, a 320-pixel layout, confirmed/protected/uncertain counts and collapsed receipts without automatic resubmission.",
+    "The canonical lane retains prior publication/promotion/retirement/current-view, CLI/workflow/action/model, Go and browser recovery qualification."
+  ],
+  "limitations": [
+    "Root-managed public Markdown/JSON heads and literal revision references are inventoried conservatively. External databases/workflow receipts/files require active memory pins; this is not universal cross-system retention/forgetting.",
+    "Expiry permanently removes eligible unreferenced original payloads. Metadata intents retain hashes, paths, sizes and policy; prepared is not proof of completed unlink. Absent originals never substitute current bytes.",
+    "Original age uses filesystem mtime, not event/publication time. Removing the last reference may make an already-old archive immediately eligible. Matching content elsewhere conservatively protects all matching archived copies.",
+    "The explicit native/API policy is disabled by zero. The existing periodic retention engine does not automatically select archive expiry. No live service configuration or data was changed.",
+    "Inventories/captured memory/operations/metadata intents are bounded. Expiry/consumed-promotion receipt compaction and active recap-head retention remain open; an exhausted cap preserves originals and reports incomplete.",
+    "Unlink/directory fsync and process-death checks do not qualify storage power loss, Windows runtime, forensic device/snapshot/backup erasure or aggregate system RAM.",
+    "The single resource run covers synthetic bounds and subprocess cases. It is not a production/model/MCU limit, latency SLO, VRAM or retrieval-quality measurement.",
+    "Portable C code is unchanged. Its assertion-enabled core test passed in the host lane; the separate core-only lane and MCU target execution were not repeated.",
+    "One initial browser test timed out on a blank workspace after reload. Focused repeats passed; root cause was not established and no product fix is claimed. The later full browser rerun is separate evidence, not a clean first-run claim.",
+    "Generic claim/conclusion verification, direct recap pre-provider crash admission, broader lifecycle/handoffs and capped paid scoring remain open. No TypeSafe key discovery/use, 9B substitution or Panda publication."
+  ],
+  "production_state": {
+    "checked_at": "2026-11-20T15:10:56.609578+00:00",
+    "systemd": "Id=agent-c-daemon.service\nActiveState=inactive\nUnitFileState=disabled\n\nId=agent-c-gateway.service\nActiveState=inactive\nUnitFileState=disabled\n",
+    "postgres": "exited restart=no"
+  },
+  "artifacts": [
+    {
+      "path": "build-snapshot/agent",
+      "bytes": 12076368,
+      "sha256": "2a56290b7a43a85b833f2ca6f7c7a7435135d30013ccb33172ba493608dddc48"
+    },
+    {
+      "path": "build-snapshot/agentd",
+      "bytes": 66729160,
+      "sha256": "73143a2700ab52ae05bf8fa944b5701b29671ec1699eb6efd7b7dc0e58a79865"
+    },
+    {
+      "path": "build-snapshot/memory_archive_tests",
+      "bytes": 10611632,
+      "sha256": "e23f298865da01fe30c1d28812422ee56434f832c3d731ca40b616b891edb228"
+    },
+    {
+      "path": "ui/dist/index.html",
+      "bytes": 1073,
+      "sha256": "6bb33594ba658be8804a82287dabcd372ee4ace094869d4f21588fb05d8793a2"
+    },
+    {
+      "path": "ui/dist/assets/index-Cnaezztn.js",
+      "bytes": 784942,
+      "sha256": "bd5173359dfa967e7111f397b2a876742912c43d5bc21b9251a08687842e5ef3"
+    },
+    {
+      "path": "ui/dist/assets/index-vKkktlW6.css",
+      "bytes": 65342,
+      "sha256": "cd94028e1f65b96708054e6d3cdc7b22c396cd5d303f14c6f8ea64affd588364"
+    },
+    {
+      "path": "ui/dist/assets/MemoryPanel-CdckzWCu.js",
+      "bytes": 44581,
+      "sha256": "9ccc284fd29ac27cee6b8f2a4059b71800e4947e07c03d388e66c73671486185"
+    }
+  ],
+  "logs": [
+    {
+      "path": "build/memory_archive_snapshot_final.log",
+      "bytes": 45060,
+      "sha256": "077a2aa5447535036a0edef65657194be86f11ca618a1a4079aa71cb26a7ea45"
+    },
+    {
+      "path": "build/memory_archive_browser_final.log",
+      "bytes": 22644,
+      "sha256": "bfe723553d7e8969868057f5630db78348635f2a9bf2ae8bb63ae188bf404a76"
+    },
+    {
+      "path": "build/verify_memory_archive_browser.sh",
+      "bytes": 1602,
+      "sha256": "becab0efff84d95f91ef2f914a15209cf1c040c955fa0e6ec7493c217b3ddda9"
+    },
+    {
+      "path": "build/memory_archive_scene_diagnostic.log",
+      "bytes": 2546,
+      "sha256": "ec300278e069494373c930d4b9b864c63e0f59cde9423213a267874aa63cc156"
+    },
+    {
+      "path": "ui/test-results/run-1900986/scene_scope-canvas-lifetim-87cab-d-focus-stay-local-at-390px/test-failed-1.png",
+      "bytes": 3227,
+      "sha256": "5df2043b0658a993b51bb438d968e1dffcc5919e4ffaf1028ad7951656ec5fce"
+    },
+    {
+      "path": "build/memory_archive_before_commit.log",
+      "bytes": 334,
+      "sha256": "600834f6c540fb429dbe79b6c9889c656589d61980b88cd8f75c5e7ea7bca594"
+    },
+    {
+      "path": "build/memory_archive_receipt_pin_tests.log",
+      "bytes": 334,
+      "sha256": "f2d0432ec6dd6c80f630654f37edfa1b8270a9e86c5a3b3710ec2a59324287c3"
+    },
+    {
+      "path": "build/memory_archive_browser_commit.log",
+      "bytes": 2602,
+      "sha256": "e7f7df2c0edf9920e396de28e5c8e474d0218d47a2e9ac92964a2ac00d8f2f02"
+    },
+    {
+      "path": "build/memory_archive_resources.log",
+      "bytes": 381,
+      "sha256": "c5647028af032bfe775c1a4c30d18f66ea39ef086ac917a2b4ac362c19cc8050"
+    },
+    {
+      "path": "build/memory_archive_documentation.log",
+      "bytes": 58,
+      "sha256": "3a520852f191e5be200a2e463719faa987861cdc72e7f88d9e2f4c7ed6029a4c"
+    },
+    {
+      "path": "build/memory_archive_repo_guards.log",
+      "bytes": 4027,
+      "sha256": "854bce2ed776cd90abfa864c472f286dea4f2b63e33491e6200afcc415f5ee0c"
+    },
+    {
+      "path": "build/memory_archive_production_state.json",
+      "bytes": 256,
+      "sha256": "a08eac2a17c5bd6230e56b3229fae79390d8794609c74f4008a257bb53bc8693"
+    }
+  ]
+}

@@ -916,6 +916,7 @@ closed zero-default control, confirmed versus uncertain counts and collapsed
 receipts on a 320-pixel screen. These checks do not qualify MCU execution, Windows
 runtime, all external consumers, irreversible storage sanitization or retrieval
 quality.
+The [archive qualification receipt](verification/memory-archive-expiry-20261120.json) records the tested revision, artifact hashes and measurements.
 
 ## Memory recaps (LLM summaries)
 

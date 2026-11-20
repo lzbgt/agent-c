@@ -62,6 +62,8 @@ The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md]
 - [x] Consolidated canonical checks include the recent CLI snapshot, session paging, durable job and browser recovery contracts. The rolling snapshot and developer handoff supersede outdated milestone summaries; dated evidence remains archived.
 - [ ] P1: append-only conversation IDs/history and migration of remaining UI consumers to bounded pages; replace model-context snapshots as the long-term chat authority. Server-side content idempotency, cross-tab/device admission and synchronous-run reconciliation remain separate contracts.
 
+- [ ] P1: investigate the single intermittent blank workspace after reload observed in the 390-pixel scene test during archive qualification. Six focused repeats and a separate full browser rerun are recorded; no product fix/root cause is claimed. The canonical verifier now retains a trace for any future failure.
+
 ## Additional subsystem qualification
 
 - [ ] Provider coverage: keep fixture/streaming matrices aligned with advertised adapters; update live-provider pins only within an authorized qualification scope. Historical credential failures are not current owner blockers without fresh verification. The production shutdown remains effective.
