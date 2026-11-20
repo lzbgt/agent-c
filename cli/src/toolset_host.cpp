@@ -444,11 +444,12 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     st = add_tool(
       r,
       "memory_get",
-      "Read a durable memory Markdown file under the daemon state directory (bounded/paginated).",
+      "Read a durable memory Markdown file under the daemon state directory (bounded/paginated), including its exact data.revision for subsequent memory_put.",
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
       "  \"path\":{\"type\":\"string\",\"description\":\"Relative .md path under the daemon memory directory (e.g. MEMORY.md or 2026-02-01.md).\"},"
+      "  \"revision\":{\"type\":\"string\",\"description\":\"Optional exact retained content revision. Never substitutes current bytes when unavailable.\"},"
       "  \"from_line\":{\"type\":\"integer\",\"description\":\"1-based starting line (default: 1).\"},"
       "  \"max_lines\":{\"type\":\"integer\",\"description\":\"Max lines to return (default: 200).\"}"
       "},"
@@ -461,12 +462,13 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       st = add_tool(
         r,
         "memory_put",
-        "Overwrite a durable memory Markdown file under the daemon state directory (used for consolidation: deprecate outdated facts, keep core memory accurate). Supports legacy full-text overwrite or structured upserts.",
+        "Overwrite a durable memory Markdown file under the daemon state directory (used for consolidation: deprecate outdated facts, keep core memory accurate). Requires expected_revision from memory_get (or absent for a new file); stale updates conflict. Supports full-text replacement or structured upserts.",
         "{"
         "\"type\":\"object\","
         "\"properties\":{"
         "  \"path\":{\"type\":\"string\",\"description\":\"Relative .md path under the daemon memory directory.\"},"
-        "  \"text\":{\"type\":\"string\",\"description\":\"Legacy mode: full file contents to write.\"},"
+        "  \"expected_revision\":{\"type\":\"string\",\"description\":\"Exact memory_get data.revision; absent only for a new file. On conflict reread and reconsider, never blindly retry.\"},"
+        "  \"text\":{\"type\":\"string\",\"description\":\"Full-text mode: complete file contents to write.\"},"
         "  \"entries\":{\"type\":\"array\",\"description\":\"Structured mode: upsert durable facts/preferences/tasks.\",\"items\":{"
         "    \"type\":\"object\","
         "    \"properties\":{"
@@ -486,7 +488,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
         "  \"checkpoint\":{\"type\":\"boolean\",\"description\":\"When true (default), write a time-stamped JSON snapshot under memory/checkpoints/ for structured updates.\"},"
         "  \"keep_checkpoints\":{\"type\":\"integer\",\"description\":\"How many structured checkpoints to retain (default: 100).\"}"
         "},"
-        "\"required\":[\"path\"],"
+        "\"required\":[\"path\",\"expected_revision\"],"
         "\"anyOf\":[{\"required\":[\"text\"]},{\"required\":[\"entries\"]}]"
         "}"
       );

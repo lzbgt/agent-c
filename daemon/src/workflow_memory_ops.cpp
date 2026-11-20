@@ -163,6 +163,7 @@ Json::Value workflow_memory_put_to_json(
 
   Json::Value args(Json::objectValue);
   args["path"] = path.empty() ? "STRUCTURED.md" : path;
+  args["expected_revision"] = mp["expected_revision"];
   args["entries"] = tool_entries;
   const bool checkpoint =
     !mp.isMember("checkpoint") || (mp["checkpoint"].isBool() && mp["checkpoint"].asBool());
@@ -206,11 +207,6 @@ Json::Value workflow_memory_put_to_json(
   agent_tool_registry_destroy(reg);
   toolset_host_destroy(&exec);
 
-  if (est != AGENT_OK) {
-    out["error"] = "memory_put failed";
-    return out;
-  }
-
   Json::Value resp(Json::objectValue);
   std::string rerr;
   if (!json_parse_any_value(resp_s, &resp, &rerr) || !resp.isObject()) {
@@ -220,12 +216,14 @@ Json::Value workflow_memory_put_to_json(
   }
 
   out["memory_put_response"] = resp;
-  const bool ok = resp.isMember("ok") && resp["ok"].isBool() && resp["ok"].asBool();
+  const bool ok = est == AGENT_OK && resp.isMember("ok") && resp["ok"].isBool() && resp["ok"].asBool();
   out["ok"] = ok;
   out["path"] = args["path"];
   if (!ok) {
     const std::string err = resp.isMember("error") && resp["error"].isString() ? resp["error"].asString() : "memory_put failed";
     out["error"] = err;
+    out["retryable"] = false; // The persisted expected revision must never be silently refreshed.
+    if (resp.isMember("data")) out["memory_error"] = resp["data"];
     out["assistant_text"] = "";
     return out;
   }

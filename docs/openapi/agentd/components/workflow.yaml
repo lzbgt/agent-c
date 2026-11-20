@@ -1341,8 +1341,11 @@ WorkflowTaskDelaySpec:
 
 WorkflowMemoryPutSpec:
   type: object
-  required: [entries]
+  required: [entries, expected_revision]
   properties:
+    expected_revision:
+      type: string
+      description: Exact memory_get data.revision, absent for a new source, or a task reference resolved once for this update. A stale revision fails without writing or automatic retry.
     path:
       type: string
       description: Safe relative `.md` path under the memory root (default `STRUCTURED.md`).
@@ -1363,7 +1366,7 @@ WorkflowMemoryPutSpec:
         properties:
           key:
             type: string
-            description: Structured memory key (string; last write wins for value changes).
+            description: Structured memory key. Value changes require the captured document revision.
           kind:
             type: string
             description: Record kind (default `fact`).

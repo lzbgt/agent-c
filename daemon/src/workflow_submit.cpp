@@ -1,4 +1,5 @@
 #include "workflow_submit.h"
+#include "memory_store.h"
 #include "workflow_sop.h"
 #include "workflow_sop_registry.h"
 
@@ -801,6 +802,18 @@ void workflow_submit_handle(
         return;
       }
 
+      const Json::Value expected = mp["expected_revision"];
+      if (!expected.isString() || (!host_tools_internal::memory_revision_valid(expected.asString()) &&
+          expected.asString().find("${") == std::string::npos)) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "memory_put.expected_revision requires a content revision, absent, or a task reference";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+
       const Json::Value entries = mp.isMember("entries") ? mp["entries"] : Json::Value(Json::nullValue);
       if (!entries.isArray() || entries.empty()) {
         resp->status = 400;
@@ -939,6 +952,7 @@ void workflow_submit_handle(
 
       Json::Value mp2(Json::objectValue);
       mp2["path"] = path;
+      mp2["expected_revision"] = expected;
       mp2["entries"] = entries2;
       const bool checkpoint =
         !mp.isMember("checkpoint") || (mp["checkpoint"].isBool() && mp["checkpoint"].asBool());

@@ -1,4 +1,6 @@
 #include "memory_retention.h"
+#include "memory_store.h"
+#include "memory_structured.h"
 
 #include "json_util.h"
 #include "memory_checkpoints.h"
@@ -181,6 +183,7 @@ struct DeprecateEntry {
 bool apply_structured_deprecations(
   const DaemonConfig& cfg,
   const std::vector<DeprecateEntry>& entries,
+  const std::string& expected_revision,
   int keep_checkpoints,
   std::string* out_err
 ) {
@@ -220,6 +223,7 @@ bool apply_structured_deprecations(
 
   Json::Value args(Json::objectValue);
   args["path"] = "STRUCTURED.md";
+  args["expected_revision"] = expected_revision;
   Json::Value arr(Json::arrayValue);
   for (const auto& e : entries) {
     Json::Value o(Json::objectValue);
@@ -240,6 +244,7 @@ bool apply_structured_deprecations(
 
   agent_string_t out{};
   const agent_status_t est = exec.execute(exec.ctx, "memory_put", req.c_str(), &out);
+  const std::string response = out.data ? std::string(out.data, out.len) : std::string();
   agent_string_free(&out);
 
   agent_tool_registry_destroy(reg);
@@ -247,6 +252,14 @@ bool apply_structured_deprecations(
 
   if (est != AGENT_OK) {
     if (out_err) *out_err = "memory_put failed";
+    return false;
+  }
+  Json::Value receipt;
+  Json::CharReaderBuilder rb;
+  std::istringstream stream(response);
+  std::string parse_error;
+  if (!Json::parseFromStream(rb, stream, &receipt, &parse_error) || !receipt.get("ok", false).asBool()) {
+    if (out_err) *out_err = receipt.get("error", "invalid memory_put receipt").asString();
     return false;
   }
   return true;
@@ -460,17 +473,16 @@ bool memory_retention_enforce(
       policy.structured_deprecate_max_entries > 0 ? std::min(200, policy.structured_deprecate_max_entries) : 50;
     std::vector<DeprecateEntry> dep_entries;
 
-    std::vector<MemoryCheckpointMeta> metas;
-    std::string lerr;
-    if (!memory_list_structured_checkpoints(mem_root, 0, INT64_MAX, "", 1, &metas, &lerr) || metas.empty()) {
-      if (!lerr.empty()) maybe_push_error(out_stats, lerr);
+    host_tools_internal::MemoryDocument snapshot;
+    Json::Value document;
+    std::string read_error;
+    if (host_tools_internal::memory_document_read(mem_root, "STRUCTURED.md", &snapshot, &read_error)
+          != host_tools_internal::MemoryStoreStatus::Ok ||
+        !host_tools_internal::memory_structured_parse_doc(snapshot.text, &document, &read_error)) {
+      maybe_push_error(out_stats, read_error);
     } else {
-      std::string structured_path2;
-      Json::Value items(Json::nullValue);
-      std::string rerr;
-      if (!memory_read_structured_checkpoint_items(mem_root, metas[0].checkpoint_path_rel, &structured_path2, &items, &rerr)) {
-        if (!rerr.empty()) maybe_push_error(out_stats, rerr);
-      } else if (items.isObject()) {
+      const Json::Value items = document["items"];
+      if (items.isObject()) {
         const int64_t cutoff_ms = out_stats->generated_utc_ms
           - (int64_t)policy.structured_deprecate_days * 24LL * 60 * 60 * 1000;
         std::vector<std::string> keys = items.getMemberNames();
@@ -512,7 +524,7 @@ bool memory_retention_enforce(
         for (const auto& e : dep_entries) maybe_push_key(&out_stats->structured_deprecated_keys, e.key);
       } else {
         std::string derr;
-        if (!apply_structured_deprecations(cfg, dep_entries, cfg.memory_consolidate_keep_checkpoints, &derr)) {
+        if (!apply_structured_deprecations(cfg, dep_entries, snapshot.revision, cfg.memory_consolidate_keep_checkpoints, &derr)) {
           maybe_push_error(out_stats, derr.empty() ? "structured deprecate failed" : derr);
         } else {
           out_stats->structured_deprecated_count += (int64_t)dep_entries.size();

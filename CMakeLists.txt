@@ -214,6 +214,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/summary_compaction.cpp
     cli/src/summary_llm.cpp
     cli/src/memory_index.cpp
+    cli/src/memory_store.cpp
     cli/src/tool_loop.cpp
     cli/src/web_evidence_guard.cpp
     cli/src/tool_loop_compaction.cpp
@@ -1927,6 +1928,10 @@ if(AGENT_BUILD_HOST)
 endif()
 
 if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
+  add_executable(memory_store_tests tests/test_memory_store.cpp)
+  target_link_libraries(memory_store_tests PRIVATE agent_host)
+  add_test(NAME memory_store_tests COMMAND memory_store_tests)
+  set_tests_properties(memory_store_tests PROPERTIES TIMEOUT 30)
   add_executable(host_toolset_tests
     tests/test_host_toolset.cpp
   )

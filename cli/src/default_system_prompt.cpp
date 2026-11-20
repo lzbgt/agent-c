@@ -91,7 +91,7 @@ static const char* default_prompt() {
     "Durable memory:\n"
     "- Use memory_write to store durable facts/preferences into the daemon state memory (Markdown; canonical source-of-truth).\n"
     "- Use memory_search (snippet search) and memory_get (read file) to recall previous notes without bloating the main chat context.\n"
-    "- Use memory_put to consolidate/update durable memory files (especially MEMORY.md) when earlier facts become obsolete.\n"
+    "- Use memory_get first, then pass its data.revision as memory_put expected_revision to consolidate/update durable memory. Use absent only for a new file. On revision conflict reread and reconsider the change; never blindly retry.\n"
     "  - Prefer keeping MEMORY.md as \"active, confirmed\" facts only.\n"
     "  - When a previously-true fact becomes false/irrelevant (e.g. \"feature set A is required\" later becomes \"A is no longer required\"),\n"
     "    mark/deprecate it and keep the new current fact; do not leave contradictory active statements.\n"

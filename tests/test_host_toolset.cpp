@@ -32,6 +32,16 @@ static Json::Value json_parse(const std::string& s) {
   return v;
 }
 
+static std::string captured_memory_revision(agent_tool_executor_t& exec, const std::string& path) {
+  Json::Value args;args["path"] = path;
+  agent_string_t out{};
+  const auto request = json_stringify(args);
+  assert(exec.execute(exec.ctx, "memory_get", request.c_str(), &out) == AGENT_OK);
+  const auto receipt = json_parse(std::string(out.data, out.len));agent_string_free(&out);
+  assert(receipt["data"]["revision"].isString());
+  return receipt["data"]["revision"].asString();
+}
+
 static std::string extract_between(const std::string& s, const char* begin, const char* end) {
   const std::string b = begin ? begin : "";
   const std::string e = end ? end : "";
@@ -1222,6 +1232,7 @@ static void test_memory_tools() {
     Json::Value args(Json::objectValue);
     args["path"] = "MEMORY.md";
     args["text"] = "# Core memory\n\n## Active\n- Scene rendering should be server-owned and refresh-proof.\n\n## Deprecated\n- Feature set A (deprecated; no longer required).\n";
+    args["expected_revision"] = captured_memory_revision(exec, args["path"].asString());
     const std::string req = json_stringify(args);
     agent_string_t out{};
     assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
@@ -1273,6 +1284,7 @@ static void test_memory_tools() {
     Json::Value args(Json::objectValue);
     args["path"] = "STRUCTURED.md";
     args["entries"] = entries;
+    args["expected_revision"] = captured_memory_revision(exec, args["path"].asString());
     const std::string req = json_stringify(args);
     agent_string_t out{};
     assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
@@ -1303,6 +1315,7 @@ static void test_memory_tools() {
     Json::Value args(Json::objectValue);
     args["path"] = "STRUCTURED.md";
     args["entries"] = entries;
+    args["expected_revision"] = captured_memory_revision(exec, args["path"].asString());
     const std::string req = json_stringify(args);
     agent_string_t out{};
     assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
@@ -1374,6 +1387,7 @@ static void test_memory_tools() {
     Json::Value args(Json::objectValue);
     args["path"] = "STRUCTURED.md";
     args["entries"] = entries;
+    args["expected_revision"] = captured_memory_revision(exec, args["path"].asString());
     const std::string req = json_stringify(args);
     agent_string_t out{};
     assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
@@ -1695,6 +1709,51 @@ static void test_fs_list_output_receipt_storage() {
   std::filesystem::remove_all(root);
 }
 
+static void test_memory_revision_contract() {
+  const auto root = std::filesystem::temp_directory_path() / ("agent-memory-revisions-" + std::to_string(getpid()));
+  std::filesystem::remove_all(root);
+  HostToolsetConfig cfg;
+  cfg.root_dir = root.string();cfg.sessions_root_dir = (root / "sessions").string();cfg.session_id = "revision-fixture";
+  agent_tool_registry_t* registry = nullptr;agent_tool_executor_t exec{};
+  assert(toolset_host_create(cfg, &registry, &exec) == AGENT_OK);
+  const auto call = [&](const char* tool, const Json::Value& args) {
+    agent_string_t out{};const auto request = json_stringify(args);
+    assert(exec.execute(exec.ctx, tool, request.c_str(), &out) == AGENT_OK);
+    const auto receipt = json_parse(std::string(out.data, out.len));agent_string_free(&out);return receipt;
+  };
+  Json::Value args;args["path"] = "STRUCTURED.md";
+  auto absent = call("memory_get", args);
+  assert(!absent["ok"].asBool() && absent["data"]["revision"] == "absent");
+  args["entries"][0]["key"] = "authority.test";args["entries"][0]["value"] = "original";
+  assert(!call("memory_put", args)["ok"].asBool()); // missing expected revision
+  args["expected_revision"] = "absent";
+  const auto original = call("memory_put", args);
+  assert(original["ok"].asBool() && original["data"]["checkpoint_ok"].asBool());
+  args["entries"][0]["value"] = "correction";
+  const auto conflict = call("memory_put", args);
+  assert(!conflict["ok"].asBool() && conflict["data"]["code"] == "memory_revision_conflict");
+  assert(conflict["data"]["current_revision"] == original["data"]["revision"]);
+  args["expected_revision"] = original["data"]["revision"];
+  const auto corrected = call("memory_put", args);
+  assert(corrected["ok"].asBool() && corrected["data"]["checkpoint_ok"].asBool());
+  assert(original["data"]["checkpoint_path"] != corrected["data"]["checkpoint_path"]);
+  Json::Value get;get["path"] = "STRUCTURED.md";get["revision"] = original["data"]["revision"];
+  const auto historical = call("memory_get", get);
+  assert(historical["ok"].asBool() && historical["data"]["revision"] == original["data"]["revision"]);
+  assert(historical["data"]["text"].asString().find("correction") == std::string::npos);
+  get["revision"] = std::string("sha256:") + std::string(64, '0');
+  assert(!call("memory_get", get)["ok"].asBool()); // never substitutes the current revision
+  Json::Value append;append["path"] = "STRUCTURED.md";append["text"] = "unsafe tail";
+  assert(!call("memory_write", append)["ok"].asBool());
+  // A damaged machine block must not be interpreted as an empty document.
+  std::filesystem::create_directories(root / "memory");
+  { std::ofstream file(root / "memory" / "damaged.md");file << "<!-- AGENT_MEMORY_V1_BEGIN -->\n{broken"; }
+  args["path"] = "damaged.md";args["expected_revision"] = captured_memory_revision(exec, "damaged.md");
+  assert(!call("memory_put", args)["ok"].asBool());
+  assert(captured_memory_revision(exec, "damaged.md") == args["expected_revision"].asString());
+  toolset_host_destroy(&exec);agent_tool_registry_destroy(registry);std::filesystem::remove_all(root);
+}
+
 int main(int argc, char** argv) {
   if (argc == 2 && std::string(argv[1]) == "--emit-descendant-fixture") {
     for (int i = 0; i < 4; ++i) {
@@ -1724,6 +1783,7 @@ int main(int argc, char** argv) {
   test_scoped_mode_denies_symlink_escapes();
   test_artifact_register();
   test_memory_tools();
+  test_memory_revision_contract();
   test_fs_stat_list_read();
   test_shell_exec();
   test_proc_exec();

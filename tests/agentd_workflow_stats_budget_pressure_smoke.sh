@@ -42,7 +42,7 @@ req = {
     {
       "task_id":"A",
       "kind":"memory_put",
-      "memory_put": {
+      "memory_put": {"expected_revision": "absent",
         "path":"STRUCTURED.md",
         "checkpoint": True,
         "entries":[{"key":"k_budget_pressure","value":"v1"}]
@@ -52,7 +52,7 @@ req = {
       "task_id":"B",
       "kind":"delay",
       "depends_on":["A"],
-      "delay_ms": 1500,
+      "delay_ms": 5000,
       "result": {"assistant_text":"ok"}
     }
   ]
@@ -73,8 +73,10 @@ if [[ -z "${workflow_id}" ]]; then
   exit 1
 fi
 
-# Wait until B is running so the workflow is still queued|running when we query stats.
+# Wait for B's durable timer. Delays release their worker and remain queued.
+# The active workflow must still be present when budget pressure is sampled.
 snap=""
+timer_ready=0
 for _ in $(seq 1 260); do
   snap="$(curl -fsS --noproxy "*" --max-time 5 \
     "${DAEMON_URL}/api/v1/workflow?workflow_id=${workflow_id}&include_tasks=1&include_results=0")"
@@ -83,13 +85,19 @@ import json
 obj = json.loads(r'''${snap}''')
 tasks = obj.get("tasks") or []
 by = {t.get("task_id"): t for t in tasks if isinstance(t, dict)}
-raise SystemExit(0 if by.get("B", {}).get("status") == "running" else 1)
+raise SystemExit(0 if by.get("A", {}).get("status") == "done" and by.get("B", {}).get("wait", {}).get("kind") == "delay" else 1)
 PY
   then
+    timer_ready=1
     break
   fi
   sleep 0.05
 done
+
+if [[ "${timer_ready}" != "1" ]]; then
+  echo "budget fixture never reached its durable timer" >&2
+  exit 1
+fi
 
 stats="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/workflow/stats?include_budget_pressure=1&include_budget_workflows=1&budget_workflow_limit=128")"

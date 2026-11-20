@@ -6,7 +6,7 @@
 - `state_dir/memory/YYYY-MM-DD.md` — daily append-only log (bounded scan by days)
 - `state_dir/memory/sessions/<session_id>.md` — optional session layer
 - `state_dir/memory/STRUCTURED.md` — machine-maintained structured memory (via `memory_put(entries)`)
-- `state_dir/memory/checkpoints/structured_<ts>.json` — time-stamped structured snapshots (best-effort, rolling)
+- `state_dir/memory/checkpoints/structured_<ts>_<source>_<revision>.json` — time-stamped structured snapshots (best-effort, rolling)
   - each checkpoint has a deterministic `sha256` surface (exposed by APIs/tools)
 - `state_dir/memory/recaps/recap_<ts>.json` — optional LLM-generated recap snapshots
 
@@ -16,10 +16,144 @@ These are host tools exposed to the model when a daemon session context is avail
 
 - `memory_write` — append a note (default: `layer="daily"`)
 - `memory_observe` — append a structured observation (daily log; citations + tags)
-- `memory_get` — read a memory file by path (paged by lines)
+- `memory_get` — read one file snapshot and its content revision (paged by lines); optionally request exact retained bytes
 - `memory_search` — retrieve relevant snippets (prefer ranked search when available)
 - `memory_timeline` — retrieve bounded context around a citation (`path:line`)
-- `memory_put` — consolidate/overwrite memory files (legacy mode), or structured upsert (`entries`)
+- `memory_put` — revision-checked full-text replacement or structured upsert (`entries`)
+
+## Revision-checked publication
+
+This contract applies to the host memory tools and daemon structured-memory
+producers. It is source-qualified on Linux; production remains stopped. The
+portable C kernel has no filesystem, lock, JSON or retrieval dependency.
+[`memory_store.cpp`](../cli/src/memory_store.cpp) owns publication;
+[`toolset_host_memory.cpp`](../cli/src/toolset_host_memory.cpp) owns the tool
+contract and structured rendering. Consolidation and retention reuse that path.
+
+A replacement must name the bytes from which it was derived. A content revision
+is `sha256:` followed by the 64 lowercase hexadecimal digits of SHA-256 over the
+**entire exact file**, including line endings. `absent` means no file; an existing
+empty file has a SHA-256 revision. This identifies content, not a monotonic update
+number: identical bytes have the same revision.
+
+Use these steps when updating a source:
+
+1. Call `memory_get` with `{"path":"STRUCTURED.md"}`. Save `data.revision` and
+   inspect the required content. Use a small `max_lines` page when only the
+   revision is needed; `memory_structured_query` also reports the revision of
+   its captured document alongside filtered records. A missing source returns `ok=false`,
+   `data.exists=false` and `data.revision="absent"`; absence is an expected
+   starting state, not permission to replace an existing file.
+2. Derive the change from that snapshot. Pass its revision as the required
+   `expected_revision` in `memory_put`, together with `path` and either `text`
+   or `entries`. For a known-new source, this example is illustrative tool
+   input, not a shell command:
+
+   ```json
+   {
+     "path": "STRUCTURED.md",
+     "expected_revision": "absent",
+     "entries": [{"key":"ui.layout","value":"Keep primary output visible"}]
+   }
+   ```
+
+3. Check `ok`, `data.commit_state` and `data.revision`. Success includes
+   `previous_revision`, the resulting `revision` and `source_id`. Identical
+   structured content can return `no_changes=true` without a publication.
+   A paged read still reports the hash of the complete captured file. For a
+   subsequent page from the same bytes, pass that hash as `memory_get.revision`.
+4. On `data.code="memory_revision_conflict"`, inspect `current_revision`, read
+   the new snapshot and reconsider the change. Do not refresh the expected hash
+   and resubmit an old derived value automatically. Independent work can continue.
+
+The root-wide OS writer lock is `memory/.locks/writer.lock`. It serializes
+`memory_put`, `memory_write` and `memory_observe` across threads and cooperating
+processes. Lock acquisition checks cancellation, waits at most five seconds and
+returns `memory_busy` when exhausted. Appends capture the head while holding the
+lock. They reject structured machine-block files; use structured upserts there.
+Each source read and replacement is bounded to 8 MiB (8,388,608 bytes).
+
+For a changed document, the writer performs these operations in order:
+
+1. Compare the expected revision with the captured head under the lock.
+2. Retain the **previous authoritative bytes**, before replacing them, at
+   `.revisions/<path-hash>/<content-hash>.blob`. Both hashes use SHA-256;
+   `path-hash` hashes the supplied relative source path and `content-hash`
+   hashes its raw bytes. The proposed replacement is not archived as history
+   before it becomes authoritative. A corrupt existing archive object prevents
+   replacement when that object is needed to retain the current head.
+3. Create a unique staging file in the destination directory. Write all bytes
+   and sync the file. Recheck the current head, then atomically replace its name
+   and sync the parent directory. On POSIX, new private directories use mode
+   `0700`; staged files and snapshots use `0600`, which the replaced head inherits.
+   Existing directory permissions are not rewritten.
+4. Prune old originals as bounded, best-effort maintenance. `keep_checkpoints`
+   also selects the revision window, clamped to 2–1,000, default 100. Current and
+   immediately previous content are protected. A maintenance failure cannot
+   revoke a durable commit. Recognized abandoned staging files for the same
+   destination are cleaned under the lock, with a 4,096-entry scan bound.
+
+`source_id` is `memory:` plus SHA-256 of the canonical memory-root path, a newline
+and the supplied relative path. It identifies this configured physical scope;
+relocating the root does not preserve that identifier. Direct privileged edits,
+in-place writes outside the store, directory replacement and external deletion
+are outside the cooperating-writer guarantee. The final comparison detects an
+observed external change; it is not an OS compare-and-swap against arbitrary
+writers. Daily-file rotation/deletion and derived-cache invalidation remain
+separate policy work.
+
+| Observable result | Meaning and recovery |
+| --- | --- |
+| `ok=true`, `commit_state=committed` | The head and its required prior original were synced. Auxiliary checkpoint creation can still report `checkpoint_ok=false`. |
+| `memory_revision_conflict`, `commit_state=not_written` | This attempt did not replace the source. Read and reconsider using the current revision. |
+| `memory_busy` or `cancelled`, `not_written` | No publication occurred. Respect cancellation; use a later bounded attempt for busy state. |
+| `memory_unavailable`, `not_written` | Staging, original retention or storage validation failed before replacement. Repair the reported storage cause before retrying. |
+| `memory_publication_uncertain`, `published_unconfirmed` | Replacement happened but later durability/acknowledgment was interrupted. Read the head and compare revisions; do not replay blindly. The host executor also returns an error so the existing effect journal retains uncertainty. |
+
+`memory_get` with `revision="sha256:..."` reads only that exact current or
+retained snapshot. Paged display text omits line terminators and strips trailing
+carriage returns; the reported revision always hashes the original complete bytes. A missing, pruned, linked or corrupt original fails explicitly;
+it never substitutes the latest text. The lookup verifies the archived raw-byte
+hash. The mutable `path:line` citations emitted by older retrieval surfaces still
+need source/revision/span binding. This publication milestone does **not** yet
+provide current/history/evidence eligibility across FTS, fallback, salience,
+recaps or injected context, nor correction propagation into conclusions.
+
+Consolidation captures the structured head before deriving updates and publishes
+against that revision. It checks the tool's `ok` envelope, not only executor
+success. Other scanned inputs are not yet one multi-file transaction. Retention
+derives deprecations from the current `STRUCTURED.md`, rather than the newest
+checkpoint, and carries the same captured revision into its write. It reports
+failed writes instead of counting them as successful deprecations.
+
+For native workflow updates, `expected_revision` is required in the persisted
+`memory_put` task. A dependent write can use
+`${task.M.json:/memory_put_response/data/revision}` from an earlier completed
+write. Stale writes return `retryable=false` with `memory_error` details; the
+scheduler keeps independent requirements runnable. See [workflow memory
+updates](WORKFLOWS.md#deterministic-memory-update-task-kindmemory_put-v17).
+
+### Reproduce the authority checks
+
+On a Linux development host, from the repository root, with the host build
+prerequisites in [OPERATIONS.md](OPERATIONS.md):
+
+```sh
+cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
+cmake --build build-snapshot --target memory_store_tests host_toolset_tests agentd -j4
+ctest --test-dir build-snapshot -R '^(memory_store_tests|host_toolset_tests|agentd_workflow_memory_put_smoke|agentd_memory_retention_smoke)$' --output-on-failure
+```
+
+Pass means all selected checks report success. The fixtures use isolated
+synthetic state and no model provider. They exercise competing thread/process
+writers, append preservation, expected-revision refusal, original retrieval,
+archive failure, cancellation, size limits, interrupted publication, real
+`SIGKILL` before/after replacement, workflow reference binding and stale
+retention checkpoints. They do not simulate storage power loss. Windows uses
+`LockFileEx`, `FlushFileBuffers` and write-through replacement in source, but
+Windows runtime/durability qualification has not been performed. For another
+filesystem or platform, rerun these checks and qualify its sync/rename behavior
+before claiming equivalent durability.
 
 ## Shared memory scopes
 
@@ -111,7 +245,7 @@ Tuning knobs (daemon config / `/api/v1/config/update`):
 `memory_search` results now include:
 
 - `tier`: `core` | `structured` | `session` | `daily` (or `other`)
-- `citation`: `${path}:${line}` (stable, human-readable pointer)
+- `citation`: `${path}:${line}` (human-readable pointer into mutable content; not immutable evidence)
 
 Ordering:
 - `ranked` (default): preserves FTS5 relevance ordering (or scan order for substring mode).
@@ -141,7 +275,7 @@ User’s card number is <private>4242 4242 4242 4242</private>
 Behavior:
 - `memory_write` strips `<private>...</private>` blocks before writing.
 - `memory_observe` strips `<private>...</private>` blocks before writing.
-- `memory_put` strips private blocks from legacy text and from structured `entries[].value`.
+- `memory_put` strips private blocks from full-text input and from structured `entries[].value`.
 - If all content is private, the write is skipped and the tool reports `skipped_private=true`.
 
 ## Ranked retrieval (Memory v2)
@@ -159,7 +293,7 @@ When SQLite or FTS5 is unavailable at runtime, `memory_search` automatically fal
 For durable “facts” that should survive long-running evolution, prefer:
 
 - write daily/raw observations via `memory_observe` (preferred) or `memory_write(layer="daily")`
-- periodically upsert stable facts into `STRUCTURED.md` via `memory_put(path="STRUCTURED.md", entries=[...])`
+- periodically upsert stable facts into `STRUCTURED.md` via `memory_put(path="STRUCTURED.md", expected_revision=<captured revision>, entries=[...])`
 
 ### Structured memory schema (v2)
 
@@ -245,7 +379,13 @@ To run periodically, start `agentd` with:
 Scheduled consolidation uses `--memory-consolidate-daily-days` as both the daily and session scan window, with the default
 64-session-file cap.
 
-Structured updates produce a time-stamped checkpoint JSON snapshot under `memory/checkpoints/` by default:
+After a successful structured publication, the optional auxiliary checkpoint is
+published atomically without overwriting an existing object under
+`memory/checkpoints/structured_<ts>_<source>_<revision>.json`. Its payload records
+`source_id` and `revision`; different updates within the same second have different
+paths. Checkpoint creation and pruning are best effort. They are not the
+publication authority or a substitute for reading the current head:
+
 
 - `checkpoint=true|false` (default: true)
 - `keep_checkpoints=<N>` (default: 100)
@@ -277,7 +417,7 @@ Policy surfaces:
    - Age bound: delete checkpoints older than checkpoint_max_days
    - Count bound: keep at most checkpoint_max_count (oldest deleted first)
 3) Structured deprecation (STRUCTURED.md)
-   - Entries older than structured_deprecate_days are upserted as status="deprecated"
+   - Current authoritative entries older than structured_deprecate_days are revision-checked and upserted as status="deprecated"
    - Bound by structured_deprecate_max_entries per enforcement pass
 
 API:

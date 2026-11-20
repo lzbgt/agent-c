@@ -1,10 +1,12 @@
 #include "toolset_host_internal.h"
 
 #include "memory_index.h"
+#include "memory_store.h"
 #include "agent_sha256.h"
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
+#include "memory_structured.h"
 #endif
 
 #include <algorithm>
@@ -521,13 +523,23 @@ static std::string build_structured_memory_file_text(const Json::Value& doc, con
   return oss.str();
 }
 
-static bool parse_structured_memory_doc(const std::string& file_text, Json::Value* out_doc, std::string* out_err) {
+bool memory_structured_parse_doc(const std::string& file_text, Json::Value* out_doc, std::string* out_err) {
   if (out_err) out_err->clear();
   if (out_doc) *out_doc = Json::Value(Json::objectValue);
   if (!out_doc) return false;
 
+  const auto begin = file_text.find(kAgentMemoryV1Begin), end = file_text.find(kAgentMemoryV1End);
+  if ((begin != std::string::npos || end != std::string::npos) &&
+      (begin == std::string::npos || end == std::string::npos || end <= begin)) {
+    if (out_err) *out_err = "incomplete structured memory machine block";
+    return false;
+  }
   const std::string body = extract_block_body(file_text, kAgentMemoryV1Begin, kAgentMemoryV1End);
   if (trim_ascii(body).empty()) {
+    if (begin != std::string::npos) {
+      if (out_err) *out_err = "empty structured memory machine block";
+      return false;
+    }
     // Initialize empty doc.
     Json::Value doc(Json::objectValue);
     doc["schema"] = "agent_memory_v2";
@@ -542,7 +554,10 @@ static bool parse_structured_memory_doc(const std::string& file_text, Json::Valu
     return false;
   }
   if (!doc.isMember("schema") || !doc["schema"].isString()) doc["schema"] = "agent_memory_v2";
-  if (!doc.isMember("items") || !doc["items"].isObject()) doc["items"] = Json::Value(Json::objectValue);
+  if (!doc.isMember("items") || !doc["items"].isObject()) {
+    if (out_err) *out_err = "structured memory requires an items object";
+    return false;
+  }
 
   // Best-effort upgrade to v2 fields for deterministic versioning/evidence merge.
   // Keep markers as V1 for backwards compatibility (only schema + payload evolve).
@@ -585,6 +600,22 @@ static bool parse_structured_memory_doc(const std::string& file_text, Json::Valu
 static std::string extract_user_notes_md(const std::string& file_text) {
   const std::string notes = extract_block_body(file_text, kAgentMemoryV1NotesBegin, kAgentMemoryV1NotesEnd);
   return trim_ascii(notes).empty() ? "" : notes;
+}
+
+static agent_status_t memory_store_error(agent_string_t* out, const std::string& tool,
+    MemoryStoreStatus status, const std::string& error, const MemoryDocument& document = {},
+    const std::string& expected = "") {
+  Json::Value data;data["tool"] = tool;
+  data["code"] = status == MemoryStoreStatus::Conflict ? "memory_revision_conflict" :
+    status == MemoryStoreStatus::Busy ? "memory_busy" : status == MemoryStoreStatus::Cancelled ? "cancelled" :
+    status == MemoryStoreStatus::Uncertain ? "memory_publication_uncertain" : "memory_unavailable";
+  data["commit_state"] = status == MemoryStoreStatus::Uncertain ? "published_unconfirmed" : "not_written";
+  if (!document.source_id.empty()) { data["source_id"] = document.source_id;data["current_revision"] = document.revision; }
+  if (!expected.empty()) data["expected_revision"] = expected;
+  const auto written = write_envelope(out, false, error, data);
+  // An unconfirmed local write is not a terminal executor receipt. The existing
+  // model/workflow journal must retain its uncertainty instead of replaying it.
+  return status == MemoryStoreStatus::Uncertain && written == AGENT_OK ? AGENT_ERR_INTERNAL : written;
 }
 
 agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
@@ -632,12 +663,6 @@ agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, a
   }
 
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
-  std::error_code ec;
-  std::filesystem::create_directories(out_path.parent_path(), ec);
-  if (ec) {
-    return write_envelope(out_result, false, "failed to create memory directory", Json::Value(Json::objectValue));
-  }
-
   const std::string title = args.isMember("title") && args["title"].isString() ? trim_ascii(args["title"].asString()) : "";
   const bool with_heading = args.isMember("with_heading") && args["with_heading"].isBool() ? args["with_heading"].asBool() : true;
 
@@ -656,16 +681,15 @@ agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, a
   entry += text;
   if (!entry.empty() && entry.back() != '\n') entry.push_back('\n');
 
-  {
-    std::ofstream out(out_path, std::ios::binary | std::ios::app);
-    if (!out.is_open()) {
-      return write_envelope(out_result, false, "failed to open memory file for append", Json::Value(Json::objectValue));
-    }
-    out.write(entry.data(), (std::streamsize)entry.size());
-    if (!out.good()) {
-      return write_envelope(out_result, false, "failed to write memory entry", Json::Value(Json::objectValue));
-    }
-  }
+  MemoryDocumentTransaction transaction;std::string store_error;
+  auto store_status = transaction.begin(mem_root, out_path.lexically_relative(mem_root).generic_string(), std::nullopt,
+    [ctx] { return is_cancelled(ctx); }, &store_error);
+  if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_write", store_status, store_error, transaction.document());
+  if (transaction.document().text.find(kAgentMemoryV1Begin) != std::string::npos)
+    return write_envelope(out_result, false, "structured memory requires revision-checked memory_put entries", Json::Value(Json::objectValue));
+  const auto previous_revision = transaction.document().revision;
+  store_status = transaction.commit(transaction.document().text + entry, &store_error);
+  if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_write", store_status, store_error, transaction.document(), previous_revision);
 
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_write";
@@ -674,6 +698,8 @@ agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, a
   data["path"] = to_generic_string(out_path.lexically_relative(mem_root));
   data["abs_path"] = to_generic_string(out_path);
   data["bytes_appended"] = (Json::Int64)entry.size();
+  data["previous_revision"] = previous_revision;data["revision"] = transaction.document().revision;
+  data["source_id"] = transaction.document().source_id;
   if (private_bytes_stripped > 0) {
     data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
   }
@@ -726,12 +752,6 @@ agent_status_t tool_memory_observe(HostToolCtx* ctx, const char* arguments_json,
   }
 
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
-  std::error_code ec;
-  std::filesystem::create_directories(out_path.parent_path(), ec);
-  if (ec) {
-    return write_envelope(out_result, false, "failed to create memory directory", Json::Value(Json::objectValue));
-  }
-
   const std::string source =
     args.isMember("source") && args["source"].isString() ? sanitize_inline_field(args["source"].asString()) : "";
   const std::string trace_id =
@@ -771,16 +791,15 @@ agent_status_t tool_memory_observe(HostToolCtx* ctx, const char* arguments_json,
   }
 
   const std::string entry_str = entry.str();
-  {
-    std::ofstream out(out_path, std::ios::binary | std::ios::app);
-    if (!out.is_open()) {
-      return write_envelope(out_result, false, "failed to open memory file for append", Json::Value(Json::objectValue));
-    }
-    out.write(entry_str.data(), (std::streamsize)entry_str.size());
-    if (!out.good()) {
-      return write_envelope(out_result, false, "failed to write memory entry", Json::Value(Json::objectValue));
-    }
-  }
+  MemoryDocumentTransaction transaction;std::string store_error;
+  auto store_status = transaction.begin(mem_root, out_path.lexically_relative(mem_root).generic_string(), std::nullopt,
+    [ctx] { return is_cancelled(ctx); }, &store_error);
+  if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_observe", store_status, store_error, transaction.document());
+  if (transaction.document().text.find(kAgentMemoryV1Begin) != std::string::npos)
+    return write_envelope(out_result, false, "structured memory requires revision-checked memory_put entries", Json::Value(Json::objectValue));
+  const auto previous_revision = transaction.document().revision;
+  store_status = transaction.commit(transaction.document().text + entry_str, &store_error);
+  if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_observe", store_status, store_error, transaction.document(), previous_revision);
 
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_observe";
@@ -788,6 +807,8 @@ agent_status_t tool_memory_observe(HostToolCtx* ctx, const char* arguments_json,
   data["path"] = to_generic_string(out_path.lexically_relative(mem_root));
   data["abs_path"] = to_generic_string(out_path);
   data["bytes_appended"] = (Json::Int64)entry_str.size();
+  data["previous_revision"] = previous_revision;data["revision"] = transaction.document().revision;
+  data["source_id"] = transaction.document().source_id;
   if (private_bytes_stripped > 0) {
     data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
   }
@@ -821,13 +842,19 @@ agent_status_t tool_memory_get(HostToolCtx* ctx, const char* arguments_json, age
     return write_envelope(out_result, false, "invalid path", Json::Value(Json::objectValue));
   }
 
-  std::ifstream in(abs, std::ios::binary);
-  if (!in.is_open()) {
-    return write_envelope(out_result, false, "file not found", Json::Value(Json::objectValue));
+  MemoryDocument document;std::string store_error;
+  if (args.isMember("revision") && (!args["revision"].isString() || !memory_revision_valid(args["revision"].asString()) || args["revision"].asString() == "absent"))
+    return write_envelope(out_result, false, "revision must identify retained content", Json::Value(Json::objectValue));
+  const auto status = args.isMember("revision")
+    ? memory_document_read_revision(mem_root, rel_path, args["revision"].asString(), &document, &store_error)
+    : memory_document_read(mem_root, rel_path, &document, &store_error);
+  if (status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_get", status, store_error);
+  if (!document.exists) {
+    Json::Value data;data["tool"] = "memory_get";data["path"] = rel_path;data["exists"] = false;
+    data["revision"] = document.revision;data["source_id"] = document.source_id;
+    return write_envelope(out_result, false, "memory document does not exist", data);
   }
-  std::stringstream ss;
-  ss << in.rdbuf();
-  std::string content = ss.str();
+  const auto& content = document.text;
 
   const int from = args.isMember("from_line") && args["from_line"].isInt() ? std::max(1, args["from_line"].asInt()) : 1;
   const int max_lines = args.isMember("max_lines") && args["max_lines"].isInt() ? std::max(1, args["max_lines"].asInt()) : 200;
@@ -863,6 +890,7 @@ agent_status_t tool_memory_get(HostToolCtx* ctx, const char* arguments_json, age
   data["from_line"] = from;
   data["max_lines"] = max_lines;
   data["text"] = out_text;
+  data["exists"] = true;data["revision"] = document.revision;data["source_id"] = document.source_id;
   data["output"] = "memory_get: " + rel_path;
   return write_envelope(out_result, true, "", data);
 }
@@ -923,11 +951,12 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   if (!path_is_within(mem_root.lexically_normal(), abs)) {
     return write_envelope(out_result, false, "invalid path", Json::Value(Json::objectValue));
   }
-  std::error_code ec;
-  std::filesystem::create_directories(abs.parent_path(), ec);
-  if (ec) {
-    return write_envelope(out_result, false, "failed to create memory directory", Json::Value(Json::objectValue));
-  }
+  if (!args["expected_revision"].isString() || !memory_revision_valid(args["expected_revision"].asString()))
+    return write_envelope(out_result, false, "expected_revision is required: use memory_get data.revision, or absent for a new source", Json::Value(Json::objectValue));
+  const auto expected_revision = args["expected_revision"].asString();
+  MemoryDocumentTransaction transaction;std::string store_error;
+  auto store_status = transaction.begin(mem_root, rel_path, expected_revision, [ctx] { return is_cancelled(ctx); }, &store_error);
+  if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_put", store_status, store_error, transaction.document(), expected_revision);
 
   std::string out_text;
   Json::Value structured_doc_for_checkpoint(Json::objectValue);
@@ -938,19 +967,11 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   int structured_entries_evidence_added = 0;
   if (structured) {
     // Structured upsert mode: deterministic key conflict resolution for durable facts/preferences/tasks.
-    std::string existing;
-    {
-      std::ifstream in(abs, std::ios::binary);
-      if (in.is_open()) {
-        std::stringstream ss;
-        ss << in.rdbuf();
-        existing = ss.str();
-      }
-    }
+    const auto& existing = transaction.document().text;
 
     Json::Value doc;
     std::string derr;
-    if (!parse_structured_memory_doc(existing, &doc, &derr)) {
+    if (!memory_structured_parse_doc(existing, &doc, &derr)) {
       return write_envelope(out_result, false, std::string("failed to parse structured memory doc: ") + derr, Json::Value(Json::objectValue));
     }
 
@@ -1128,6 +1149,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       data["abs_path"] = to_generic_string(abs);
       data["structured"] = true;
       data["no_changes"] = true;
+      data["previous_revision"] = expected_revision;data["revision"] = transaction.document().revision;
+      data["source_id"] = transaction.document().source_id;
       data["entries_valid"] = structured_entries_valid;
       data["entries_changed"] = structured_entries_changed;
       data["entries_superseded"] = structured_entries_superseded;
@@ -1154,14 +1177,9 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     wrote_file = true;
   }
   if (wrote_file) {
-    std::ofstream out(abs, std::ios::binary | std::ios::trunc);
-    if (!out.is_open()) {
-      return write_envelope(out_result, false, "failed to open memory file for write", Json::Value(Json::objectValue));
-    }
-    out.write(out_text.data(), (std::streamsize)out_text.size());
-    if (!out.good()) {
-      return write_envelope(out_result, false, "failed to write memory file", Json::Value(Json::objectValue));
-    }
+    const auto keep = args["keep_checkpoints"].isInt() ? std::clamp(args["keep_checkpoints"].asInt(), 2, 1000) : 100;
+    store_status = transaction.commit(out_text, &store_error, size_t(keep));
+    if (store_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_put", store_status, store_error, transaction.document(), expected_revision);
   }
 
   // Rolling consolidation checkpoint: when a structured memory file is updated, keep a time-stamped
@@ -1171,6 +1189,7 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   std::string checkpoint_ts_utc;
   std::string checkpoint_sha256;
   int64_t checkpoint_bytes = 0;
+  try {
   if (wrote_file && structured && structured_doc_present) {
     const bool want_checkpoint =
       args.isMember("checkpoint") && args["checkpoint"].isBool() ? args["checkpoint"].asBool() : true;
@@ -1179,20 +1198,21 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     if (want_checkpoint) {
       const std::filesystem::path ckdir = mem_root / "checkpoints";
       std::error_code ec2;
-      std::filesystem::create_directories(ckdir, ec2);
-      if (!ec2) {
+      {
         const std::string ts = iso_utc_now();
         checkpoint_ts_utc = ts;
         std::string safe_ts = ts;
         for (char& c : safe_ts) {
           if (c == ':' || c == '/') c = '-';
         }
-        const std::filesystem::path ckfile = ckdir / (std::string("structured_") + safe_ts + ".json");
+        const std::filesystem::path ckfile = ckdir / (std::string("structured_") + safe_ts + "_" + transaction.document().source_id.substr(7) + "_" + transaction.document().revision.substr(7) + ".json");
 
         Json::Value ck(Json::objectValue);
         ck["schema"] = "agent_memory_checkpoint_v1";
         ck["ts_utc"] = ts;
         ck["path"] = rel_path;
+        ck["source_id"] = transaction.document().source_id;
+        ck["revision"] = transaction.document().revision;
         ck["doc"] = structured_doc_for_checkpoint;
         const std::string ck_text = json_stringify_compact(ck) + "\n";
         checkpoint_bytes = (int64_t)ck_text.size();
@@ -1202,37 +1222,30 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
           checkpoint_sha256 = std::string(hex);
         }
 
-        {
-          std::ofstream out(ckfile, std::ios::binary | std::ios::trunc);
-          if (out.is_open()) {
-            out.write(ck_text.data(), (std::streamsize)ck_text.size());
-            checkpoint_ok = out.good();
-          }
-        }
+        std::string checkpoint_error;
+        checkpoint_ok = memory_document_publish_immutable(mem_root, ckfile.lexically_relative(mem_root).generic_string(), ck_text, &checkpoint_error);
 
         if (checkpoint_ok) {
           checkpoint_path_rel = to_generic_string(ckfile.lexically_relative(mem_root));
           // Best-effort pruning: keep only the newest N checkpoint files.
-          std::vector<std::filesystem::directory_entry> entries;
+          std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> entries;
           for (auto it = std::filesystem::directory_iterator(ckdir, ec2); !ec2 && it != std::filesystem::directory_iterator(); ++it) {
             const auto& de = *it;
-            if (!de.is_regular_file(ec2)) continue;
+            if (de.is_symlink(ec2) || !de.is_regular_file(ec2)) continue;
             const std::string fn = de.path().filename().string();
             if (fn.rfind("structured_", 0) != 0) continue;
             if (fn.size() < 6 || fn.rfind(".json") != fn.size() - 5) continue;
-            entries.push_back(de);
+            const auto stamp = de.last_write_time(ec2);
+            if (ec2) break;
+            entries.emplace_back(stamp, de.path());
             if (entries.size() > (size_t)keep_checkpoints + 50) break; // bound directory walks
           }
           if (entries.size() > (size_t)keep_checkpoints) {
-            std::sort(entries.begin(), entries.end(), [&](const auto& a, const auto& b) {
-              std::error_code eca, ecb;
-              const auto ta = a.last_write_time(eca);
-              const auto tb = b.last_write_time(ecb);
-              if (eca || ecb) return a.path().string() < b.path().string();
-              return ta > tb; // newest first
+            std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
+              return a.first != b.first ? a.first > b.first : a.second < b.second;
             });
             for (size_t i = (size_t)keep_checkpoints; i < entries.size(); i++) {
-              std::filesystem::remove(entries[i].path(), ec2);
+              std::filesystem::remove(entries[i].second, ec2);
               if (ec2) break;
             }
           }
@@ -1241,12 +1254,16 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     }
   }
 
+  } catch (...) { /* auxiliary maintenance cannot revoke a committed memory update */ }
+
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_put";
   data["memory_root"] = to_generic_string(mem_root);
   data["path"] = rel_path;
   data["abs_path"] = to_generic_string(abs);
-  data["bytes_written"] = (Json::Int64)out_text.size();
+  data["bytes_written"] = Json::UInt64(transaction.published() ? out_text.size() : 0);
+  data["previous_revision"] = expected_revision;data["revision"] = transaction.document().revision;
+  data["source_id"] = transaction.document().source_id;data["commit_state"] = "committed";
   if (private_bytes_stripped > 0) data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
   if (private_entries_skipped > 0) data["private_entries_skipped"] = private_entries_skipped;
   if (structured) data["structured"] = true;
@@ -1792,26 +1809,15 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     return write_envelope(out_result, false, "invalid path", Json::Value(Json::objectValue));
   }
 
-  std::string content;
-  bool missing = false;
-  {
-    std::ifstream in(abs, std::ios::binary);
-    if (!in.is_open()) {
-      missing = true;
-      content = "";
-    } else {
-      std::stringstream ss;
-      ss << in.rdbuf();
-      content = ss.str();
-      if (content.size() > 2 * 1024 * 1024) {
-        content.resize(2 * 1024 * 1024);
-      }
-    }
-  }
+  MemoryDocument snapshot;std::string snapshot_error;
+  const auto snapshot_status = memory_document_read(mem_root, rel_path, &snapshot, &snapshot_error);
+  if (snapshot_status != MemoryStoreStatus::Ok) return memory_store_error(out_result, "memory_structured_query", snapshot_status, snapshot_error);
+  const bool missing = !snapshot.exists;
+  const auto& content = snapshot.text;
 
   Json::Value doc;
   std::string derr;
-  if (!parse_structured_memory_doc(content, &doc, &derr)) {
+  if (!memory_structured_parse_doc(content, &doc, &derr)) {
     return write_envelope(out_result, false, std::string("failed to parse structured memory doc: ") + derr, Json::Value(Json::objectValue));
   }
 
@@ -1941,6 +1947,7 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
 
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_structured_query";
+  data["revision"] = snapshot.revision;data["source_id"] = snapshot.source_id;
   data["memory_root"] = to_generic_string(mem_root);
   data["path"] = rel_path;
   data["abs_path"] = to_generic_string(abs);

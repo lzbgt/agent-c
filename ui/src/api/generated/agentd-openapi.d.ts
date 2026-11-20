@@ -11531,6 +11531,8 @@ export interface components {
             };
         };
         WorkflowMemoryPutSpec: {
+            /** @description Exact memory_get data.revision, absent for a new source, or a task reference resolved once for this update. A stale revision fails without writing or automatic retry. */
+            expected_revision: string;
             /** @description Safe relative `.md` path under the memory root (default `STRUCTURED.md`). */
             path?: string;
             /** @description When true, emit rolling structured checkpoints under `memory/checkpoints/` (default true). */
@@ -11542,7 +11544,7 @@ export interface components {
             keep_checkpoints?: number;
             /** @description Structured upsert entries (deterministic; key + value required). */
             entries: {
-                /** @description Structured memory key (string; last write wins for value changes). */
+                /** @description Structured memory key. Value changes require the captured document revision. */
                 key: string;
                 /** @description Record kind (default `fact`). */
                 kind?: string;

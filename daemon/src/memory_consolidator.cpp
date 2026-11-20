@@ -1,4 +1,5 @@
 #include "memory_consolidator.h"
+#include "memory_store.h"
 
 #include "daemon_auth.h"
 #include "memory_correlation_index.h"
@@ -186,6 +187,10 @@ bool memory_consolidate_once(
     return false;
   }
   const std::filesystem::path mem_root = std::filesystem::path(cfg.state_dir) / "memory";
+  host_tools_internal::MemoryDocument structured_snapshot;
+  if (host_tools_internal::memory_document_read(mem_root, "STRUCTURED.md", &structured_snapshot, out_err)
+      != host_tools_internal::MemoryStoreStatus::Ok) return false;
+
 
   Json::Value report(Json::objectValue);
   report["schema"] = "agentd_memory_consolidate_report_v1";
@@ -307,7 +312,8 @@ bool memory_consolidate_once(
 
   for (const auto& sf : files) {
     std::string content;
-    if (!read_file_bounded(sf.path, max_file_bytes, &content)) continue;
+    if (sf.layer == "structured") content = structured_snapshot.text;
+    else if (!read_file_bounded(sf.path, max_file_bytes, &content)) continue;
 
     std::istringstream iss(content);
     std::string line;
@@ -409,6 +415,7 @@ bool memory_consolidate_once(
 
   Json::Value args(Json::objectValue);
   args["path"] = "STRUCTURED.md";
+  args["expected_revision"] = structured_snapshot.revision;
   Json::Value arr(Json::arrayValue);
   for (const auto& e : entries) {
     Json::Value o(Json::objectValue);
@@ -452,6 +459,11 @@ bool memory_consolidate_once(
   }
 
   report["memory_put_response"] = resp;
+  if (!resp.get("ok", false).asBool()) {
+    if (out_report) *out_report = report;
+    if (out_err) *out_err = resp.get("error", "memory_put rejected consolidation").asString();
+    return false;
+  }
   report["output"] = "consolidated @mem markers into STRUCTURED.md";
   if (out_report) *out_report = report;
   return true;

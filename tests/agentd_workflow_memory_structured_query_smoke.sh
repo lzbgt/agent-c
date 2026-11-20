@@ -42,7 +42,7 @@ tasks = [
   {
     "task_id": "P",
     "kind": "memory_put",
-    "memory_put": {
+    "memory_put": {"expected_revision": "absent",
       "path": "STRUCTURED.md",
       "entries": [
         {

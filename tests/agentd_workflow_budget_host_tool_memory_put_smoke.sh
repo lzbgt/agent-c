@@ -31,7 +31,7 @@ agentd_smoke_wait_health "${DAEMON_URL}"
 
 submit_resp="$(curl -fsS --noproxy "*" --max-time 20 \
   -H "Content-Type: application/json" \
-  -d "$(python3 - <<PY
+  -d "$(python3 - <<'PY'
 import json
 req = {
   "workflow_limits": {
@@ -42,7 +42,7 @@ req = {
     {
       "task_id":"A",
       "kind":"memory_put",
-      "memory_put": {
+      "memory_put": {"expected_revision": "absent",
         "path":"STRUCTURED.md",
         "checkpoint": True,
         "entries":[
@@ -54,7 +54,7 @@ req = {
       "task_id":"B",
       "kind":"memory_put",
       "depends_on":["A"],
-      "memory_put": {
+      "memory_put": {"expected_revision": "${task.A.json:/memory_put_response/data/revision}",
         "path":"STRUCTURED.md",
         "checkpoint": True,
         "entries":[

@@ -605,6 +605,7 @@ structured memory upsert task:
   "depends_on": ["A"],
   "memory_put": {
     "path": "STRUCTURED.md",
+    "expected_revision": "absent",
     "entries": [
       {
         "key": "wf.last_alpha",
@@ -624,7 +625,13 @@ structured memory upsert task:
 
 Semantics:
 - Requires the daemon to run with `--tools host --host-policy full` (this task executes the host tool `memory_put`).
-- Only **structured** updates are allowed (it does not accept legacy `text` overwrites).
+- Only **structured** updates are allowed (full-text replacement belongs to the host tool).
+- `expected_revision` is required. The example assumes a new file. For an existing
+  source, capture `memory_get.data.revision` first. A dependent write can bind
+  `${task.M.json:/memory_put_response/data/revision}` from a prior successful update.
+  The persisted expected revision is never silently refreshed on retry. Conflicts
+  return `retryable=false` and `memory_error` with the expected/current revisions;
+  independent tasks remain runnable. See [memory publication](MEMORY.md#revision-checked-publication).
 - The engine injects correlation evidence into `entries[].source` when missing, so structured memory records keep a bounded
   `sources[]` trail like: `workflow:<workflow_id> task:<task_id> trace:<trace_id> [session:<session_id>]`.
 - Entries may also carry `sources[]`, `observed_utc`, `valid_from` (or compatibility alias `valid_from_utc`), and `supersedes` metadata. `sources[]` is merged and

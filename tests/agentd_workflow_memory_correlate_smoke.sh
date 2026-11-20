@@ -52,7 +52,7 @@ tasks = [
     "task_id": "M",
     "kind": "memory_put",
     "depends_on": ["A"],
-    "memory_put": {
+    "memory_put": {"expected_revision": "absent",
       "path": "STRUCTURED.md",
       "entries": [
         {"key": "wf.test.corr", "kind": "fact", "value": "v1"},

@@ -1,0 +1,49 @@
+#pragma once
+
+#include <cstddef>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+
+namespace host_tools_internal {
+constexpr size_t kMemoryDocumentMaxBytes = 8 * 1024 * 1024;
+enum class MemoryStoreStatus { Ok, Invalid, Unavailable, Conflict, Cancelled, Busy, Uncertain };
+enum class MemoryPublishPhase { Archived, BeforeReplace, AfterReplace };
+struct MemoryDocument {
+  bool exists = false;
+  std::string text;
+  std::string revision = "absent"; // SHA-256 of exact bytes; absent differs from an empty file.
+  std::string source_id;
+};
+
+bool memory_revision_valid(const std::string& revision);
+// Immutable auxiliary receipt. Caller holds the memory root's writer transaction.
+bool memory_document_publish_immutable(const std::filesystem::path& root, const std::string& relative,
+  const std::string& text, std::string* error);
+MemoryStoreStatus memory_document_read(const std::filesystem::path& root, const std::string& relative_path,
+                                       MemoryDocument* out, std::string* error);
+MemoryStoreStatus memory_document_read_revision(const std::filesystem::path& root, const std::string& relative_path,
+    const std::string& revision, MemoryDocument* out, std::string* error);
+
+// All memory API writers share a memory-root OS lock. A replacement supplies
+// the revision it read; append operations may capture the current revision while
+// holding the lock. A commit retains original bytes before atomic publication.
+class MemoryDocumentTransaction {
+ public:
+  MemoryDocumentTransaction();
+  ~MemoryDocumentTransaction();
+  MemoryDocumentTransaction(const MemoryDocumentTransaction&) = delete;
+  MemoryDocumentTransaction& operator=(const MemoryDocumentTransaction&) = delete;
+  MemoryStoreStatus begin(const std::filesystem::path& root, const std::string& relative_path,
+    const std::optional<std::string>& expected_revision, std::function<bool()> cancelled, std::string* error);
+  MemoryStoreStatus commit(const std::string& text, std::string* error, size_t keep_revisions = 100,
+    const std::function<void(MemoryPublishPhase)>& observer = {});
+  const MemoryDocument& document() const;
+  bool published() const;
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+} // namespace host_tools_internal

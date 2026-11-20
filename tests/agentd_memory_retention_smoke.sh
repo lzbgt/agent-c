@@ -80,6 +80,20 @@ cat > "${mem_root}/checkpoints/structured_${ck_old}.json" <<EOF_IN
 {"schema":"agentd_structured_checkpoint_v1","ts_utc":"${ck_old}","path":"STRUCTURED.md","doc":{"items":{}}}
 EOF_IN
 
+# A fresh correction must outrank the older checkpoint. A separate current record
+# is old enough to expire, so both selection and successful publication are tested.
+MEM_ROOT="${mem_root}" CK_NOW="${ck_now}" CK_OLD="${ck_old}" python3 - <<'PY_FIXTURE'
+import json, os, pathlib
+items = {
+    "retention.test.key": {"kind":"fact", "value":"Corrected current value", "status":"active",
+                           "updated_utc":os.environ["CK_NOW"], "observed_utc":os.environ["CK_NOW"]},
+    "retention.expired.key": {"kind":"fact", "value":"Expire this current value", "status":"active",
+                              "updated_utc":os.environ["CK_OLD"], "observed_utc":os.environ["CK_OLD"]},
+}
+text = "<!-- AGENT_MEMORY_V1_BEGIN -->\n" + json.dumps({"schema":"agent_memory_v2", "items":items}) + "\n<!-- AGENT_MEMORY_V1_END -->\n"
+(pathlib.Path(os.environ["MEM_ROOT"]) / "STRUCTURED.md").write_text(text)
+PY_FIXTURE
+
 resp1="$(curl -fsS --noproxy "*" --max-time 5 \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
@@ -98,8 +112,8 @@ if int(obj.get("daily_deleted_count", 0)) < 1:
 if int(obj.get("checkpoint_deleted_count", 0)) < 1:
   print("expected checkpoint_deleted_count >= 1", obj, file=sys.stderr)
   raise SystemExit(1)
-if int(obj.get("structured_deprecated_count", 0)) < 1:
-  print("expected structured_deprecated_count >= 1", obj, file=sys.stderr)
+if int(obj.get("structured_deprecated_count", 0)) != 1:
+  print("expected exactly the one expired current record", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -131,5 +145,21 @@ if [[ "${ck_count}" != "1" ]]; then
   echo "expected 1 checkpoint after retention, got ${ck_count}" >&2
   exit 1
 fi
+
+resp3="$(curl -fsS --noproxy "*" --max-time 5 \
+  -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+  -d '{"structured_deprecate_days":5,"structured_deprecate_max_entries":10}' \
+  "${DAEMON_URL}/api/v1/memory/retention/enforce")"
+MEM_ROOT="${mem_root}" RESPONSE="${resp3}" python3 - <<'PY_VERIFY'
+import json, os, pathlib
+receipt = json.loads(os.environ["RESPONSE"])
+assert receipt["ok"] and receipt["structured_deprecated_count"] == 1, receipt
+text = (pathlib.Path(os.environ["MEM_ROOT"]) / "STRUCTURED.md").read_text()
+body = text.split("<!-- AGENT_MEMORY_V1_BEGIN -->", 1)[1].split("<!-- AGENT_MEMORY_V1_END -->", 1)[0]
+items = json.loads(body)["items"]
+assert items["retention.test.key"]["value"] == "Corrected current value", items
+assert items["retention.test.key"]["status"] == "active", items
+assert items["retention.expired.key"]["status"] == "deprecated", items
+PY_VERIFY
 
 echo "agentd_memory_retention_smoke OK"

@@ -24,7 +24,8 @@ trap cleanup EXIT
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_workflow_memory_put_smoke" \
   --tools host \
-  --host-policy full
+  --host-policy full \
+  --workflow-concurrency 1
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
@@ -50,7 +51,7 @@ tasks = [
     "task_id": "M",
     "kind": "memory_put",
     "depends_on": ["A"],
-    "memory_put": {
+    "memory_put": {"expected_revision": "absent",
       "path": "STRUCTURED.md",
       "entries": [
         {
@@ -180,5 +181,52 @@ if not ok:
   print("expected sources to include workflow correlation", sources, file=sys.stderr)
   raise SystemExit(1)
 PY
+
+DAEMON_URL="${DAEMON_URL}" STRUCTURED="${STRUCTURED}" python3 - <<'PY_REVISIONS'
+import hashlib, json, os, pathlib, time, urllib.error, urllib.request
+base = os.environ["DAEMON_URL"]
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+def call(path, body=None):
+    req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(),
+                                 headers={"Content-Type":"application/json"})
+    with opener.open(req, timeout=5) as response:
+        return json.load(response)
+revision = "sha256:" + hashlib.sha256(pathlib.Path(os.environ["STRUCTURED"]).read_bytes()).hexdigest()
+def update(task, expected, value, dependencies=()):
+    return {"task_id":task, "kind":"memory_put", "depends_on":list(dependencies), "max_attempts":5,
+            "memory_put":{"expected_revision":expected, "entries":[{"key":"wf.test.alpha", "value":value}]}}
+invalid = update("missing", revision, "unwritten")
+del invalid["memory_put"]["expected_revision"]
+try:
+    call("/api/v1/workflow/submit", {"tasks":[invalid]})
+    raise AssertionError("missing expected revision admitted")
+except urllib.error.HTTPError as error:
+    assert error.code == 400
+submitted = call("/api/v1/workflow/submit", {"tasks":[
+    update("M", revision, "beta"),
+    update("N", "${task.M.json:/memory_put_response/data/revision}", "gamma", ["M"]),
+    update("S", revision, "must not overwrite", ["N"]),
+    {"task_id":"I", "kind":"delay", "delay_ms":0, "depends_on":["N"], "priority":-100},
+]})
+assert submitted["ok"], submitted
+end = time.monotonic() + 10
+while time.monotonic() < end:
+    final = call("/api/v1/workflow?workflow_id=" + submitted["workflow_id"] + "&include_tasks=1&include_results=1")
+    if final["workflow"]["status"] in ("done", "error", "cancelled"):
+        break
+    time.sleep(.025)
+else:
+    raise AssertionError("revision workflow deadline")
+results = final["result"]["results_by_task"]
+assert results["M"]["ok"] and results["N"]["ok"] and results["I"]["ok"], final
+assert not results["S"]["ok"] and results["S"]["retryable"] is False, final
+assert results["S"]["memory_error"]["code"] == "memory_revision_conflict", final
+assert results["S"]["memory_error"]["current_revision"] == results["N"]["memory_put_response"]["data"]["revision"], final
+by = {t["task_id"]:t for t in final["tasks"]}
+assert by["S"]["attempt"] == 1, by["S"]
+text = pathlib.Path(os.environ["STRUCTURED"]).read_text()
+body = text.split("<!-- AGENT_MEMORY_V1_BEGIN -->", 1)[1].split("<!-- AGENT_MEMORY_V1_END -->", 1)[0]
+assert json.loads(body)["items"]["wf.test.alpha"]["value"] == "gamma"
+PY_REVISIONS
 
 echo "agentd_workflow_memory_put_smoke OK"

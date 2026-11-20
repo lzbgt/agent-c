@@ -175,8 +175,8 @@ print(json.dumps({
       "task_id": "A_host",
       "kind": "memory_put",
       "depends_on": ["A_gate"],
-      "memory_put": {
-        "path": "STRUCTURED.md",
+      "memory_put": {"expected_revision": "absent",
+        "path": "fairness-pressure.md",
         "checkpoint": True,
         "entries": [{"key": "budget_pressure_mix.host", "value": "ok"}]
       }
@@ -254,15 +254,16 @@ print(json.dumps({
       "task_id": "B_det",
       "kind": "delay",
       "depends_on": ["B_gate"],
-      "delay_ms": 20,
+      # Keep the fairness probe runnable; a durable delay yields its worker.
+      "delay_ms": 0,
       "result": {"assistant_text": "peer deterministic"}
     },
     {
       "task_id": "B_host",
       "kind": "memory_put",
       "depends_on": ["B_det"],
-      "memory_put": {
-        "path": "STRUCTURED.md",
+      "memory_put": {"expected_revision": "absent",
+        "path": "fairness-peer.md",
         "checkpoint": True,
         "entries": [{"key": "budget_pressure_mix.peer_host", "value": "ok"}]
       }

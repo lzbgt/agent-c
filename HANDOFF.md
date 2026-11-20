@@ -72,12 +72,14 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
 
 ## Continue the next concrete requirement
 
-1. Prioritize memory authority: inspect `cli/src/toolset_host_memory.cpp` and its
-   callers; establish one revision-checked atomic update/publication path before
-   claiming a production race. Enforce current/history/evidence modes and scope
-   across structured/FTS/fallback/salience/context retrieval. Bind evidence to
-   source ID, revision/hash and span; corrections/deletions must invalidate
-   derived eligibility without replaying effects.
+1. Continue memory authority from the [atomic publication contract](docs/MEMORY.md#revision-checked-publication),
+   now implemented and locally qualified. Do not reimplement its writer/archives.
+   Enforce current/history/evidence modes and scope across structured, FTS,
+   fallback, salience and injected context. Bind references to source ID,
+   revision/hash and span with consistent retrieval revisions. Corrections and
+   deletions must invalidate derived eligibility and conclusions without replaying
+   effects. Daily rotation/deletion, multi-file fences and Windows runtime
+   durability remain unqualified; Linux process death is not a power-loss test.
 2. Then implement bounded lexical multi-hop retrieval with a pluggable scorer.
    The [architecture evaluation gate](docs/ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
    records the owner-authorized TypeSafe/Jev canary and 20-question pilot bounds.

@@ -42,7 +42,7 @@ tasks = [
   {
     "task_id": "P",
     "kind": "memory_put",
-    "memory_put": {
+    "memory_put": {"expected_revision": "absent",
       "path": "MEMORY.md",
       "entries": [
         {"key": "wf.test.search", "kind": "fact", "value": "Scene rendering must be refresh-proof."}

@@ -1,6 +1,6 @@
 # Native tools and extensions
 
-Date: 2026-11-13
+Date: 2026-11-20
 
 This document owns native host-tool behavior, result/capture limits, web evidence
 and extension contracts shared by the CLI and daemon. [Local web integration](LOCAL_MODEL_WEB.md)
@@ -41,6 +41,13 @@ These tools are available when `--tools host` is enabled (subject to `yolo` and 
 - `web_search` / `web_fetch` (bounded web discovery and page evidence; see below)
 - `artifact_register` (registers a retained file for client access)
 - `ui_action` (typed UI-side action requests; see `docs/CLIENT.md`)
+
+Daemon-session memory tools include `memory_get`, `memory_put`, `memory_write`,
+`memory_observe` and retrieval tools. Replacement/upsert requires the exact
+`expected_revision` read from `memory_get`, or `absent` for a new source. All three
+write APIs share the host atomic store; structured appends are rejected. Exact
+retained reads, conflict recovery, storage limits and reproducible crash checks
+are owned by [the memory contract](MEMORY.md#revision-checked-publication).
 
 Host policy notes:
 - In `--host-policy readonly`, the registry omits `shell_exec`, `proc_exec`, and `file_apply_patch`.
