@@ -98,8 +98,10 @@ changes preserve the actual isolation and input assertions.
 Local receipts: `build/consolidated_snapshot_complete_20261120.log`,
 `build/consolidated_core_20261120.log`,
 `build/consolidated_repo_guards_20261120.log` and
-`build/consolidated_session_store_repeat.log`. The source qualification receipt
-records the committed revision and artifact identities after publication.
+`build/consolidated_session_store_repeat.log`. The
+[source qualification receipt](verification/consolidation-20261120.json)
+pins source `a575cf4` and the checked native/UI artifact identities. Its later
+documentation-only receipt commit does not change those runtime sources.
 
 Earlier milestone counts and fault-injection narratives are retained in
 [the dated qualification archive](reports/qualification-through-20261118.md).

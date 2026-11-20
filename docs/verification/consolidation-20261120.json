@@ -1,0 +1,63 @@
+{
+  "checked_at": "2026-11-20T09:41:53.136051+00:00",
+  "source_revision": "a575cf48a86ae0c2691f2a145c5322d52144bae9",
+  "scope": "Agent-C source consolidation, bounded automatic chat recovery, browser scope isolation and canonical verification coverage",
+  "source_qualification": "Tests ran against the working source committed as this revision. Native executable version metadata may retain the pre-commit Git revision; SHA-256 below identifies actual checked artifacts. No production release was installed.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "browser": "Chrome for Testing 148.0.7778.96",
+    "browser_executable": "/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome",
+    "playwright": "1.58.0"
+  },
+  "commands": [
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "tools/verify_current_snapshot.sh --core-only",
+    "tools/verify_repo_guards.sh",
+    "ctest --test-dir build-snapshot -R '^session_store_tests$' --repeat until-fail:5 --output-on-failure"
+  ],
+  "results": {
+    "canonical": "passed",
+    "native_cli_api_checks": 49,
+    "go_packages": "all passed; optional environment-gated external integrations remain separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "browser_checks": 130,
+    "core_only_debug": "passed",
+    "repository_guards": "passed",
+    "session_store_repeated_runs": 5,
+    "documentation_links_and_anchors": "passed",
+    "git_diff_check": "passed"
+  },
+  "artifacts_sha256": {
+    "build-snapshot/agent": "ab1e8cb27a682a2555e2cec0ce5ed82ac0b2183d1c7b43caa2105c18c51adfa2",
+    "build-snapshot/agentd": "ba9797deb2c80ed4aeaef5c04b7782077eaf4cacf522e01834557a455a5b97aa",
+    "build-snapshot/agent_core_tests": "fcc33e1a484172c13453bc60e6a2286184fce63a6f24d6fa9d529db31f8d7391",
+    "build-snapshot/session_store_tests": "eec8387b74d19d2527a88687114e5cc3ab495a3791136c187ee90b5b154beb1b",
+    "build-snapshot-core/agent_core_tests": "c8821f5fb9f61db17206af43cf98255e1efc1f8d5b6e5cc3d6f129c970b02595"
+  },
+  "ui_artifacts": {
+    "files": 18,
+    "tree_sha256": "43bbf377824899d3211d13e540184b7799330eaa5a4505e9a6a29ec30a5dd038",
+    "index_html_sha256": "c408a128dda620014cfdee466e7beb21e6eb542525dbd584601880fee4299f43"
+  },
+  "local_logs": {
+    "build/consolidated_snapshot_complete_20261120.log": "16dcb79cf67d54d1ab6d31e56993e47b5949dadf4fcb4f5ddf882c6a0ea9ad95",
+    "build/consolidated_core_20261120.log": "2ffd92e479777afc539a4fd27767c71b52db991d32faf617ba552442a707cee4",
+    "build/consolidated_repo_guards_20261120.log": "abb17ef254853f58a258eeae6919c11156d042c48bba6d08d735fc563e22ba3f",
+    "build/consolidated_session_store_repeat.log": "03ef7f20ab73314e92aa7ecfc47adef14a97668dcef9130174f119c683211496"
+  },
+  "preserved_boundaries": [
+    "No production deployment or cloud-model/provider probe. Agent-C daemon/gateway remained inactive and disabled; dedicated PostgreSQL remained exited restart=no.",
+    "Panda publication excluded; GitHub is the authorized destination.",
+    "Pre-existing docs/PUBLISHING.md changes, private .config/ and local AGENTS.md/PANDA_PUSH.md were preserved outside this commit."
+  ],
+  "limitations": [
+    "Browser and provider behavior used isolated fixtures; no physical keyboard/phone/MCU, live-provider or hardware qualification is implied.",
+    "Chat recovery never retries execution. Missing, ambiguous, malformed, synchronous or unversioned receipts remain held.",
+    "The local acceptance handoff is not content idempotency, atomic cross-tab admission, permanent conversation history or a general guarantee against later server-preference/other-tab writes.",
+    "Hosted multi-platform CI and separate PostgreSQL integrations were not rerun for this source slice."
+  ]
+}
