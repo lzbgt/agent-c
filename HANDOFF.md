@@ -25,7 +25,9 @@ Original local receipts are under ignored
 `metrics-final.json`, `resource.json` and `timing-resource.json`. Keep these
 originals when reproducing or auditing results. Public source/label/implementation
 hashes are in `freeze.json`; offline metric regeneration makes no provider call.
-The current snapshot owns final qualification and commit identities.
+The screen/evaluator source is `bfe18f7`; its canonical lane passed 80 native/CLI/API
+checks and 144 browser checks, plus Go/OpenAPI/UI build. The current snapshot
+owns final qualification and artifact identities.
 
 The `typesafe-region-access` owner dependency remains operation-scoped. Its
 original canary is `build/retrieval-canary-20261121.json`: one discovery GET,
@@ -100,7 +102,8 @@ and [Agent-C local integration](docs/LOCAL_MODEL_WEB.md).
 Publish reviewed commits to GitHub `origin/master` and verify the remote revision.
 Panda publication remains excluded; do not recreate its Agent-C repository.
 Preserve private configuration, local host instructions, unrelated working edits
-and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedure.
+and other deployments. At handoff, pre-existing `docs/PUBLISHING.md` edits and
+untracked `.config/`, `AGENTS.md` and `PANDA_PUSH.md` remain outside these commits. [Publishing policy](docs/PUBLISHING.md) owns the procedure.
 
 ## Resume only after a new owner instruction
 

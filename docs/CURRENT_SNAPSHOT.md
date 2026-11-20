@@ -26,7 +26,7 @@ broader Goal must not be marked complete or autonomously resumed.
 
 - **Explicit archive expiry (source only):** ordinary writes preserve original history. A positive `archive_max_days` cleanup policy captures active memory heads/literal revision references under the writer lock, protects matching originals, validates complete bounded inventories and persists metadata intents before unlink. Confirmed/uncertain/deferred results remain distinct through API/UI; zero preserves history. This covers memory-root retention, not external consumers without active pins, universal hard forgetting or forensic erasure. See [archive expiry](MEMORY.md#explicit-archive-expiry). Expiry-intent metadata compaction remains open.
 
-- **Bounded retrieval research (source only):** a foreground command shares captured scope/eligibility and a question-term FTS baseline across lexical, rerank and one-expansion arms. Pluggable typed scoring validates exact IDs and finite probabilities; source-grounded terms carry seed → term → resulting-evidence traces. Whole-record context limits, cancellation/source fences, conservative TypeSafe token/attempt/judgment caps and explicit lexical fallback are implemented. Prepared/per-arm receipts survive interruption and refuse paid replay into an existing output. Local/loopback tests qualify reliability; held-out retrieval and unchanged-4B supported-answer evaluation remain pending. Normal search/context defaults remain lexical. See [research contract](MEMORY.md#bounded-evidence-retrieval).
+- **Bounded retrieval research (source only):** a foreground command shares captured scope/eligibility and a question-term FTS baseline across lexical, rerank and one-expansion arms. Pluggable typed scoring validates exact IDs and finite probabilities; source-grounded terms carry seed → term → resulting-evidence traces. Whole-record context limits, cancellation/source fences, conservative TypeSafe token/attempt/judgment caps and explicit lexical fallback are implemented. Prepared/per-arm receipts survive interruption and refuse paid replay into an existing output. Local/loopback tests qualify reliability; the frozen A baseline is measured, while B/C and unchanged-4B supported-answer evaluation remain pending. Normal search/context defaults remain lexical. See [research contract](MEMORY.md#bounded-evidence-retrieval).
 
 - **Frozen screen and evidence metrics (source only):** 20 synthetic cases/labels were committed before measurement, with exact corpus/code/policy hashes. Offline validation checks source namespace, revision, span/JSON Pointer, original text and current/scope eligibility; incomplete and missing arms stay explicit. A recovered 26/28 records, with 90.625% macro recall and 14/16 complete evidence across 16 evidence-bearing cases. Four unanswerable cases are separate. A free cold/warm index helper checks identical evidence; no provider or answerer is called. B/C and final supported answers/citations remain pending. See [the screen runbook](MEMORY.md#frozen-20-question-screen-and-offline-metrics).
 
@@ -94,70 +94,75 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The current frozen-screen increment passed its focused native/offline metric
-fixture in **0.74 seconds**, including seven Python checks and the real lexical
-executor. It adds exact-reference/denominator and cold/warm timing validation;
-new canonical qualification is pending for this increment. The following
-full-lane receipt identifies the preceding retrieval foundation.
+On 2026-11-21 (Asia/Shanghai), screen/evaluator implementation **`bfe18f7`**
+passed **80 native/CLI/API checks in 160.17 seconds**, all canonical Go packages
+(cached where eligible), OpenAPI/type checks, the UI production build and **144
+browser checks in 2.1 minutes** in one canonical pass. The
+[frozen-screen receipt](verification/memory-screen-baseline-20261121.json)
+pins code, dataset, commands, artifact/log hashes, per-case metrics and limits.
+The [handoff](../HANDOFF.md) records the owner's stop and conditional resume work.
+These are source and local research results, not a production rollout.
 
-On 2026-11-21 (Asia/Shanghai), implementation **`f32f8c2`** passed **79
-native/CLI/API checks in 159.12 seconds**, all canonical Go packages (cached where
-eligible), OpenAPI/type checks, the UI production build and **144 browser checks
-in 2.1 minutes** in one canonical pass. The
-[retrieval-foundation receipt](verification/memory-retrieval-foundation-20261121.json)
-pins source, commands, artifact/log SHA-256 identities, budgets, observed timings
-and limits. Repository, document-link and whitespace checks accompany the
-qualification. These are source checks, not a deployment or retrieval-quality
-promotion.
+The 20-case synthetic corpus/labels were frozen as **`c497a7f` before retrieval**.
+The initial `f32f8c2` retrieval/chunker/scorer defaults and source bytes remain
+unchanged. Exact original-reference, scope and eligibility validation passed.
+Local A completed all 20 cases and recovered **26/28 records** across 16
+evidence-bearing cases: **90.625% macro recall**, **14/16 (87.5%) complete
+evidence**. The four unanswerable cases have separate diagnostics (two empty
+contexts); they are not counted as trivial recall successes. The one missed
+bilingual bridge record (`q04`) and natural-Chinese record (`q18`) remain in the
+frozen results. B/C and supported 4B answers/citations are unmeasured. A alone
+cannot establish an improvement over reranking or justify promotion.
 
-The new fixtures qualify an unseen-record bridge, exact evidence reads,
-current/historical and scope restrictions, question/input/context limits,
-malformed or foreign IDs/scores, lexical fallback, source corrections and total
-cancellation/deadline. Synthetic TypeSafe tests exercise conservative unknown
-usage, bounded retry/admission, model pins and literal credential parsing.
-Loopback HTTP covers response overflow, timeout and cancellation. The actual
-foreground CLI fixture preserves prepared/completed originals, refuses an
-existing output and narrows case scope without provider access. Existing memory,
-workflow, CLI, Go and desktop/mobile browser failure cases remain in the lane.
+The isolated cold/warm helper preserved identical evidence for every query.
+Nearest-rank p50/p95 over these 20 cases was **14.771/16.361 ms cold index** and
+**7.234/8.361 ms warm index**, with capture measured separately at
+**2.712/2.948 ms**. The OS page cache was not flushed. These are small-screen
+index observations, not cold-machine/model timings or an SLO. The original A
+process took **1.245494 s** with observed child peak RSS **13,064 KiB**; timing
+took **0.607709 s**, **26,652 KiB**. No provider or answerer call, key read or model
+resource measurement was performed for this milestone.
 
-One small synthetic Linux retrieval fixture took **0.044712 seconds** with
-child peak RSS **12,788 KiB** after the canonical run. This is not aggregate
-RAM, a full 64-MiB corpus test, model/VRAM/MCU qualification, an SLO or retrieval
-quality. Reproduce the [focused research checks](MEMORY.md#verify-failure-boundaries)
-or the canonical command above. Ignored logs include
-`build/memory_retrieval_snapshot_final.log`, `build/memory_retrieval_focused_final.log`,
-`build/memory_retrieval_before_commit.log`, `build/memory_retrieval_resources.log`,
-`build/memory_retrieval_documentation.log` and `build/memory_retrieval_repo_guards.log`.
+The new CTest fixture runs seven Python checks with the actual lexical executor
+and timing helper. Controlled partial cases verify recall denominators and
+missing arms. Coherently rehashed forged references, changed original bytes,
+wrong namespaces/spans/scope, stale/future records, false historical flags,
+duplicate evidence, malformed JSON, changed case protocol and timing disagreement
+fail validation or earn no evidence credit. The evaluator's first byte-count
+failure exposed Python/JsonCpp float serialization differences; the corrected
+17-digit encoder validated the retained original A receipt without retrieval or
+policy replay. Original references contain no floating-point identity fields.
 
-The separately authorized TypeSafe canary had a two-attempt/two-judgment ceiling
-and 65,536 reserved input-token maximum (estimated $0.002752512 at the checked
-price). It stopped on its **first authenticated discovery GET with HTTP 451**.
-**No scoring POST was sent; candidate judgments and known model-input usage are
-zero.** Two direct unauthenticated API diagnostics also returned the explicit
-region-unavailable message. The key was parsed as host-side dotenv data and used
-only in the discovery Authorization header; it was not printed, passed in argv,
-stored in artifacts or sent to a model. The exact original receipt is retained;
-no paid replay or regional bypass was attempted. Supported provider access is a
-reported operation-scoped owner dependency, while local corpus preparation,
-reliability and other authorized work continue. Account/key/model availability,
-the frozen 20-question A/B/C screen and unchanged-4B supported-answer/citation
-metrics remain pending. No quality improvement is claimed.
+Reproduce the [screen procedure](MEMORY.md#frozen-20-question-screen-and-offline-metrics)
+or canonical command above. Original local artifacts are in
+`build/memory-screen-v1-20261121/`; qualification logs include
+`build/memory_screen_snapshot_final.log`, `build/memory_screen_before_commit.log`,
+`build/memory_screen_freeze_check.log`, `build/memory_screen_documentation.log`
+and `build/memory_screen_repo_guards.log`. The receipt records their identities.
+The implementer authored the synthetic screen; it is not independently
+adjudicated, population representative or a semantic answer validator.
 
-Normal memory search/context defaults remain lexical. Portable C and the 4B
-profile are unchanged. No live history, memory format or production configuration
-was changed; daemon/gateway remain inactive/disabled and PostgreSQL is exited
-with restart disabled. The separate core-only lane, MCU, storage power loss,
-Windows runtime, paid inference and direct research-command process-death recovery
-were not exercised by this qualification. The command reuses the store's
-separately tested atomic publication and refuses an existing output.
+The prior [retrieval-foundation receipt](verification/memory-retrieval-foundation-20261121.json)
+pins `f32f8c2`, its 79-check qualification and discovery-only TypeSafe canary.
+That canary stopped at HTTP 451 before scoring; public diagnostics explicitly
+reported regional unavailability. The existing `typesafe-region-access`
+operation-scoped owner dependency remains open. No further provider attempt was
+made for A. Account/model/4B-runtime pins and comparative/answer metrics remain
+pending. The owner has requested handoff and stop; an access fix alone does not
+resume implementation or production.
 
-The preceding [compaction receipt](verification/memory-promotion-compaction-20261120.json)
-pins `f38cb31` and its real 4,096-marker daemon batches, original/leaf expiry pins
-and process-crash cases. The [archive-expiry receipt](verification/memory-archive-expiry-20261120.json)
-pins `6c40ad9`; its initial blank-after-reload browser failure, focused diagnostics
-and separate passing rerun remain historical evidence. The current clean pass
-does not establish a fix for that intermittent issue. Failure tracing stays
-enabled in the canonical lane.
+The [compaction receipt](verification/memory-promotion-compaction-20261120.json)
+pins `f38cb31`; its real marker batches, original/leaf pins and process-crash
+cases remain in the lane. The [archive receipt](verification/memory-archive-expiry-20261120.json)
+pins `6c40ad9` and preserves the earlier blank-after-reload browser failure and
+separate passing reruns. The current clean pass does not establish a fix for
+that intermittent issue; failure tracing remains enabled.
+
+Normal memory defaults, portable C and the 4B profile are unchanged. Production
+daemon/gateway remain inactive/disabled; PostgreSQL is exited with restart
+disabled. The separate core-only lane, MCU, Windows runtime, power loss,
+forensic erasure, paid scoring/answers and full-corpus/model/VRAM resource
+qualification were not performed. Source verification does not imply deployment.
 
 Prior [derived-memory](verification/memory-derived-state-20261120.json) and
 [retirement](verification/memory-retirement-20261120.json) receipts pin `f17968f`
@@ -188,8 +193,9 @@ quality promotion still requires the independent screen and unchanged 4B answere
 [architecture evaluation gate](ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
 records the canary/pilot caps and checked public endpoint/auth/typed-response and
 listed price. The discovery-only canary encountered HTTP 451 before scoring.
-Supported access, account/model verification and measured retrieval/answer quality
-remain pending; the owner dependency does not block independent local work.
+Supported access, account/model verification, comparative B/C retrieval and final
+answer quality remain pending. Independent local work can resume only on a new
+owner instruction after the requested handoff/stop.
 
 
 This is a coherent implemented slice, not a claim that every item in the architecture is shipped. Current workflows retain single-daemon, at-least-once task recovery. The new effect protocol protects deterministic HTTP POST tasks under its destination/receipt contracts. Submit dedupe and SOP hashes alone still do not prevent duplicate external writes. Device assignment publication is atomic. Ordinary workflow host-model transcripts, session fences, image preparation and sequential delegated children have bounded recovery contracts. Uninstrumented preparation/tool paths, trusted receipt resolvers, additional device adapters, physical execution guarantees and strict provider/adapter resource metering remain correctness work. Workflow reservation/settlement is now atomic, with observed usage and conservative uncertainty kept distinct.

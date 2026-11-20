@@ -1,0 +1,756 @@
+{
+  "checked_at": "2026-11-20T17:23:51.606795+00:00",
+  "source_revision": "bfe18f7a707fe67e2098f723d7dccb26bb3db281",
+  "dataset_freeze_commit": "c497a7f17acbbb226623a7e7b9000911a2f03cd6",
+  "retrieval_implementation_revision": "f32f8c2fec64fe0f37c270951e2f3f41a4f297cd",
+  "scope": "Frozen independent synthetic 20-case corpus/labels, exact evidence/eligibility/scope metrics, actual local lexical A baseline and identical-evidence cold/warm index timing; owner-requested handoff and stop",
+  "source_qualification": "Canonical local native/CLI/API, Go/OpenAPI/UI build and browser lane passed. No B/C or final answerer study, quality promotion, provider call, deployment or production restart occurred in this milestone.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "cxx": "c++ (GCC) 16.2.1 20260810",
+    "jsoncpp": "1.9.8",
+    "sqlite3": "3.54.0",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "Version 1.58.0"
+  },
+  "commands": [
+    "cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON",
+    "cmake --build build-snapshot --target agent-memory-retrieve agent-memory-lexical-timing -j6",
+    "python3 tools/memory_screen_metrics.py --corpus tests/fixtures/memory_screen_v1 --verify-freeze",
+    "build-snapshot/agent-memory-retrieve --memory-root build/memory-screen-v1-20261121/corpus --manifest tests/fixtures/memory_screen_v1/screen.json --lexical-only --output build/memory-screen-v1-20261121/lexical.json (completed; use the runbook's fresh copy/output for reproduction)",
+    "build-snapshot/agent-memory-lexical-timing --memory-root build/memory-screen-v1-20261121/corpus --manifest tests/fixtures/memory_screen_v1/screen.json --output build/memory-screen-v1-20261121/timing.json (purges only that isolated copy's disposable cache)",
+    "python3 tools/memory_screen_metrics.py --corpus tests/fixtures/memory_screen_v1 --results build/memory-screen-v1-20261121/lexical.json --runtime-root build/memory-screen-v1-20261121/corpus --timings build/memory-screen-v1-20261121/timing.json --output build/memory-screen-v1-20261121/metrics-final.json",
+    "ctest --test-dir build-snapshot -R '^memory_screen_metrics_tests$' --output-on-failure",
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "native_cli_api_checks": 80,
+    "python_metric_checks_inside_one_ctest": 7,
+    "browser_checks": 144,
+    "go_packages": "all canonical packages passed (cached where eligible); packages without tests compiled; environment-gated integrations separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "changed_document_links_and_anchors": 193,
+    "provider_requests_this_milestone": 0,
+    "answerer_calls": 0,
+    "type_safe_key_reads_this_milestone": 0,
+    "full_abc_screen_complete": false,
+    "quality_promotion": false
+  },
+  "qualification_timings_seconds": {
+    "canonical_native": 160.17,
+    "focused_before_final_metadata": 0.74,
+    "focused_precommit": 0.53
+  },
+  "frozen_inputs": {
+    "source_count": 3,
+    "source_bytes": 8659,
+    "structured_heads": 36,
+    "superseded_versions": 1,
+    "cases": 20,
+    "evidence_bearing_cases": 16,
+    "unanswerable_cases": 4,
+    "required_evidence_records": 28,
+    "freeze": {
+      "schema": "agent.memory.screen.freeze.v1",
+      "screen_id": "agent-c-memory-heldout-v1",
+      "frozen_at_utc": "2026-11-20T16:49:35.212943+00:00",
+      "frozen_before_any_retrieval_result": true,
+      "implementation_revision": "f32f8c2fec64fe0f37c270951e2f3f41a4f297cd",
+      "source_revision_at_freeze": "ab3b9b6eea719d4ac69bad73aa8a8fd21fb09717",
+      "question_count": 20,
+      "answerable_or_conflict_or_historical_count": 16,
+      "unanswerable_count": 4,
+      "source_files": [
+        {
+          "path": "MEMORY.md",
+          "bytes": 266,
+          "sha256": "983bdf8dcf32c3a32fa05169cb5eb329170b2ec43f826181bd2f67b21003c057"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "bytes": 8299,
+          "sha256": "89c949906465302b62b5eef5422dea4dffd2370273a64365d8fa549e4d0f526e"
+        },
+        {
+          "path": "teams/other.md",
+          "bytes": 94,
+          "sha256": "f3ee052676a47a7746d79c09f513cf64c2db42ed6fe66c1e0d3605ebdc3257f2"
+        }
+      ],
+      "manifest": {
+        "bytes": 11005,
+        "sha256": "cbcfe2b4ac6daa789573b233a8f9a4280fd24b961d9106d4dde859c8e5126500"
+      },
+      "implementation_files": [
+        {
+          "path": "cli/src/memory_view.cpp",
+          "bytes": 22782,
+          "sha256": "9b77af51b56ddb7b961a3f170537355d4f9b3ecda4f60297a1cdb468602fcb22"
+        },
+        {
+          "path": "cli/src/memory_index.cpp",
+          "bytes": 14934,
+          "sha256": "08dce08b2370c6ac3f566f8b82db8462e2e38e22814b817b3b8829ef056e960d"
+        },
+        {
+          "path": "cli/src/memory_index.h",
+          "bytes": 2029,
+          "sha256": "ac8e75e56c35e55553cf4b08257b5ed935ea039d05d7aa7feb427416ccb0111f"
+        },
+        {
+          "path": "cli/src/memory_retrieval.cpp",
+          "bytes": 15077,
+          "sha256": "4e044ba55284511497a40d04bd2aefe333e4bcfdeb15bc96502e35c7862b4f80"
+        },
+        {
+          "path": "cli/src/memory_retrieval.h",
+          "bytes": 2042,
+          "sha256": "f5b21fbbf18e1a00b2af747ee58334eb69274e58f57851cab70114a5d26d5c59"
+        },
+        {
+          "path": "cli/src/typesafe_scorer.cpp",
+          "bytes": 15456,
+          "sha256": "149d4d9cd4c445dac934d09b1884947e5f790b2dc05789a3979a60692681429a"
+        },
+        {
+          "path": "tools/memory_retrieve.cpp",
+          "bytes": 10734,
+          "sha256": "a5b13e9e3af5a292d56b186fa74b5150078c75c5f279e712fd3f7d90aecf28e1"
+        }
+      ],
+      "retrieval_policy": {
+        "name": "question_terms_v1",
+        "initial_candidates": 20,
+        "new_candidates": 20,
+        "retained": 5,
+        "final_records": 8,
+        "expansions": 1,
+        "expansion_terms": 8,
+        "snippet_bytes": 600,
+        "context_bytes": 16000,
+        "scoring_input_bytes": 24000,
+        "seed_threshold": 0.5,
+        "timeout_ms": 20000
+      },
+      "scorer": {
+        "configured_provider": "typesafe",
+        "requested_model": "jev-1.14.0",
+        "prompt_revision": "agent.memory.relevance.v1",
+        "actual_returned_model": null,
+        "status": "access blocked by provider regional HTTP 451 before scoring"
+      },
+      "answerer": {
+        "required": "existing 4B answerer unchanged across arms",
+        "status": "not run; exact runtime/weights identity must be recorded before answer evaluation"
+      },
+      "metrics_policy": {
+        "evidence_recall": "Macro mean of the fraction of required evidence retrieved, over observed evidence-bearing cases. Also report micro counts and coverage.",
+        "complete_evidence": "Fraction of observed evidence-bearing cases with every required evidence record. Unanswerable cases are excluded from these denominators.",
+        "unanswerable": "Report empty-context diagnostics separately; they are not final-answer correctness.",
+        "scope_and_staleness": "Verify exact original references and case scope; current output must exclude historical/inactive/future originals.",
+        "answer_accuracy": "Requires separate unchanged-4B supported-answer and citation evaluation; retrieval scores do not establish correctness.",
+        "partial_results": "Keep observed incomplete contexts but flag them and missing arms. Never treat unexecuted cases/arms as successful."
+      },
+      "limitations": [
+        "Synthetic 20-question initial screen, not a population estimate or MCU/production qualification.",
+        "Canary/tuning fixtures use different entities; no model has scored these held-out cases.",
+        "Do not edit the frozen corpus/labels/policy after observing results; record a separate version for a justified future study."
+      ]
+    }
+  },
+  "metrics": {
+    "schema": "agent.memory.screen.metrics.v1",
+    "screen_id": "agent-c-memory-heldout-v1",
+    "dataset_base_revision": "ab3b9b6eea719d4ac69bad73aa8a8fd21fb09717",
+    "retrieval_implementation_revision": "f32f8c2fec64fe0f37c270951e2f3f41a4f297cd",
+    "in_flight": null,
+    "input_identities": {
+      "freeze_sha256": "f8ff98fa657a0118a7649da03604003d10463fc2a9a011e2cbdaa5fb2a80de53",
+      "result_sha256": "4902231047ed1a976c2ac2015965a9acc58b9ed2d366dc705d85d6324140d9dc"
+    },
+    "validation_passed": true,
+    "validation_errors": [],
+    "full_abc_screen_complete": false,
+    "aggregates": {
+      "lexical": {
+        "observed_cases": 20,
+        "expected_cases": 20,
+        "complete_retrieval_cases": 20,
+        "evidence_bearing_cases": 16,
+        "macro_evidence_recall": 0.90625,
+        "complete_evidence_success": 0.875,
+        "micro_matched_records": 26,
+        "micro_required_records": 28,
+        "unanswerable_cases_observed": 4,
+        "unanswerable_empty_context_rate": 0.5,
+        "stale_or_scope_exposure_records": 0,
+        "elapsed_ms_p50_nearest_rank": 14,
+        "elapsed_ms_p95_nearest_rank": 39
+      },
+      "rerank": {
+        "observed_cases": 0,
+        "expected_cases": 20,
+        "complete_retrieval_cases": 0,
+        "evidence_bearing_cases": 0,
+        "macro_evidence_recall": null,
+        "complete_evidence_success": null,
+        "micro_matched_records": 0,
+        "micro_required_records": 0,
+        "unanswerable_cases_observed": 0,
+        "unanswerable_empty_context_rate": null,
+        "stale_or_scope_exposure_records": 0,
+        "elapsed_ms_p50_nearest_rank": null,
+        "elapsed_ms_p95_nearest_rank": null
+      },
+      "expand": {
+        "observed_cases": 0,
+        "expected_cases": 20,
+        "complete_retrieval_cases": 0,
+        "evidence_bearing_cases": 0,
+        "macro_evidence_recall": null,
+        "complete_evidence_success": null,
+        "micro_matched_records": 0,
+        "micro_required_records": 0,
+        "unanswerable_cases_observed": 0,
+        "unanswerable_empty_context_rate": null,
+        "stale_or_scope_exposure_records": 0,
+        "elapsed_ms_p50_nearest_rank": null,
+        "elapsed_ms_p95_nearest_rank": null
+      }
+    },
+    "cases": {
+      "lexical": [
+        {
+          "case": "q01",
+          "gold_records": 1,
+          "matched_records": 1,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 1,
+          "valid_records": 1,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 45
+        },
+        {
+          "case": "q02",
+          "gold_records": 1,
+          "matched_records": 1,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 1,
+          "valid_records": 1,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 12
+        },
+        {
+          "case": "q03",
+          "gold_records": 2,
+          "matched_records": 2,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 2,
+          "valid_records": 2,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 15
+        },
+        {
+          "case": "q04",
+          "gold_records": 2,
+          "matched_records": 1,
+          "evidence_recall": 0.5,
+          "complete_evidence": false,
+          "returned_records": 1,
+          "valid_records": 1,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 14
+        },
+        {
+          "case": "q05",
+          "gold_records": 2,
+          "matched_records": 2,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 8,
+          "valid_records": 8,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 14
+        },
+        {
+          "case": "q06",
+          "gold_records": 2,
+          "matched_records": 2,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 8,
+          "valid_records": 8,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 10
+        },
+        {
+          "case": "q07",
+          "gold_records": 2,
+          "matched_records": 2,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 2,
+          "valid_records": 2,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 9
+        },
+        {
+          "case": "q08",
+          "gold_records": 3,
+          "matched_records": 3,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 3,
+          "valid_records": 3,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 14
+        },
+        {
+          "case": "q09",
+          "gold_records": 3,
+          "matched_records": 3,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 6,
+          "valid_records": 6,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 13
+        },
+        {
+          "case": "q10",
+          "gold_records": 1,
+          "matched_records": 1,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 1,
+          "valid_records": 1,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 10
+        },
+        {
+          "case": "q11",
+          "gold_records": 1,
+          "matched_records": 1,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 3,
+          "valid_records": 3,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 25
+        },
+        {
+          "case": "q12",
+          "gold_records": 1,
+          "matched_records": 1,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 1,
+          "valid_records": 1,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 16
+        },
+        {
+          "case": "q13",
+          "gold_records": 1,
+          "matched_records": 1,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 2,
+          "valid_records": 2,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 30
+        },
+        {
+          "case": "q14",
+          "gold_records": 0,
+          "matched_records": 0,
+          "evidence_recall": null,
+          "complete_evidence": null,
+          "returned_records": 8,
+          "valid_records": 8,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 22
+        },
+        {
+          "case": "q15",
+          "gold_records": 0,
+          "matched_records": 0,
+          "evidence_recall": null,
+          "complete_evidence": null,
+          "returned_records": 0,
+          "valid_records": 0,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 39
+        },
+        {
+          "case": "q16",
+          "gold_records": 2,
+          "matched_records": 2,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 2,
+          "valid_records": 2,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 25
+        },
+        {
+          "case": "q17",
+          "gold_records": 0,
+          "matched_records": 0,
+          "evidence_recall": null,
+          "complete_evidence": null,
+          "returned_records": 1,
+          "valid_records": 1,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 15
+        },
+        {
+          "case": "q18",
+          "gold_records": 1,
+          "matched_records": 0,
+          "evidence_recall": 0.0,
+          "complete_evidence": false,
+          "returned_records": 0,
+          "valid_records": 0,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 9
+        },
+        {
+          "case": "q19",
+          "gold_records": 0,
+          "matched_records": 0,
+          "evidence_recall": null,
+          "complete_evidence": null,
+          "returned_records": 0,
+          "valid_records": 0,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 12
+        },
+        {
+          "case": "q20",
+          "gold_records": 3,
+          "matched_records": 3,
+          "evidence_recall": 1.0,
+          "complete_evidence": true,
+          "returned_records": 5,
+          "valid_records": 5,
+          "retrieval_complete": true,
+          "stale_or_scope_exposure_records": 0,
+          "elapsed_ms": 9
+        }
+      ],
+      "rerank": [],
+      "expand": []
+    },
+    "provider_usage": null,
+    "final_answer_correctness_and_citations": {
+      "status": "not_evaluated",
+      "required_answerer": "existing 4B unchanged"
+    },
+    "cold_warm_timing": {
+      "status": "complete",
+      "receipt_status": "complete",
+      "observed_cases": 20,
+      "expected_cases": 20,
+      "scope": "cold retrieval index followed by warm identical query; OS page cache is not flushed; capture is measured separately",
+      "input_sha256": "69909a1fb3670665f43eca4b28ce3cbd611ddfb00ca600e3853e09bc86306edc",
+      "small_sample_caveat": "nearest-rank p50/p95 over at most 20 synthetic queries; not a population estimate or SLO",
+      "capture_ms": {
+        "p50": 2.712248,
+        "p95": 2.947724
+      },
+      "cold_index_ms": {
+        "p50": 14.771241,
+        "p95": 16.361161
+      },
+      "warm_index_ms": {
+        "p50": 7.234382,
+        "p95": 8.361415
+      }
+    },
+    "ram_vram": "not measured by this offline evaluator",
+    "limits": [
+      "Synthetic screen authored by the implementer; not independently adjudicated or population representative.",
+      "Metrics cover observed contexts; incomplete contexts remain flagged and missing arms are not scored as successes.",
+      "Exact reference consistency is not execution attestation, semantic truth or supported-answer correctness.",
+      "Unanswerable cases do not add trivial successes to evidence recall/all-evidence denominators."
+    ]
+  },
+  "lexical_admission": {
+    "schema": "agent.memory.screen.local.admission.v1",
+    "created_at": "2026-11-20T16:54:55.398632+00:00",
+    "dataset_commit": "c497a7f17acbbb226623a7e7b9000911a2f03cd6",
+    "source_revision": "c497a7f17acbbb226623a7e7b9000911a2f03cd6",
+    "retrieval_implementation": "f32f8c2fec64fe0f37c270951e2f3f41a4f297cd",
+    "binary": {
+      "path": "build-snapshot/agent-memory-retrieve",
+      "bytes": 12908264,
+      "sha256": "1e5863928e007cb0ce990a2068a8724817c85405c39089dd395a4c1eb9c1c16f"
+    },
+    "freeze_sha256": "f8ff98fa657a0118a7649da03604003d10463fc2a9a011e2cbdaa5fb2a80de53",
+    "manifest_sha256": "cbcfe2b4ac6daa789573b233a8f9a4280fd24b961d9106d4dde859c8e5126500",
+    "runtime_root": "/home/bruce/work/agent-c/build/memory-screen-v1-20261121/corpus",
+    "mode": "lexical-only",
+    "provider_requests_allowed": 0,
+    "answerer_calls_allowed": 0
+  },
+  "timing_admission": {
+    "binary": {
+      "path": "build-snapshot/agent-memory-lexical-timing",
+      "sha256": "60656b8ee985d6047c409705c01e2123af421098fa2235bf89047165b8adeee6",
+      "bytes": 10391792
+    },
+    "command": [
+      "build-snapshot/agent-memory-lexical-timing",
+      "--memory-root",
+      "build/memory-screen-v1-20261121/corpus",
+      "--manifest",
+      "tests/fixtures/memory_screen_v1/screen.json",
+      "--output",
+      "build/memory-screen-v1-20261121/timing.json"
+    ],
+    "provider_requests_allowed": 0,
+    "scope": "Explicit disposable-cache purge on isolated frozen corpus copy; no OS page-cache flush or model operation."
+  },
+  "baseline_process_observations": {
+    "elapsed_seconds": 1.245494,
+    "child_max_rss_kib": 13064,
+    "exit_code": 0,
+    "command": [
+      "build-snapshot/agent-memory-retrieve",
+      "--memory-root",
+      "build/memory-screen-v1-20261121/corpus",
+      "--manifest",
+      "tests/fixtures/memory_screen_v1/screen.json",
+      "--lexical-only",
+      "--output",
+      "build/memory-screen-v1-20261121/lexical.json"
+    ],
+    "scope": "One fresh native lexical-only screening process over the frozen synthetic corpus; includes capture/index/receipt I/O. Child peak RSS is not aggregate RAM, model/VRAM/MCU usage or an SLO."
+  },
+  "timing_process_observations": {
+    "elapsed_seconds": 0.607709,
+    "child_max_rss_kib": 26652,
+    "exit_code": 0,
+    "scope": "One lexical cold-index/warm-index process; no model/provider operation. Child peak RSS is not aggregate RAM or a hardware capacity limit."
+  },
+  "baseline_binary_matches_qualified_binary": true,
+  "timing_binary_matches_qualified_binary": true,
+  "coverage": [
+    "Corpus/labels were committed as c497a7f before the first A run. Literal source/manifest/implementation hashes remain unchanged after observed misses; no retrieval-policy tuning or easier-case substitution.",
+    "Exact source namespace, raw-byte revision, evidence-ID hash, JSON Pointer/byte span, original context text and current/historical/scope eligibility validate before credit.",
+    "Controlled partial cases verify macro vs micro denominators and complete-evidence success. Four unanswerable cases do not add trivial recall successes; missing cloud arms remain unobserved/null.",
+    "Coherently rehashed forgeries, stale/future originals with false flags, wrong scope/namespace, invalid pointers/spans, generated structured raw projection, duplicate evidence, changed source bytes and malformed JSON fail or earn no evidence credit.",
+    "Changed question/view/strategy/policy, boolean/incorrect record counts, invalid elapsed observations and cold/warm evidence disagreement are rejected.",
+    "Real native executor and separate timing helper use the frozen synthetic corpus, zero provider access and isolated cache purges; cold/warm evidence IDs agree for all 20 cases.",
+    "The first offline inspection rejected context byte counts because Python shortest-float encoding differed from JsonCpp 17-digit encoding. Correcting only the evaluator validated the retained original A receipt; no retrieval/data/policy replay or change was needed.",
+    "The canonical lane retains earlier memory/workflow/CLI/model-stub/browser recovery cases. The prior intermittent blank-reload issue is not claimed fixed by the current clean pass."
+  ],
+  "limitations": [
+    "This is an implementer-authored synthetic initial 20-case screen, not independently adjudicated or production representative. Code/corpus/chunking/options are pinned; do not tune on the observed held-out results.",
+    "Only local A was measured. B/C, actual returned scorer revision and unchanged-4B supported-answer/citation accuracy remain pending. Recall/all-evidence success, empty context and valid references do not establish final answer accuracy, semantic truth or authorization.",
+    "The existing TypeSafe canary stopped at discovery HTTP 451 before any scoring POST. Its supported-access owner blocker remains open. No new key read/provider request, paid replay, regional bypass or alternative model substitution occurred here.",
+    "Cold/warm timings concern the disposable retrieval index on an isolated corpus copy. OS page caches are not flushed; capture is separate. Nearest-rank p50/p95 with n=20 are observations, not population estimates, cold-model timings or SLOs.",
+    "Child RUSAGE_CHILDREN peak RSS observations include process startup. They are not aggregate RAM, full 64-MiB corpus capacity, model/VRAM/MCU usage or worst-case embedded limits.",
+    "The offline inspector supports this fixed corpus grammar and checks consistency, not cryptographic execution attestation or generic requirement completion. Production authority remains in the existing native mechanisms.",
+    "Portable C and the 4B profile are unchanged. Separate core-only, physical hardware, Windows runtime, power loss and forensic erasure were not repeated/qualified. Production remains stopped; this source snapshot is not a deployment.",
+    "The owner requested handoff and stop after this milestone. The broader Goal remains unfinished and must be paused rather than completed; supported provider access alone does not authorize resuming work or production."
+  ],
+  "owner_stop": {
+    "instruction": "after current work done, do handoff and stop",
+    "handoff": "HANDOFF.md",
+    "required_final_state": "native Goal paused after verified publication; no follow-on work until new owner instruction",
+    "project_goal_completed": false
+  },
+  "owner_dependency": {
+    "key": "typesafe-region-access",
+    "state": "open",
+    "revision_at_handoff": 2,
+    "blocking_scope": "operation",
+    "independent_work_boundary": "further implementation waits for owner resume; production stop remains authoritative"
+  },
+  "production_state": {
+    "checked_at": "2026-11-20T17:17:27.775035+00:00",
+    "systemd": "ActiveState=inactive\nUnitFileState=disabled\n\nActiveState=inactive\nUnitFileState=disabled\n",
+    "postgres": "exited restart=no"
+  },
+  "artifacts": [
+    {
+      "path": "build-snapshot/agent",
+      "bytes": 12444040,
+      "sha256": "9060804b379b94cb78ec9e270644bf7c6ce16d5b7fb3971fb4f78c8b762da7fc"
+    },
+    {
+      "path": "build-snapshot/agentd",
+      "bytes": 67036584,
+      "sha256": "2e20730ae94cb72e8e317415972351e6c9f8d7e0a3d8c61582a11f1206d6aa30"
+    },
+    {
+      "path": "build-snapshot/agent-memory-retrieve",
+      "bytes": 12908264,
+      "sha256": "1e5863928e007cb0ce990a2068a8724817c85405c39089dd395a4c1eb9c1c16f"
+    },
+    {
+      "path": "build-snapshot/agent-memory-lexical-timing",
+      "bytes": 10391792,
+      "sha256": "60656b8ee985d6047c409705c01e2123af421098fa2235bf89047165b8adeee6"
+    },
+    {
+      "path": "tools/memory_screen_metrics.py",
+      "bytes": 22099,
+      "sha256": "34eb09c94b395d2520336bb5e70c8fb31aca8d42675eef723f8e75b277ce4339"
+    },
+    {
+      "path": "tests/test_memory_screen_metrics.py",
+      "bytes": 12288,
+      "sha256": "59266039436c617a2997da476da55f543682247b568c997a73758c4c944035fd"
+    },
+    {
+      "path": "ui/dist/index.html",
+      "bytes": 1073,
+      "sha256": "6bb33594ba658be8804a82287dabcd372ee4ace094869d4f21588fb05d8793a2"
+    },
+    {
+      "path": "ui/dist/assets/index-Cnaezztn.js",
+      "bytes": 784942,
+      "sha256": "bd5173359dfa967e7111f397b2a876742912c43d5bc21b9251a08687842e5ef3"
+    },
+    {
+      "path": "ui/dist/assets/index-vKkktlW6.css",
+      "bytes": 65342,
+      "sha256": "cd94028e1f65b96708054e6d3cdc7b22c396cd5d303f14c6f8ea64affd588364"
+    }
+  ],
+  "logs_and_originals": [
+    {
+      "path": "build/memory_screen_snapshot_final.log",
+      "bytes": 42272,
+      "sha256": "8751a312ce1b75b8c2f219bf081e3f80b1998c4e0dec29625c686992ba0d57d6"
+    },
+    {
+      "path": "build/memory_screen_before_commit.log",
+      "bytes": 232,
+      "sha256": "0c37ce21b486814598ee74c8f7d43edb2a9d356723e5b2168450aa2fba427c71"
+    },
+    {
+      "path": "build/memory_screen_focused_final.log",
+      "bytes": 232,
+      "sha256": "40cc7d82d745126c51abd91785833066c80ae2c0d1e4049f2aa2fa1cf7655476"
+    },
+    {
+      "path": "build/memory_screen_freeze_check.log",
+      "bytes": 86,
+      "sha256": "e4465e95767e2ca7589cb0a668a404afefd49481c38599b66be697f4a2036d5d"
+    },
+    {
+      "path": "build/memory_screen_baseline_run.log",
+      "bytes": 631,
+      "sha256": "ff64508bb7828caabacd31d68eb88b28d532e20cbecbe39b8300104dc2f7edea"
+    },
+    {
+      "path": "build/memory_screen_baseline_metrics_final.log",
+      "bytes": 10194,
+      "sha256": "fb27fea0b80eee88b3b219f4d27a9ac025ed6e622b186c219ec573d37b0da342"
+    },
+    {
+      "path": "build/memory_screen_documentation.log",
+      "bytes": 58,
+      "sha256": "7846f9b4469c3f6c6285ac81534d0d27a8973b40c5b63889fe1b80bdabbb8eb6"
+    },
+    {
+      "path": "build/memory_screen_repo_guards.log",
+      "bytes": 4027,
+      "sha256": "c21a06224d307aec2bb17d08cdea7770f06d3c6fa6e678148e7dff62d2950c01"
+    },
+    {
+      "path": "build/memory_screen_production_state.json",
+      "bytes": 201,
+      "sha256": "8c381db4ce2efa90ee2c06ab663945e4e1a769774dea6d8be381f4888fd2fda0"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/admission.json",
+      "bytes": 839,
+      "sha256": "b43104f6d3c6b7350849534d97fca11d27205131bb9a7941beb5f5d5240ef899"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/lexical.json",
+      "bytes": 51046,
+      "sha256": "4902231047ed1a976c2ac2015965a9acc58b9ed2d366dc705d85d6324140d9dc"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/stdout.json",
+      "bytes": 51046,
+      "sha256": "4902231047ed1a976c2ac2015965a9acc58b9ed2d366dc705d85d6324140d9dc"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/resource.json",
+      "bytes": 572,
+      "sha256": "eab519b9c4437bed7a404f6e784877d8f8b35bb26687d6c11bc3c794ac4acc17"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/timing-admission.json",
+      "bytes": 611,
+      "sha256": "1da02766a665b46d9c43b4280a303dc86f7fae0fbc1ffd05267cfde6af8162f4"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/timing.json",
+      "bytes": 8131,
+      "sha256": "69909a1fb3670665f43eca4b28ce3cbd611ddfb00ca600e3853e09bc86306edc"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/timing-resource.json",
+      "bytes": 234,
+      "sha256": "0c53a9596dab720d1b67337cfc3508fa1308e47c89fe577edf486892b720201c"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/timing-stdout.json",
+      "bytes": 8131,
+      "sha256": "69909a1fb3670665f43eca4b28ce3cbd611ddfb00ca600e3853e09bc86306edc"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/timing-stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "build/memory-screen-v1-20261121/metrics-final.json",
+      "bytes": 10194,
+      "sha256": "fb27fea0b80eee88b3b219f4d27a9ac025ed6e622b186c219ec573d37b0da342"
+    }
+  ]
+}

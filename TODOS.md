@@ -2,6 +2,10 @@
 
 ## Current architectural priorities (2026-11-21)
 
+Owner requested handoff and stop after the current screening milestone. Do not
+continue this backlog until a new instruction to resume. Production retains its
+separate stop.
+
 The authoritative capability/verification snapshot is [docs/CURRENT_SNAPSHOT.md](docs/CURRENT_SNAPSHOT.md). Current direction and acceptance gates are in [docs/ARCHITECTURE_CURRENT.md](docs/ARCHITECTURE_CURRENT.md). The dated subsystem backlog is preserved separately below; it does not override these priorities.
 
 - [x] Revision-checked atomic memory publication: shared host writer lock, exact-byte hashes, retained originals, strict expected revision, consolidation/retention current-head CAS and workflow conflict refusal. Local process-crash and concurrency checks cover this source slice; no production race or power-loss qualification is claimed.
