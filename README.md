@@ -128,4 +128,4 @@ The owner's latest direction is to publish this verified snapshot to **GitHub**.
 
 The existing [ESP32 voice-agent demonstration](https://github.com/user-attachments/assets/be605653-04cf-49f1-9696-4dff41796635) illustrates an integration; it is not board-level qualification evidence for every current feature.
 
-Optional contributions support public maintenance and experiments: [Support Agent-C](https://x2.brucelu.top/products/support/checkout/?source=github-agent-c-readme).
+To support ongoing maintenance, [purchase LangLearn cloud time with PayPal](https://langlearn.hubstack.cn/portal). Sign in with the Apple Account linked to an existing LangLearn account. Purchases add cloud time to that LangLearn account.
