@@ -105,8 +105,10 @@ Reproduce the full selection with the command above, or the authority subset in
 `build/memory_authority_native_final.log`,
 `build/memory_authority_fairness.log`,
 `build/memory_authority_documentation.log` and
-`build/memory_authority_repo_guards.log`. These fixture timings do not define a
-production SLO. No paid scorer, live provider or 9B substitution was used.
+`build/memory_authority_repo_guards.log`. The [source qualification receipt](verification/memory-authority-20261120.json)
+pins implementation `f355886`, artifact hashes, commands and remaining limits.
+These fixture timings do not define a production SLO. No paid scorer, live
+provider or 9B substitution was used.
 
 The preceding [remote-workflow receipt](verification/remote-workflow-20261120.json)
 pins `05384a3`; its controller and real-process recovery cases remain in the

@@ -1,0 +1,106 @@
+{
+  "checked_at": "2026-11-20T11:22:16.554989+00:00",
+  "source_revision": "f355886acc10936d1f886ecbe90439d99d4c07dd",
+  "scope": "Revision-checked host memory authority and exact retained originals; currentness/retrieval propagation remains open",
+  "source_qualification": "Complete then-current 66-native/141-browser/Go/OpenAPI/UI run passed. Final retained-directory sync review and rebuild passed the complete current 68-native selection, including refreshed budget/fairness fixtures. UI source unchanged between these runs. Artifact hashes identify actual tested binaries; embedded build metadata may retain the pre-commit revision. No production deployment.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "1.58.0"
+  },
+  "commands": [
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "cmake --build build-snapshot --target agent agentd memory_store_tests host_toolset_tests -j4",
+    "ctest --test-dir \"build-snapshot\" -R '^(agent_core_tests|work_ledger_tests|workflow_agentd_call_effect_tests|agentd_workflow_agentd_call_smoke|agentd_workflow_agentd_call_broker_proxy_smoke|agentd_workflow_agentd_call_recovery_smoke|agentd_session_work_smoke|agentd_session_message_pages_smoke|agentd_job_trace_lookup_smoke|agentd_job_durable_admission_smoke|agentd_job_durable_admission_stream_smoke|agentd_job_durable_cancel_smoke|workflow_durable_delay_smoke|session_store_tests|workflow_sop_tests|workflow_sop_registry_tests|agentd_workflow_sop_registry_smoke|workflow_decision_tests|agentd_workflow_decision_smoke|workflow_signal_tests|agentd_workflow_signal_smoke|workflow_condition_tests|agentd_workflow_condition_smoke|workflow_model_effect_tests|workflow_model_transcript_tests|workflow_model_session_tests|agentd_workflow_model_effect_recovery_smoke|agentd_workflow_delegate_smoke|agentd_workflow_delegate_attempt_caps_smoke|agentd_workflow_delegate_continuation_smoke|agentd_workflow_token_grant_smoke|workflow_host_tool_tests|agentd_workflow_host_tool_recovery_smoke|workflow_effect_tests|workflow_budget_tests|workflow_budget_parallel_smoke|device_assignment_tests|agent_db_tests|agentd_workflow_effect_recovery_smoke|host_session_prompts_tests|host_toolset_tests|memory_store_tests|agentd_memory_consolidate_smoke|agentd_memory_retention_smoke|agentd_workflow_memory_put_smoke|agentd_workflow_memory_consolidate_smoke|agentd_workflow_memory_search_smoke|agentd_workflow_memory_timeline_smoke|agentd_workflow_memory_structured_query_smoke|agentd_workflow_memory_correlate_smoke|agentd_workflow_memory_query_smoke|agentd_workflow_budget_host_tool_memory_put_smoke|agentd_memory_correlate_smoke|agentd_trace_memory_correlate_smoke|agentd_workflow_stats_budget_pressure_smoke|agentd_workflow_drr_budget_pressure_mixed_fairness_smoke|docs_sanity_tests|cli_harness_smoke|cli_machine_output_smoke|agentd_workflow_sop_smoke|agent_local_stream_tool_loop_smoke|agent_local_stream_assistant_smoke|agentd_workflow_idempotency_smoke|agentd_workflow_replay_spec_smoke|agentd_workflow_http_json_smoke|agentd_workflow_http_allowlist_smoke|agentd_workflow_http_dns_pin_smoke|agentd_workflow_http_deny_cidr_smoke)$' --output-on-failure",
+    "ctest --test-dir build-snapshot -R '^agentd_workflow_drr_budget_pressure_mixed_fairness_smoke$' --repeat until-fail:3 --output-on-failure",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "canonical_native_cli_api_checks": 68,
+    "final_native_repeat": "passed",
+    "browser_checks": 141,
+    "go_packages": "all passed; optional environment-gated integrations remain separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "live_provider_calls": 0,
+    "paid_scorer_calls": 0,
+    "retrieval_evaluation": "not run; endpoint/auth/model/pricing and frozen A/B/C pilot remain pending",
+    "changed_document_links_and_anchors": 82
+  },
+  "local_fixture_timings_seconds": {
+    "complete_initial_66_native_suite": 101.91,
+    "final_68_native_suite": 102.99,
+    "memory_store_tests": 0.08,
+    "host_toolset_tests": 0.24,
+    "agentd_workflow_memory_put_smoke": 0.65,
+    "agentd_memory_retention_smoke": 0.47
+  },
+  "artifacts": {
+    "build-snapshot/agent": {
+      "bytes": 10540224,
+      "sha256": "f6631228cf7721bebd82d4980505cd3bbcc32b099aa939e8a313ca685f88ba86"
+    },
+    "build-snapshot/agentd": {
+      "bytes": 64796704,
+      "sha256": "15bbba26a441af63a2d7d9f7fff0975ec863ffbaa454b98844f885c91f91fa63"
+    },
+    "build-snapshot/memory_store_tests": {
+      "bytes": 1084592,
+      "sha256": "ea368cf7cf20cd96e7a1be3b85bf7b03d55f12fc2c9114b26c9567904517542b"
+    },
+    "build-snapshot/host_toolset_tests": {
+      "bytes": 7876528,
+      "sha256": "09bd966f13621bd9bae5210dd7e559d4fbfefeea37bde565c72784fef15e7407"
+    },
+    "build-snapshot/libagent_host.a": {
+      "bytes": 18454672,
+      "sha256": "7516a9d0f0144907ecdc5a60222426e48ec07bd40d2b5a96975b29423d597d7b"
+    }
+  },
+  "ui_artifacts": {
+    "files": 18,
+    "tree_sha256": "a35ba8dd99e999a28497dbe4ce8ce32e7047cb11c8b92a203062dc22b4e184ca",
+    "tree_algorithm": "SHA-256 over sorted relative file path UTF-8 + NUL + raw file SHA-256 bytes + newline for each ui/dist file",
+    "index_html_sha256": "1f1d54776c3552e36325c57954e554f939516c295a53c42e06d6958d4fc0bae3"
+  },
+  "local_logs": {
+    "build/memory_authority_snapshot_20261120.log": "84985f3b49ac22d533bf8384559ee857d83a39a43374886c7c4149533e548ec8",
+    "build/memory_authority_native_final.log": "a1b626600814bea87bae60194334a346f4af92a06932b32ebb2f607a070cedef",
+    "build/memory_authority_fairness.log": "c5819675671cbb7e6a0a16585c79f7f5c8fce72fcaf8b6092f635d4dc43a3839",
+    "build/memory_authority_documentation.log": "33496141a6aa153ff39384c4a9461060871d435de93d9a37551433cf0c4ed0fd",
+    "build/memory_authority_repo_guards.log": "125343f13e5668e0de2ed2eecabcf624072a1dc889fc2f091a96837c861157d0"
+  },
+  "verified_failure_boundaries": [
+    "Two threads and two processes with one expected revision produce one successful replacement and one conflict. Four append threads retain all 32 notes.",
+    "Real SIGKILL immediately before and after replacement preserves complete old/new heads, retained originals and subsequent OS lock acquisition.",
+    "Cancellation, oversized replacement, archive publication failure, damaged structured block, linked source and corrupt original are refused. Unknown revision never substitutes current bytes.",
+    "Tool read/write receipts expose source and raw-byte revision; successive same-second updates have distinct immutable checkpoint paths.",
+    "Native workflow references bind prior revision receipts. Missing expected revision is rejected at submission; a stale write does not retry, while independent work finishes with one worker.",
+    "Retention derives from current structured bytes despite a stale checkpoint and leaves the fresh corrected value active."
+  ],
+  "fixture_adjustments": [
+    "Memory workflow fixtures explicitly name absence for their isolated new files; dependent updates bind the prior JSON Pointer revision.",
+    "The budget-pressure fixture waits for the persisted queued delay instead of the obsolete worker-held running state.",
+    "The mixed fairness fixture gives independent writes distinct source paths and keeps its deterministic probe runnable with delay_ms=0. Its original two-peer-task fairness assertion remains; three focused repeats and the final canonical native run passed."
+  ],
+  "preserved_boundaries": [
+    "4B answerer unchanged; no 9B substitution, dotenv credential read, TypeSafe call or live provider probe.",
+    "Production Agent-C daemon/gateway inactive and disabled; dedicated PostgreSQL exited restart=no.",
+    "GitHub only; Panda excluded. Private configuration, local instructions and pre-existing docs/PUBLISHING.md edits are outside these commits."
+  ],
+  "limitations": [
+    "Linux process-crash tests do not qualify filesystem power loss, Windows runtime, MCU boot or physical-device execution.",
+    "The root-wide writer protocol covers cooperating memory API writers and structured producers; direct/in-place privileged edits, external deletion, directory replacement and daily-file rotation are outside its guarantee.",
+    "Hashes identify exact bytes, not a monotonic generation. Source identity depends on the configured canonical root and supplied relative path; root relocation changes it.",
+    "Pruning is bounded best effort, not a hard whole-store disk quota. Exact originals can be unavailable after retention; reads fail explicitly.",
+    "Current/historical/evidence eligibility across FTS/fallback/salience/injection, consistent multi-file retrieval, full source/revision/span bindings and correction/deletion invalidation remain the next milestone.",
+    "Publication verification does not establish retrieval recall, supported-answer accuracy, provider pricing, paid scorer quality or trusted evidence-presence completion."
+  ],
+  "documentation_check": "Ignored build/check_watch_docs.py checks relative Markdown paths and GitHub-style anchors in the seven changed owning documents. Canonical fresh-checkout verification remains tools/verify_current_snapshot.sh."
+}
