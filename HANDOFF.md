@@ -1,6 +1,6 @@
 # Agent-C developer handoff
 
-Updated 2026-11-20. Continue work in the existing checkout; this is a rolling
+Updated 2026-11-21. Continue work in the existing checkout; this is a rolling
 project with no compatibility requirement.
 
 ## Read the current source through its contracts
@@ -81,7 +81,12 @@ and other deployments. [Publishing policy](docs/PUBLISHING.md) owns the procedur
    outcomes. Registered cache purge, live current correlation and recap provenance checks now cover those consumers. Explicit memory-root archive expiry preserves active pins and metadata intents. [Promotion receipt compaction](docs/MEMORY.md#compacted-receipts-and-recovery) now keeps consumed IDs, literal original receipts and leaf pins across atomic publication; the current source format has no automatic v1 conversion. Next close expiry-intent metadata compaction, broader bounded forgetting, generic conclusion/claim validation and direct recap pre-provider crash admission.
    Keep history/forget policy explicit; invalidation never replays an external
    effect. Linux fixtures do not qualify Windows runtime or storage power loss.
-2. Then implement bounded lexical multi-hop retrieval with a pluggable scorer.
+2. The [bounded retrieval foundation](docs/MEMORY.md#bounded-evidence-retrieval)
+   now implements foreground lexical/rerank/one-expansion arms and a typed
+   TypeSafe adapter. Freeze the independent 20-question held-out corpus and
+   qualify actual evidence/answer improvement; local fixture success is not that
+   measurement. Preserve original prepared/completed research receipts and do
+   not replay an uncertain paid call into a new output path.
    The [architecture evaluation gate](docs/ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
    records the owner-authorized TypeSafe/Jev canary and 20-question pilot bounds.
    Retain the existing 4B answerer; no 9B substitution. Production remains stopped.

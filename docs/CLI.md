@@ -17,6 +17,12 @@ The host defaults to autonomous execution without permission prompts. Durable re
 
 For production pipelines, `--json` emits a versioned JSONL stream and `-o` / `--output-last-message` publishes the exact final text after successful execution/session saving. See [CLI_EVENT_PROTOCOL.md](CLI_EVENT_PROTOCOL.md) for lifecycle, failure, streaming and artifact guarantees. Output policy is isolated in `cli/src/cli_run_output.cpp`.
 
+The separate host research command `agent-memory-retrieve` runs bounded lexical,
+rerank and one-expansion evidence comparisons with durable receipts. It does not
+change normal CLI memory search or run a final answerer. See the
+[memory research procedure](MEMORY.md#bounded-evidence-retrieval) for explicit
+public fixtures, credential handling, budgets and no-replay recovery.
+
 Historical guide baseline: 2026-02-19
 
 This guide covers the `agent` CLI and tool-loop behavior.

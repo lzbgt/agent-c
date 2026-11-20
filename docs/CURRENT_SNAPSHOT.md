@@ -1,6 +1,6 @@
 # Current Agent-C snapshot
 
-Date: 2026-11-20. This document records implemented behavior and reproducible checks. It is the entry point for the current snapshot; [architecture and delivery gates](ARCHITECTURE_CURRENT.md) describe the longer-term design and [research](research/agent-systems-20261110.md) records inspected primary sources.
+Date: 2026-11-21. This document records implemented behavior and reproducible checks. It is the entry point for the current snapshot; [architecture and delivery gates](ARCHITECTURE_CURRENT.md) describe the longer-term design and [research](research/agent-systems-20261110.md) records inspected primary sources.
 
 This rolling summary covers current source. Dated deployment and earlier test
 results remain explicitly historical; the source tree does not imply that
@@ -21,6 +21,8 @@ production services were restarted.
 - **Cache and recap invalidation (source only):** source publication purges registered disposable caches/sidecars under a cross-process lease; FTS view rebuilds use checked SQLite/FTS secure deletion. Correlation projects eligible current sources directly. Recap originals use atomic publication and versioned derivation manifests; list reads revalidate source IDs, revisions and eligible references. Stale/unverified results remain historical. Incomplete provider outcomes preserve full API/UI reports and never auto-retry. Exact JSON decoding keeps evidence fields literal and rejects unsupported current schemas. See [cache boundaries](MEMORY.md#snapshot-and-cache-boundaries) and [recaps](MEMORY.md#memory-recaps-llm-summaries). Input currentness does not verify claims; direct recap pre-call crash admission and generic forgetting remain open.
 
 - **Explicit archive expiry (source only):** ordinary writes preserve original history. A positive `archive_max_days` cleanup policy captures active memory heads/literal revision references under the writer lock, protects matching originals, validates complete bounded inventories and persists metadata intents before unlink. Confirmed/uncertain/deferred results remain distinct through API/UI; zero preserves history. This covers memory-root retention, not external consumers without active pins, universal hard forgetting or forensic erasure. See [archive expiry](MEMORY.md#explicit-archive-expiry). Expiry-intent metadata compaction remains open.
+
+- **Bounded retrieval research (source only):** a foreground command shares captured scope/eligibility and a question-term FTS baseline across lexical, rerank and one-expansion arms. Pluggable typed scoring validates exact IDs and finite probabilities; source-grounded terms carry seed → term → resulting-evidence traces. Whole-record context limits, cancellation/source fences, conservative TypeSafe token/attempt/judgment caps and explicit lexical fallback are implemented. Prepared/per-arm receipts survive interruption and refuse paid replay into an existing output. Local/loopback tests qualify reliability; held-out retrieval and unchanged-4B supported-answer evaluation remain pending. Normal search/context defaults remain lexical. See [research contract](MEMORY.md#bounded-evidence-retrieval).
 
 - **Native remote workflow recovery (source only):** `agentd_call` saves a parent-owned admission before one remote POST, uses a database-scoped server-owned key and resumes only authenticated original-workflow reads. Exact identity/state checks pin the returned workflow; completed receipts save before parent settlement and replay without fresh network grants. Missing/corrupt outcomes remain scoped blockers; API/UI checks cannot replace the target, bypass budgets or revive owner stops. Direct and broker proxy fixtures use real temporary daemons and no provider. See [remote admission](WORKFLOW_EFFECTS.md#durable-remote-workflow-admission).
 
@@ -85,6 +87,12 @@ tools/verify_current_snapshot.sh --core-only
 The verifier configures **Debug** builds so assertion-based existing C tests execute. Do not interpret passing Release tests compiled with `NDEBUG` as equivalent coverage. Build artifacts live under ignored `build-snapshot/` and `build-snapshot-core/`; override `AGENT_SNAPSHOT_BUILD_DIR` if needed.
 
 ## Verification evidence
+
+The foreground retrieval foundation passed seven focused local/loopback/API
+checks in **4.01 seconds**. Final focused checks also cover the added receipt
+metadata and account-discovery fixture. A new canonical qualification is required
+for this increment; the following full-lane receipt identifies the preceding
+compaction implementation.
 
 On 2026-11-20, implementation **`f38cb31`** passed **76 native/CLI/API
 checks in 155.03 seconds**, all canonical Go packages (cached where eligible),

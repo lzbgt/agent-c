@@ -219,6 +219,184 @@ Use `memory_timeline` for current eligible neighbors, and `memory_get(evidence)`
 for exact original evidence. Timeline context never expands into excluded raw
 neighbors. A historical timeline can name an exact retained `revision`.
 
+### Bounded evidence retrieval
+
+This **host-only foreground research path** implements lexical candidates,
+typed relevance scoring and at most one source-grounded expansion. It is not
+enabled in normal `memory_search`, daemon context injection or the WebUI. The
+existing 4B answerer is unchanged. The source contracts are
+[`memory_retrieval.h`](../cli/src/memory_retrieval.h),
+[`memory_retrieval.cpp`](../cli/src/memory_retrieval.cpp),
+[`typesafe_scorer.cpp`](../cli/src/typesafe_scorer.cpp) and the executable
+[`memory_retrieve.cpp`](../tools/memory_retrieve.cpp). No new model weights,
+vector database, scheduler or portable-C dependency is introduced.
+
+The same captured scope, source revisions, eligibility cutoff and passage
+chunking serve every stage. Current mode excludes ineligible records before
+scoring and term selection. Historical/evidence context marks historical rows
+explicitly. Cancellation or a changed source clears returned context. A
+successful relevance score is neither truth, permission nor an external-effect
+receipt.
+
+The three research arms have one shared lexical candidate policy:
+
+1. **Lexical:** extract at most 32 distinct question terms, remove common English
+   question words and issue a quoted OR query through the existing FTS5/BM25
+   index. The original question remains intact for scoring. The same eligible
+   substring fallback handles an unavailable index. Oversized/omitted question
+   terms are counted and make the result explicitly incomplete. Existing direct
+   lookup callers retain their FTS syntax; this mode is explicit.
+2. **Rerank:** score at most 20 candidates against the original question. The
+   pluggable host callback must return exactly one finite probability in `[0,1]`
+   per supplied evidence ID and identify its provider, model and prompt revision.
+   Missing, duplicated or foreign IDs, invalid scores and exceptions produce a
+   visible incomplete lexical fallback without a scoring retry.
+3. **Expand:** retain at most five first-stage candidates. Seeds scoring at
+   least 0.5 contribute literal terms from their scoring text. Rank terms by
+   captured passage frequency with deterministic text ties; select eight by
+   default, at most 20. Search each term, interleave lists, exclude every initial
+   candidate ID and admit at most 20 unseen passages. Rescore these with the
+   retained candidates and accumulated evidence, then select final context.
+   There is no second expansion or generated search term.
+
+Every admitted expansion records `seed_id`, the literal `term`, a zero-based
+half-open UTF-8 byte `seed_text_span` into that seed's recorded scoring text, and
+`result_evidence`. Stage inputs, exact original references, validated scores and
+usage remain in the report. Fetch the original with `memory_evidence_read`;
+the scoring-text span is not a live `path:line` reference or a substitute for
+the original source/revision/span identity. Snippets disclose `text_clipped`
+and original passage byte length. No Unicode word segmenter is installed:
+mixed Chinese/code lookup is tested; arbitrary Chinese question segmentation
+and retrieval quality are not qualified.
+
+Final context contains at most eight complete records, within **16,000 bytes of
+compact JSON** by default. References are never cut to make a record fit.
+`context_omitted`, `selection_omitted`, `question_terms_omitted` and
+`terms_not_selected` distinguish output/admission budgets from ranking choices.
+`context_budget`, `query_budget` and `lexical_fallback` are incomplete results.
+An unavailable/failed second scorer preserves completed first-stage scores in
+the report and returns the original lexical context. The research batch stops
+at its first incomplete arm and retains preceding results.
+
+#### Run a local lexical example
+
+Use the host prerequisites from [Operations](OPERATIONS.md), an assertion-enabled
+build and a **new example directory**. The following creates public synthetic
+data only; it does not read a live Agent-C state directory:
+
+```sh
+cmake -S . -B build-snapshot -DCMAKE_BUILD_TYPE=Debug -DAGENT_BUILD_HOST=ON -DAGENTD_ENABLE_HTTP=ON
+cmake --build build-snapshot --target agent-memory-retrieve memory_retrieval_tests typesafe_scorer_tests -j4
+test ! -e build/retrieval-demo
+mkdir -p build/retrieval-demo/memory
+cat > build/retrieval-demo/memory/MEMORY.md <<'EOF'
+Cedarport supplier is JuniperWorks.
+
+JuniperWorks is based in Riverton.
+EOF
+cat > build/retrieval-demo/input.json <<'EOF'
+{"schema":"agent.memory.screen.input.v1","files":["MEMORY.md"],"cases":[{"id":"example","question":"Where is Cedarport supplier located?","view":"current"}]}
+EOF
+build-snapshot/agent-memory-retrieve --memory-root build/retrieval-demo/memory \
+  --manifest build/retrieval-demo/input.json --lexical-only \
+  --output build/retrieval-demo/lexical.json
+```
+
+Pass requires exit 0, `status="complete"`, a lexical arm with revision-bound
+context, and null provider usage. No provider credential is needed. This is a
+tuning/operation example, **not** the held-out screening set or an answerer test.
+The manifest accepts 1–20 distinct case IDs, original questions and explicit
+current/historical/evidence views. A case's optional `files` can only narrow the
+declared corpus. Gold labels are not sent to the scorer. Snapshot signatures
+and source revisions bind all three arms; a detected corpus change stops work.
+
+#### Bounded TypeSafe baseline
+
+Only the explicit `--typesafe-env` research path reads the exact
+`TYPESAFE_API_KEY` entry. The loader treats quotes/comments as dotenv data,
+rejects duplicate/interpolated/invalid entries and imports no other values.
+Do not source or print the file, pass the key in argv, copy it into the corpus
+or put it in a prompt. The endpoint is fixed to the official
+`https://api.typesafe.ai/v1/systemone`; credentials are never redirected to the
+OpenRouter endpoint in the SAG2 example. TLS verification stays enabled,
+redirects are disabled and environment proxies are disabled for this client.
+
+The current adapter requests **`jev-1.14.0`** and requires the returned model to
+match. It uses named `noul` questions and records the actual returned model,
+prompt revision, validated token usage and bounded attempt receipts. A changed
+model pin stops further scoring. The
+[architecture evaluation gate](ARCHITECTURE_CURRENT.md#memory-authority-and-retrieval-evaluation)
+links the inspected official API, model and price documents; recheck these facts
+before any paid batch.
+
+One serial client owns the entire cloud-arm budget, not one client per query:
+
+| Bound | Foreground screen | Separate canary |
+| --- | --- | --- |
+| HTTP attempts, including retry | 75 | 2: account discovery and one scoring request; no retry |
+| Candidate judgments, including retry | 1,300 | 2 |
+| Accounted input tokens | 4,915,200 | 65,536 |
+| Estimated ceiling at $0.042 / million input tokens | $0.2064384 | $0.002752512 |
+| HTTP request / total client timeout | 15 s / 600 s | 15 s / 30 s |
+| Request / response body limit | 32,768 / 65,536 bytes | same |
+
+Before each scoring attempt the client reserves **65,536 input tokens** against
+the total cap, conservatively interpreting the provider's default 64k request
+context. The long-context header is never sent. Successful validated usage
+replaces the reserve; a timeout, transport/schema failure or unknown outcome
+keeps its reserve. Output tokens are recorded but currently free at the listed
+price. These are client admission/accounting bounds and cost estimates, not a
+provider billing receipt or a tokenizer-based prediction. Out-of-range usage
+disables further scoring. HTTP 429/529 permit at most one retry after a bounded
+250–2,000 ms wait. HTTP 499, authentication/payment errors, response overflow
+and unknown network outcomes are never automatically retried. Cancellation and
+total deadlines cover backoff and HTTP progress; arbitrary host callbacks and
+kernel I/O remain cooperative rather than hard real-time.
+
+The separately authorized small canary command is:
+
+```sh
+build-snapshot/agent-memory-retrieve --canary --typesafe-env "$HOME/.env" \
+  --output build/retrieval-canary.json
+```
+
+Use a previously absent output path. The program first saves a revision-checked,
+synced `prepared` receipt with its budgets and public two-passage fixture. Only
+then does it discover account models and send one scoring request. Exit 0 proves
+authentication and typed scoring plumbing; it does not prove answer quality.
+Inspect `status`, `returned_model`, `scores` and `usage` on completion. An existing
+output is refused even if its last state is `prepared` or `in_flight`: inspect
+that original and reconcile unknown usage instead of creating another path to
+replay a paid call. Earlier completed arms and original receipt revisions are
+retained through the existing atomic store. The command has no automatic paid
+resume or full-benchmark mode.
+
+After freezing the independent 20-question corpus/labels, the same executable
+accepts `--memory-root`, `--manifest`, `--typesafe-env` and a new `--output` to run
+lexical/rerank/one-expansion arms. It records retrieval results only. Keep the
+existing 4B answerer and fixed final context allowance for separate supported
+answer/citation evaluation; no answerer replacement or quality promotion is
+implied. Production daemon/gateway/PostgreSQL remain stopped.
+
+#### Verify failure boundaries
+
+From the repository root, after the build above:
+
+```sh
+ctest --test-dir build-snapshot -R '^(memory_retrieval_tests|typesafe_scorer_tests|memory_retrieval_research_smoke)$' --output-on-failure
+sha256sum build-snapshot/agent-memory-retrieve
+```
+
+These checks exercise a real unseen-record bridge, exact evidence reads,
+current/historical and scope restrictions, malformed IDs/scores, context/input
+caps, cancellation/deadline, source corrections and lexical fallback. The
+TypeSafe fixture uses synthetic credentials and loopback HTTP for response
+overflow, timeout and cancellation; error bodies never reach reports. The CLI
+fixture verifies retained prepared/completed receipts and refusal to replay an
+existing output. They do not call a paid model, measure general retrieval/answer
+quality or qualify an MCU. For another scorer, implement `MemoryScorer`, obey its
+cancellation contract and repeat these failure cases before any quality study.
+
 ### Snapshot and cache boundaries
 
 A retrieval captures complete documents, applies eligibility, then verifies the

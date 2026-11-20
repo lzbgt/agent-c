@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cctype>
 #include <map>
+#include <set>
 #include <sstream>
 #if !defined(_WIN32)
 #include <fcntl.h>
@@ -258,10 +259,31 @@ bool indexed(const MemoryViewSnapshot &, const std::string &, int, int, std::vec
 }
 #endif
 } // namespace
+std::vector<std::string> memory_question_terms(const std::string &query, size_t *omitted) {
+  static const std::set<std::string> stop = {"a","an","the","and","or","of","to","in","is","are","was","were","be","do","does","did","what","which","where","when","who","how","for","with","from","that","this","it","its","s"};
+  std::vector<std::string> result;
+  std::set<std::string> seen;
+  std::string token;
+  size_t dropped = 0;
+  auto flush = [&] {
+    const auto normalized = lower(token);
+    if (!token.empty() && token.size() <= 64 && !stop.count(normalized) && seen.insert(normalized).second) {
+      if (result.size() < 32) result.push_back(token); else ++dropped;
+    } else if (token.size() > 64) ++dropped;
+    token.clear();
+  };
+  for (unsigned char c : query) {
+    if (c >= 128 || std::isalnum(c) || c == '_' || c == '.' || c == '-') token += char(c);
+    else flush();
+  }
+  flush();
+  if (omitted) *omitted = dropped;
+  return result;
+}
 bool memory_retrieve_snapshot(const MemoryViewSnapshot &snapshot, const std::string &query, bool use_index,
                               bool case_sensitive, int max_results, int max_snippet_chars,
                               std::vector<MemorySearchHit> *hits, std::string *engine, std::string *error,
-                              std::string *index_error, int context_lines) {
+                              std::string *index_error, int context_lines, bool question_terms) {
   if (!hits || !engine)
     return false;
   hits->clear();
@@ -278,27 +300,41 @@ bool memory_retrieve_snapshot(const MemoryViewSnapshot &snapshot, const std::str
   if (!memory_view_validate(snapshot, error))
     return false;
   *engine = "substr";
+  const auto needles = question_terms ? memory_question_terms(query) : std::vector<std::string>{query};
+  std::string fts_query = query;
+  if (question_terms) {
+    fts_query.clear();
+    for (const auto &term : needles) {
+      if (!fts_query.empty()) fts_query += " OR ";
+      fts_query += '"' + term + '"';
+    }
+  }
   std::string failure;
-  if (use_index && !case_sensitive && indexed(snapshot, query, limit, cap, hits, &failure))
+  if (!needles.empty() && use_index && !case_sensitive && indexed(snapshot, fts_query, limit, cap, hits, &failure))
     *engine = "fts5";
   else if (!failure.empty() && index_error)
     *index_error = failure;
   if (*engine != "fts5" || hits->empty()) {
     hits->clear();
     *engine = "substr";
-    const auto needle = case_sensitive ? query : lower(query);
     for (const auto &passage : snapshot.passages) {
-      if ((case_sensitive ? passage.text : lower(passage.text)).find(needle) == std::string::npos)
-        continue;
-      append(passage, cap, 0, hits);
-      if (int(hits->size()) == limit)
-        break;
+      const auto text = case_sensitive ? passage.text : lower(passage.text);
+      int matches = 0;
+      for (const auto &needle : needles)
+        if (text.find(case_sensitive ? needle : lower(needle)) != std::string::npos) ++matches;
+      if (!matches) continue;
+      append(passage, cap, question_terms ? matches : 0, hits);
+      if (!question_terms && int(hits->size()) == limit) break;
+      if (question_terms) {
+        std::stable_sort(hits->begin(), hits->end(), [](const auto &a, const auto &b) { return a.score > b.score; });
+        if (int(hits->size()) > limit) hits->resize(size_t(limit));
+      }
     }
   }
   for (auto &hit : *hits) {
     const auto hay = case_sensitive ? hit.passage.text : lower(hit.passage.text);
-    const auto needle = case_sensitive ? query : lower(query);
-    const auto match = hay.find(needle);
+    size_t match = std::string::npos;
+    for (const auto &needle : needles) match = std::min(match, hay.find(case_sensitive ? needle : lower(needle)));
     if (match == std::string::npos)
       continue;
     std::vector<size_t> starts{0};

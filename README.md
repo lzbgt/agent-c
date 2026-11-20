@@ -41,8 +41,14 @@ Workflows has separate **Runs**, **Create workflow** and **Schedules** sections.
 - **Workflow budgets:** per-attempt transactional grants, atomic settlement/refunds and conservative crash charges prevent duplicate capacity admission. Observed token/time overages remain explicit. [Budget contract](docs/WORKFLOW_BUDGETS.md)
 - **CLI harness:** `exec`, stdin, `resume`, `sessions`, explicit work/session directories, versioned JSONL events and successful final-message files. Coalesced streams drain without transport-boundary truncation. [CLI](docs/CLI.md)
 - **Host platform:** native daemon APIs/SSE, revision-checked memory with durable promotion provenance, revision-checked source retirement, explicit archive expiry, cache invalidation, provenance-checked summaries and scoped current/historical evidence retrieval, artifacts, policy/limits, diagnostic tools and optional broker routing, teams and event replay.
+
 - **Realtime voice:** Aliyun Omni streams microphone audio, spoken replies and shared images through the authenticated gateway. Captions stay concise and provider keys stay on the server. [Voice](docs/VOICE.md)
 - **Authenticated deployment:** an Arch-hosted gateway serves the UI and protects the private daemon using shared Hubstack OAuth, server-held credentials and verified administrator identities.
+
+The optional host [retrieval research command](docs/MEMORY.md#bounded-evidence-retrieval)
+adds bounded reranking and one source-grounded expansion with a pluggable scorer.
+It preserves lexical defaults; quality evaluation and production promotion are
+separate gates.
 
 These capabilities do not establish distributed exactly-once execution, arbitrary-tool effect safety, broker-authoritative requirements, complete SOP decisions/compensation or hardware qualification. Those boundaries and delivery priorities are explicit in the [snapshot](docs/CURRENT_SNAPSHOT.md) and [roadmap](TODOS.md).
 

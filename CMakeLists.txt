@@ -214,6 +214,8 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/summary_compaction.cpp
     cli/src/summary_llm.cpp
     cli/src/memory_index.cpp
+    cli/src/memory_retrieval.cpp
+    cli/src/typesafe_scorer.cpp
     cli/src/memory_store.cpp
     cli/src/memory_view.cpp
     cli/src/memory_promotion.cpp
@@ -241,11 +243,14 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
 
   target_include_directories(agent_host PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/cli/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
   )
 
   target_link_libraries(agent_host PUBLIC agent_core CURL::libcurl)
 
   if(AGENT_ENABLE_JSONCPP)
+    add_executable(agent-memory-retrieve tools/memory_retrieve.cpp)
+    target_link_libraries(agent-memory-retrieve PRIVATE agent_host)
     target_include_directories(agent_host PUBLIC ${JSONCPP_INCLUDE_DIRS})
     target_link_directories(agent_host PUBLIC ${JSONCPP_LIBRARY_DIRS})
     target_link_libraries(agent_host PUBLIC ${JSONCPP_LIBRARIES})
@@ -1932,6 +1937,16 @@ if(AGENT_BUILD_HOST)
 endif()
 
 if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
+  add_executable(memory_retrieval_tests tests/test_memory_retrieval.cpp)
+  target_link_libraries(memory_retrieval_tests PRIVATE agent_host)
+  add_test(NAME memory_retrieval_tests COMMAND memory_retrieval_tests)
+  set_tests_properties(memory_retrieval_tests PROPERTIES TIMEOUT 30)
+  add_executable(typesafe_scorer_tests tests/test_typesafe_scorer.cpp)
+  target_link_libraries(typesafe_scorer_tests PRIVATE agent_host)
+  add_test(NAME typesafe_scorer_tests COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/typesafe_scorer_smoke.py $<TARGET_FILE:typesafe_scorer_tests>)
+  set_tests_properties(typesafe_scorer_tests PROPERTIES TIMEOUT 20)
+  add_test(NAME memory_retrieval_research_smoke COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/memory_retrieval_research_smoke.py $<TARGET_FILE:agent-memory-retrieve>)
+  set_tests_properties(memory_retrieval_research_smoke PROPERTIES TIMEOUT 20)
   if(TARGET agentd_lib)
     add_executable(memory_archive_tests tests/test_memory_archives.cpp)
     target_link_libraries(memory_archive_tests PRIVATE agentd_lib)

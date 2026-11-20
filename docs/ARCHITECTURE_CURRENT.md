@@ -210,6 +210,20 @@ that a direct TypeSafe key works there. Parse only needed dotenv entries as data
 keep credentials out of argv, logs, artifacts and model inputs, and use only
 public/synthetic or sanitized fixtures.
 
+The foreground foundation is now implemented in `memory_retrieval.*` and
+`typesafe_scorer.*`, exposed by `agent-memory-retrieve`. All research arms share
+`question_terms_v1` FTS candidate construction, captured eligibility/chunking and
+whole-record context limits. One expansion extracts literal seed terms, retrieves
+unseen eligible evidence and rescores it with at most five retained records.
+Typed ID/score validation, source fences, explicit fallback and conservative
+input-token reservations bound the host path. Prepared/per-arm receipts reuse
+the atomic store and refuse an existing output after interruption. Local,
+loopback HTTP and actual command fixtures cover failure boundaries. Normal
+memory search/context defaults remain lexical; the portable C core is unchanged.
+See [the research procedure](MEMORY.md#bounded-evidence-retrieval). Account
+canary, held-out evidence metrics and unchanged-4B answer/citation evaluation
+remain separate evidence gates; source tests do not promote retrieval quality.
+
 Public provider capability check on **2026-11-20**: TypeSafe's official
 [System One contract](https://docs.typesafe.ai/api/system-one.md) specifies
 `POST https://api.typesafe.ai/v1/systemone` with Bearer authentication and

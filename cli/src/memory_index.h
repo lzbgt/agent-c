@@ -19,10 +19,14 @@ bool memory_index_search_ranked(const std::filesystem::path &root, const std::ve
                                 const std::string &query, int max_results, int max_snippet_chars,
                                 std::vector<MemorySearchHit> *hits, std::string *error);
 #if defined(AGENT_HAVE_JSONCPP)
+// Explicit question mode uses at most 32 quoted OR terms; direct lookups keep
+// their existing FTS syntax. All research arms use the same question policy.
+std::vector<std::string> memory_question_terms(const std::string &, size_t *omitted = nullptr);
 bool memory_retrieve_snapshot(const MemoryViewSnapshot &snapshot, const std::string &query, bool use_index,
                               bool case_sensitive, int max_results, int max_snippet_chars,
                               std::vector<MemorySearchHit> *hits, std::string *engine, std::string *error,
-                              std::string *index_error = nullptr, int context_lines = 2);
+                              std::string *index_error = nullptr, int context_lines = 2,
+                              bool question_terms = false);
 // FTS and substring fallback share exactly the same captured eligibility projection.
 // A concurrent change clears results and fails; it never falls back to stale raw text.
 bool memory_retrieve(const std::filesystem::path &root, const std::vector<std::string> &files,
