@@ -884,7 +884,7 @@ originals and derivation invalidation. The temporary daemon fixture makes five
 synthetic loopback calls: completed result, concurrent correction, 2-MiB response
 HTTP 503 and a token-limited partial completion. It checks immutable outcomes, current/history filtering, the 1-MiB
 capture digest and no provider replay. Browser checks retain HTTP 409 results,
-label changed sources and keep receipts closed. These checks do not establish
+label changed sources and keep receipts closed. The [qualification receipt](verification/memory-derived-state-20261120.json) pins the tested source and artifacts. These checks do not establish
 semantic answer accuracy, physical storage erasure, production deployment, MCU
 qualification or paid retrieval improvement.
 

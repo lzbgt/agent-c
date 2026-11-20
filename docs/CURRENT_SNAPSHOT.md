@@ -84,42 +84,44 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The previous full qualification on 2026-11-20, on retirement implementation **`a419c20`**
-passed **74 native/CLI/API checks in 121.84 seconds**, **142 browser checks**,
+On 2026-11-20, the complete canonical lane on implementation **`f17968f`**
+passed **75 native/CLI/API checks in 123.81 seconds**, **143 browser checks**,
 all Go broker/gateway packages, generated OpenAPI/type checks and the UI production
-build. The [retirement receipt](verification/memory-retirement-20261120.json) pins
-source, commands, artifact/log SHA-256 hashes, timing and limits. Repository guards,
-changed-document links/anchors and whitespace checks passed. One synthetic fixture
-run including capture/operation caps and process-crash cases took
-1.756592 seconds with a Linux child peak RSS of 101,032 KiB. This single run is not
-a production, model or MCU resource limit or latency SLO.
+build. The [derived-memory receipt](verification/memory-derived-state-20261120.json)
+pins source, commands, artifacts/log SHA-256 hashes, observed timing and limits.
+Repository guards, changed-document links/anchors and whitespace checks passed.
 
-`memory_retirement_tests` covers retrievable unpromoted/empty-file originals,
-newest checkpoint selection, stale revisions, archive failures, independent partial
-results, uncertain removal, cancellation before/after archival, read-only policy,
-128-operation and 64-MiB capture caps, strict dates, links/normalized paths,
-current cache eligibility and auxiliary root-lock reuse. Competing real processes
-and actual `SIGKILL` before/after unlink exercise restart boundaries. Real
-`memory_put` pruning retains checkpoint originals and the primary receipt. The
-HTTP fixture verifies archive bytes against returned SHA-256/span references and
-an incomplete result with an independent success. The browser case retains
-confirmed counts/errors and leaves receipts collapsed without an automatic repost.
-These are synthetic checks; no production loss or race is inferred.
+`memory_cache_tests` checks immediate cache/sidecar removal, no cache archival,
+independent-file preservation, current-view SQLite payload scrubbing, bounded
+contention/fallback, source preservation on failure, derivation invalidation and
+literal JSON original reads. The real temporary-daemon fixture makes five
+loopback calls: completed output, concurrent correction, a 2-MiB response,
+HTTP 503 and a token-limited partial result. It verifies current/history
+filtering and immutable incomplete outcomes without replay. Nine memory browser
+checks cover desktop/mobile layouts, changed-source labels and HTTP 409 result
+preservation with metadata closed. These are synthetic reliability checks, not
+production-loss or retrieval-quality measurements.
 
-Reproduce with the canonical command above or the
-[retirement subset](MEMORY.md#bounds-pruning-and-verification). Ignored receipts
-are `build/memory_retirement_snapshot_final.log`,
-`build/memory_retirement_focused_final.log`,
-`build/memory_retirement_browser_focused.log`,
-`build/memory_retirement_resources.log`,
-`build/memory_retirement_documentation.log` and
-`build/memory_retirement_repo_guards.log`. The checked-in receipt preserves their
-identity and the tested artifact hashes. No external provider, paid scorer,
-TypeSafe key use, 9B substitution or production deployment is part of this lane.
-Production remains stopped. Linux host/browser qualification does not prove
-Windows runtime, storage power loss, total disk reclamation, MCU execution,
-live-provider behavior or retrieval quality.
+One synthetic cache/derivation fixture run took **1.033383 seconds** with a Linux
+child peak RSS of **34,712 KiB**, including two bounded cache-lock waits. This
+single run is not a production, model or MCU resource limit or a latency SLO.
+Reproduce the canonical command above or the [derived-state subset](MEMORY.md#reproduce-derived-state-checks).
+Ignored logs are `build/memory_derived_snapshot_final.log`,
+`build/memory_derived_focused_commit.log`, `build/memory_derived_browser_focused.log`,
+`build/memory_derived_partial_final.log`, `build/memory_derived_resources.log`,
+`build/memory_derived_documentation.log` and `build/memory_derived_repo_guards.log`.
+The checked-in receipt preserves their identities. No external provider, paid
+scorer, TypeSafe key use, 9B substitution or production deployment is part of this
+lane. Production daemon/gateway remain inactive/disabled; PostgreSQL is exited
+with restart disabled. Application cache removal is not forensic device/backup
+erasure; archived originals remain under the existing revision policy. Direct
+recap pre-provider crash admission, archive expiry and general forgetting remain
+open. Host/browser checks do not prove MCU execution, Windows runtime, storage
+power loss, live-provider behavior or supported-answer accuracy.
 
+The previous [retirement receipt](verification/memory-retirement-20261120.json)
+pins `a419c20`; its process-crash/cancellation and partial-result cases remain in
+the current lane.
 Prior [promotion](verification/memory-promotion-20261120.json),
 [retrieval](verification/memory-views-20261120.json) and
 [publication](verification/memory-authority-20261120.json) receipts pin `9ec12c7`,
