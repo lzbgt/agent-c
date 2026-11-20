@@ -128,4 +128,4 @@ The owner's latest direction is to publish this verified snapshot to **GitHub**.
 
 The existing [ESP32 voice-agent demonstration](https://github.com/user-attachments/assets/be605653-04cf-49f1-9696-4dff41796635) illustrates an integration; it is not board-level qualification evidence for every current feature.
 
-To support ongoing maintenance, [purchase LangLearn cloud time with PayPal](https://langlearn.hubstack.cn/portal). Sign in with the Apple Account linked to an existing LangLearn account. Purchases add cloud time to that LangLearn account.
+Optional contributions support public maintenance and experiments: [Support Agent-C with PayPal](https://support.hubstack.cn/projects/agent-c). Choose a one-time amount; no LangLearn account or subscription is required. The independent [support service](docs/SUPPORT_SERVICE.md) also supports other open-source projects.

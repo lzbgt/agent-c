@@ -1,0 +1,22 @@
+# Only HTTPS ingress runs on the VPS. Support execution and SQLite stay on Arch.
+http:
+  routers:
+    hubstack-support-http:
+      rule: Host(`support.hubstack.cn`)
+      entryPoints: [web]
+      middlewares: [hubstack-support-https]
+      service: hubstack-support-arch
+    hubstack-support-secure:
+      rule: Host(`support.hubstack.cn`)
+      entryPoints: [web-secure]
+      service: hubstack-support-arch
+      tls: {certResolver: hubstack}
+  middlewares:
+    hubstack-support-https:
+      redirectScheme: {scheme: https, permanent: true}
+  services:
+    hubstack-support-arch:
+      loadBalancer:
+        passHostHeader: true
+        healthCheck: {path: /readyz, hostname: support.hubstack.cn, interval: 15s, timeout: 3s}
+        servers: [{url: "http://10.147.16.2:21960"}]

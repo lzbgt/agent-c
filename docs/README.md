@@ -18,6 +18,7 @@ distinction between contracts, deployment instructions and recorded evidence.
 | Extend host tools or understand retrieval evidence | [Tools](TOOLS.md) |
 | Embed the portable core | [Embedded C API](EMBEDDED_C_API.md), [platform support](PLATFORM_SUPPORT.md) |
 | Publish a change | [Publishing policy](PUBLISHING.md) |
+| Operate the independent PayPal support page | [Support service](SUPPORT_SERVICE.md) |
 
 The local model profile and the stopped production deployment are separate.
 Source changes and documentation do not restart services or establish that an

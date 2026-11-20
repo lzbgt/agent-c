@@ -1,0 +1,32 @@
+[Unit]
+Description=Independent open-source PayPal support checkout
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/hubstack-support/current
+ExecStart=/usr/bin/python3 -m support_service.app --config %h/.config/hubstack-support/runtime.json
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/hubstack-support/state
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=192M
+CPUQuota=50%
+TasksMax=40
+LimitNOFILE=256
+
+[Install]
+WantedBy=default.target
