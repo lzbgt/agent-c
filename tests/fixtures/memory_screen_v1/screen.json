@@ -1,0 +1,421 @@
+{
+  "schema": "agent.memory.screen.input.v1",
+  "screen_id": "agent-c-memory-heldout-v1",
+  "purpose": "Independent synthetic initial screen. Cases and labels are frozen before observing retrieval results; not a representative production benchmark. Do not tune retrieval policy on this set.",
+  "files": [
+    "MEMORY.md",
+    "STRUCTURED.md",
+    "teams/other.md"
+  ],
+  "eligibility_forbidden_current": [
+    "LegacyValveK7",
+    "terra_old_v1",
+    "WillowKey",
+    "mqtt-v3",
+    "future_release_9",
+    "FutureSigner"
+  ],
+  "cases": [
+    {
+      "id": "q01",
+      "question": "What product code identifies the AX_M7 controller?",
+      "view": "current",
+      "categories": [
+        "exact_lookup",
+        "code_identifier"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/drive.product/value",
+          "contains": "DRIVE_S5"
+        }
+      ],
+      "expected_answer": "DRIVE_S5"
+    },
+    {
+      "id": "q02",
+      "question": "What is the sample period of pump_pid_K42?",
+      "view": "current",
+      "categories": [
+        "code_identifier",
+        "json_pointer_escape"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/valve~1control~0pid/value",
+          "contains": "35 ms"
+        }
+      ],
+      "expected_answer": "35 ms"
+    },
+    {
+      "id": "q03",
+      "question": "Which datacenter hosts MSR?",
+      "view": "current",
+      "categories": [
+        "alias",
+        "bridge_2"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/alias.mercury/value",
+          "contains": "MercurySwitch"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/mercury.location/value",
+          "contains": "Olen"
+        }
+      ],
+      "expected_answer": "Olen datacenter"
+    },
+    {
+      "id": "q04",
+      "question": "MX_54 的供应商在哪个城市？",
+      "view": "current",
+      "categories": [
+        "chinese_english",
+        "alias",
+        "bridge_2"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/mx54.vendor/value",
+          "contains": "PlatinWorks"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/platin.city/value",
+          "contains": "鹤岑市"
+        }
+      ],
+      "expected_answer": "鹤岑市 (Hecen)"
+    },
+    {
+      "id": "q05",
+      "question": "In which city is the DeltaPier pump supplier based?",
+      "view": "current",
+      "categories": [
+        "bridge_2"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/delta.supplier/value",
+          "contains": "LarchFoundry"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/larch.city/value",
+          "contains": "Alderhaven"
+        }
+      ],
+      "expected_answer": "Alderhaven"
+    },
+    {
+      "id": "q06",
+      "question": "Which team owns the service used by Project Halcyon?",
+      "view": "current",
+      "categories": [
+        "oa_process",
+        "bridge_2"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/project.service/value",
+          "contains": "BeaconLedger"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/beacon.owner/value",
+          "contains": "CedarOperations"
+        }
+      ],
+      "expected_answer": "CedarOperations"
+    },
+    {
+      "id": "q07",
+      "question": "What was the pressure-test verdict for Borealis-Lot9?",
+      "view": "current",
+      "categories": [
+        "industrial",
+        "bridge_2",
+        "raw_and_structured"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "MEMORY.md",
+          "contains": "Borealis-Lot9"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/certificate.verdict/value",
+          "contains": "verdict accepted"
+        }
+      ],
+      "expected_answer": "accepted (8.2 MPa test)"
+    },
+    {
+      "id": "q08",
+      "question": "What processor architecture does the SpectraUnit sensor use?",
+      "view": "current",
+      "categories": [
+        "industrial",
+        "bridge_3"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/spectra.board/value",
+          "contains": "BOARD_S17"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/board.processor/value",
+          "contains": "CPU_RV32"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/cpu.arch/value",
+          "contains": "RV32IMC"
+        }
+      ],
+      "expected_answer": "RV32IMC"
+    },
+    {
+      "id": "q09",
+      "question": "Which transport does the QL_82 quality SOP use for its trace action?",
+      "view": "current",
+      "categories": [
+        "sop",
+        "bridge_3"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/sop.action/value",
+          "contains": "trace_emit"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/tool.binding/value",
+          "contains": "AuditIngress"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/tool.transport/value",
+          "contains": "HTTPS POST"
+        }
+      ],
+      "expected_answer": "HTTPS POST"
+    },
+    {
+      "id": "q10",
+      "question": "Which firmware is currently approved for TerraLine?",
+      "view": "current",
+      "categories": [
+        "current",
+        "superseded"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/terra.release/value",
+          "contains": "terra_now_v3"
+        }
+      ],
+      "expected_answer": "terra_now_v3"
+    },
+    {
+      "id": "q11",
+      "question": "Which authority signed terra_old_v1?",
+      "view": "historical",
+      "categories": [
+        "historical",
+        "superseded"
+      ],
+      "answer_kind": "historical",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/terra.release/versions/0/value",
+          "contains": "WillowKey"
+        }
+      ],
+      "expected_answer": "WillowKey (historical)"
+    },
+    {
+      "id": "q12",
+      "question": "Which TCP port did LegacyValveK7 use?",
+      "view": "historical",
+      "categories": [
+        "historical",
+        "raw_markdown"
+      ],
+      "answer_kind": "historical",
+      "expected_evidence": [
+        {
+          "path": "MEMORY.md",
+          "contains": "port 4107"
+        }
+      ],
+      "expected_answer": "4107 (retired)"
+    },
+    {
+      "id": "q13",
+      "question": "What protocol did the retired KappaPort endpoint use?",
+      "view": "evidence",
+      "categories": [
+        "evidence_view",
+        "inactive"
+      ],
+      "answer_kind": "historical",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/kappa.retired/value",
+          "contains": "mqtt-v3"
+        }
+      ],
+      "expected_answer": "mqtt-v3 (retired)"
+    },
+    {
+      "id": "q14",
+      "question": "Which protocol is configured on KappaPort?",
+      "view": "current",
+      "categories": [
+        "current",
+        "inactive",
+        "unanswerable"
+      ],
+      "answer_kind": "unanswerable",
+      "expected_evidence": [],
+      "expected_answer": "No eligible current configuration is supplied."
+    },
+    {
+      "id": "q15",
+      "question": "Which endpoint handles crossscope_T17?",
+      "view": "current",
+      "categories": [
+        "scope",
+        "unanswerable"
+      ],
+      "answer_kind": "unanswerable",
+      "expected_evidence": [],
+      "expected_answer": "No endpoint is supplied within this case scope.",
+      "files": [
+        "MEMORY.md",
+        "STRUCTURED.md"
+      ]
+    },
+    {
+      "id": "q16",
+      "question": "Which depot is AtlasRoute assigned to?",
+      "view": "current",
+      "categories": [
+        "conflict"
+      ],
+      "answer_kind": "conflict",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/atlas.route.a/value",
+          "contains": "NorthDepot"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/atlas.route.b/value",
+          "contains": "SouthDepot"
+        }
+      ],
+      "expected_answer": "Conflicting current records name NorthDepot and SouthDepot; no winner is established."
+    },
+    {
+      "id": "q17",
+      "question": "What calibration interval is specified for SpectraUnit?",
+      "view": "current",
+      "categories": [
+        "unanswerable",
+        "related_distractor"
+      ],
+      "answer_kind": "unanswerable",
+      "expected_evidence": [],
+      "expected_answer": "No calibration interval is specified."
+    },
+    {
+      "id": "q18",
+      "question": "青榆站使用什么电机？",
+      "view": "current",
+      "categories": [
+        "chinese",
+        "exact_lookup"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/青榆站.电机/value",
+          "contains": "昆杉电机"
+        }
+      ],
+      "expected_answer": "昆杉电机"
+    },
+    {
+      "id": "q19",
+      "question": "Which signing authority was used for terra_old_v1?",
+      "view": "current",
+      "categories": [
+        "current",
+        "historical_exclusion",
+        "unanswerable"
+      ],
+      "answer_kind": "unanswerable",
+      "expected_evidence": [],
+      "expected_answer": "The historical signing authority is outside the current view."
+    },
+    {
+      "id": "q20",
+      "question": "Which tool checks expenditure for purchase PO_L62?",
+      "view": "current",
+      "categories": [
+        "oa_process",
+        "sop",
+        "bridge_3"
+      ],
+      "answer_kind": "supported",
+      "expected_evidence": [
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/purchase.sop/value",
+          "contains": "PC_14"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/purchase.stage/value",
+          "contains": "expense_check"
+        },
+        {
+          "path": "STRUCTURED.md",
+          "pointer": "/items/purchase.tool/value",
+          "contains": "LedgerVerify"
+        }
+      ],
+      "expected_answer": "LedgerVerify"
+    }
+  ]
+}

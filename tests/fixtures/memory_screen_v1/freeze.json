@@ -1,0 +1,107 @@
+{
+  "schema": "agent.memory.screen.freeze.v1",
+  "screen_id": "agent-c-memory-heldout-v1",
+  "frozen_at_utc": "2026-11-20T16:49:35.212943+00:00",
+  "frozen_before_any_retrieval_result": true,
+  "implementation_revision": "f32f8c2fec64fe0f37c270951e2f3f41a4f297cd",
+  "source_revision_at_freeze": "ab3b9b6eea719d4ac69bad73aa8a8fd21fb09717",
+  "question_count": 20,
+  "answerable_or_conflict_or_historical_count": 16,
+  "unanswerable_count": 4,
+  "source_files": [
+    {
+      "path": "MEMORY.md",
+      "bytes": 266,
+      "sha256": "983bdf8dcf32c3a32fa05169cb5eb329170b2ec43f826181bd2f67b21003c057"
+    },
+    {
+      "path": "STRUCTURED.md",
+      "bytes": 8299,
+      "sha256": "89c949906465302b62b5eef5422dea4dffd2370273a64365d8fa549e4d0f526e"
+    },
+    {
+      "path": "teams/other.md",
+      "bytes": 94,
+      "sha256": "f3ee052676a47a7746d79c09f513cf64c2db42ed6fe66c1e0d3605ebdc3257f2"
+    }
+  ],
+  "manifest": {
+    "bytes": 11005,
+    "sha256": "cbcfe2b4ac6daa789573b233a8f9a4280fd24b961d9106d4dde859c8e5126500"
+  },
+  "implementation_files": [
+    {
+      "path": "cli/src/memory_view.cpp",
+      "bytes": 22782,
+      "sha256": "9b77af51b56ddb7b961a3f170537355d4f9b3ecda4f60297a1cdb468602fcb22"
+    },
+    {
+      "path": "cli/src/memory_index.cpp",
+      "bytes": 14934,
+      "sha256": "08dce08b2370c6ac3f566f8b82db8462e2e38e22814b817b3b8829ef056e960d"
+    },
+    {
+      "path": "cli/src/memory_index.h",
+      "bytes": 2029,
+      "sha256": "ac8e75e56c35e55553cf4b08257b5ed935ea039d05d7aa7feb427416ccb0111f"
+    },
+    {
+      "path": "cli/src/memory_retrieval.cpp",
+      "bytes": 15077,
+      "sha256": "4e044ba55284511497a40d04bd2aefe333e4bcfdeb15bc96502e35c7862b4f80"
+    },
+    {
+      "path": "cli/src/memory_retrieval.h",
+      "bytes": 2042,
+      "sha256": "f5b21fbbf18e1a00b2af747ee58334eb69274e58f57851cab70114a5d26d5c59"
+    },
+    {
+      "path": "cli/src/typesafe_scorer.cpp",
+      "bytes": 15456,
+      "sha256": "149d4d9cd4c445dac934d09b1884947e5f790b2dc05789a3979a60692681429a"
+    },
+    {
+      "path": "tools/memory_retrieve.cpp",
+      "bytes": 10734,
+      "sha256": "a5b13e9e3af5a292d56b186fa74b5150078c75c5f279e712fd3f7d90aecf28e1"
+    }
+  ],
+  "retrieval_policy": {
+    "name": "question_terms_v1",
+    "initial_candidates": 20,
+    "new_candidates": 20,
+    "retained": 5,
+    "final_records": 8,
+    "expansions": 1,
+    "expansion_terms": 8,
+    "snippet_bytes": 600,
+    "context_bytes": 16000,
+    "scoring_input_bytes": 24000,
+    "seed_threshold": 0.5,
+    "timeout_ms": 20000
+  },
+  "scorer": {
+    "configured_provider": "typesafe",
+    "requested_model": "jev-1.14.0",
+    "prompt_revision": "agent.memory.relevance.v1",
+    "actual_returned_model": null,
+    "status": "access blocked by provider regional HTTP 451 before scoring"
+  },
+  "answerer": {
+    "required": "existing 4B answerer unchanged across arms",
+    "status": "not run; exact runtime/weights identity must be recorded before answer evaluation"
+  },
+  "metrics_policy": {
+    "evidence_recall": "Macro mean of the fraction of required evidence retrieved, over observed evidence-bearing cases. Also report micro counts and coverage.",
+    "complete_evidence": "Fraction of observed evidence-bearing cases with every required evidence record. Unanswerable cases are excluded from these denominators.",
+    "unanswerable": "Report empty-context diagnostics separately; they are not final-answer correctness.",
+    "scope_and_staleness": "Verify exact original references and case scope; current output must exclude historical/inactive/future originals.",
+    "answer_accuracy": "Requires separate unchanged-4B supported-answer and citation evaluation; retrieval scores do not establish correctness.",
+    "partial_results": "Keep observed incomplete contexts but flag them and missing arms. Never treat unexecuted cases/arms as successful."
+  },
+  "limitations": [
+    "Synthetic 20-question initial screen, not a population estimate or MCU/production qualification.",
+    "Canary/tuning fixtures use different entities; no model has scored these held-out cases.",
+    "Do not edit the frozen corpus/labels/policy after observing results; record a separate version for a justified future study."
+  ]
+}
