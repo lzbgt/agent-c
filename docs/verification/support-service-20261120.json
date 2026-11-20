@@ -1,0 +1,129 @@
+{
+  "checked_at": "2026-11-20T05:39:17.433020+00:00",
+  "source_revision": "bbc605c836d3ccc523f9e19f1b1ae16206961db5",
+  "release": "/home/bruce/.local/share/hubstack-support/releases/bbc605c836d3-768d614fc097",
+  "runtime_host": "Arch, bruce@192.168.3.208",
+  "public_url": "https://support.hubstack.cn/projects/agent-c",
+  "runtime": {
+    "python": "3.14.8",
+    "browser": "Chrome for Testing 148.0.7778.96",
+    "playwright": "1.58.0",
+    "node": "26.11.1"
+  },
+  "qualification": {
+    "python_unittests_passed": 21,
+    "systemd_unit_verification": "passed",
+    "git_diff_check": "passed",
+    "local_document_links": "passed",
+    "fixture_browser": {
+      "origin": "http://127.0.0.1:21961",
+      "live": false,
+      "evidence": [
+        {
+          "viewport": 1440,
+          "page_status": 200,
+          "horizontal_overflow": false,
+          "script_errors": 0,
+          "live_posts": 0
+        },
+        {
+          "fixture_checkout": "passed",
+          "confirmation": "server-validated capture",
+          "metadata_collapsed": true
+        },
+        {
+          "viewport": 768,
+          "page_status": 200,
+          "horizontal_overflow": false,
+          "script_errors": 0,
+          "live_posts": 0
+        },
+        {
+          "viewport": 390,
+          "page_status": 200,
+          "horizontal_overflow": false,
+          "script_errors": 0,
+          "live_posts": 0
+        },
+        {
+          "viewport": 320,
+          "page_status": 200,
+          "horizontal_overflow": false,
+          "script_errors": 0,
+          "live_posts": 0
+        }
+      ]
+    },
+    "public_read_only_browser": {
+      "origin": "https://support.hubstack.cn",
+      "live": true,
+      "evidence": [
+        {
+          "viewport": 1440,
+          "page_status": 200,
+          "horizontal_overflow": false,
+          "script_errors": 0,
+          "live_posts": 0
+        },
+        {
+          "viewport": 768,
+          "page_status": 200,
+          "horizontal_overflow": false,
+          "script_errors": 0,
+          "live_posts": 0
+        },
+        {
+          "viewport": 390,
+          "page_status": 200,
+          "horizontal_overflow": false,
+          "script_errors": 0,
+          "live_posts": 0
+        },
+        {
+          "viewport": 320,
+          "page_status": 200,
+          "horizontal_overflow": false,
+          "script_errors": 0,
+          "live_posts": 0
+        }
+      ]
+    },
+    "arch_and_mac_public_https": "200 for /readyz and /projects/agent-c",
+    "http_redirect": "HTTP to HTTPS verified",
+    "live_paypal_oauth": "passed without creating orders",
+    "live_support_order_count": 0,
+    "real_payment_executed": false
+  },
+  "artifacts_sha256": {
+    "support_service/__init__.py": "35914743300788bc2b35490d491d03001b0287c4c1257e2dae97cf9481bce005",
+    "support_service/app.py": "0031a7563dd4dc90f5dd7a45be6bd1876e29549b43bdd736a76449ef0ad90696",
+    "support_service/config.example.json": "1a4fc95cb92e9a5024e23037d319587067d49e42552b4cda270ffae24969d2e4",
+    "support_service/paypal.py": "1583a20ea4c790c8703563f222f1ed2478a231d9edb0e1c2ff1f790cc413f49a",
+    "support_service/static/icon.svg": "689556c553a53ea327ebd6e791f3af4632a5ee8aa7646114c8c407904de6fc0b",
+    "support_service/static/site.css": "5ef1b1dc4414edcb48b70e0fd0a049874ca3ef354db497b2ddd4975a9b99a251",
+    "support_service/static/site.js": "62a755008d76125b11d4826b5dc1925f6f358126789d597c59b164063a0d2bb4",
+    "support_service/store.py": "5e3cc38b381d3f4fe8127f045c83b977a0e6a860a367df440d57d38bab50823d"
+  },
+  "deployment_sha256": {
+    "deploy/arch/hubstack-support.service": "c5223e31108dfc1a9954ee20d22853a03e1d7f5bdd79a7ded9608c9ca72a4a86",
+    "deploy/arch/traefik-support.yml": "86d40a141b44cf6ca9c06efa63a2d903d2545225414630a186d90be5c5baaa82"
+  },
+  "deployment_matches": {
+    "all_runtime_artifacts": 8,
+    "installed_unit": "matches committed unit",
+    "vps_ingress": "matches committed exact support route"
+  },
+  "preserved": {
+    "agent-c-daemon.service": "inactive, disabled",
+    "agent-c-gateway.service": "inactive, disabled",
+    "agent-c-postgres": "exited, restart=no",
+    "langlearn_service_availability": "HTTP 200, managedWebPurchases=true",
+    "panda_publication": "not attempted"
+  },
+  "limits": [
+    "Real PayPal donor approval, capture, settlement, country-specific payment methods, refunds and disputes were not exercised.",
+    "Provider approval/capture and uncertain-result recovery were qualified with isolated HTTP/browser fixtures.",
+    "Live checks were limited to non-charging OAuth and read-only public requests.",
+    "Completed receipts record original capture confirmation; they are not a net-revenue or current-refund ledger."
+  ]
+}

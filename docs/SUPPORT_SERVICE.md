@@ -318,6 +318,17 @@ On 2026-11-20, the imported live merchant passed a non-charging OAuth preflight
 on Arch Python 3.14.8. Twenty-one isolated Python checks passed. The loopback
 browser fixture completed approval, server confirmation and its private receipt;
 it also passed layout checks at 1440, 768, 390 and 320 pixels. Source inspection
-and fixtures do not establish real donor settlement. Public release acceptance
-and exact deployed artifact identity are recorded after installation. No real
-order, charge or refund is part of routine release acceptance.
+and fixtures do not establish real donor settlement.
+
+The [dated acceptance receipt](verification/support-service-20261120.json)
+records runtime source `bbc605c836d3ccc523f9e19f1b1ae16206961db5` and release
+`bbc605c836d3-768d614fc097`. All eight installed runtime SHA-256 hashes matched
+their manifest; the installed unit and exact VPS route matched committed source.
+Public HTTPS readiness and the dedicated project page returned 200 from both
+Arch and the Mac host. The public browser passed all four widths with payment
+POSTs blocked, and the live support database still held zero orders afterward.
+Agent-C's two user services remained inactive/disabled and its PostgreSQL
+container remained exited with restart disabled. LangLearn continued to report
+web purchases available. No real order, charge or refund was created, and no
+real donor settlement is claimed. The later documentation-only acceptance
+commit does not change the installed runtime artifacts.
