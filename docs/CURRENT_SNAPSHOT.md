@@ -80,54 +80,50 @@ The verifier configures **Debug** builds so assertion-based existing C tests exe
 
 ## Verification evidence
 
-The preceding retrieval qualification (before the promotion increment) passed as follows.
-The provider-free canonical lane passed **72 native/CLI/API checks**, **141
-browser checks**, all Go broker/gateway packages, generated OpenAPI/type checks
-and the UI production build on 2026-11-20. A final context-failure/CLI-guidance
-review and rebuild was followed by the same complete **72-native selection,
-passing in 105.50 seconds**. The browser/UI/Go results remain from the preceding
-complete run; UI source did not change between those runs.
+On 2026-11-20, the final canonical run passed **73 native/CLI/API checks in
+115.45 seconds**, **141 browser checks**, all Go broker/gateway packages,
+generated OpenAPI/type checks and the UI production build. Repository guards,
+changed-document links/anchors and whitespace checks passed. One synthetic
+full-capacity/crash-fixture run took 0.880688 seconds with a Linux child peak RSS
+of 69,508 KiB; this single run is not an operating resource limit or latency SLO.
 
-The new `memory_view_tests` covers FTS/substr currentness, inactive/future/malformed
-records, embedded history and generated duplicates, raw sections/markers,
-scope changes in a warm cache, Chinese/code identifiers, timestamp-preserving
-correction, source deletion, same-content wrong scopes, altered spans, exact
-originals, all four context modes, source/line budgets and explicit unavailable
-context. `memory_retrieval_smoke` uses a real temporary daemon and two synthetic
-loopback provider calls: current API reads use the head, historical reads use an
-identified checkpoint, successful recaps retain input revisions and a concurrent
-correction rejects publication without repeating the provider call. Existing
-workflow, publication, retention, salience, recap and correlation fixtures remain
-in the canonical lane. Repository guards, changed-document links/anchors and
-whitespace checks passed; production was not exercised.
+The latest promotion qualification pins implementation **`9ec12c7`** in the
+[promotion receipt](verification/memory-promotion-20261120.json). The canonical
+lane result, artifact hashes, fixture timing and exact limitations are recorded
+there. Reproduce with the command above or the narrower
+[promotion checks](MEMORY.md#durable-marker-promotion).
 
-Reproduce with the command above or [the retrieval subset](MEMORY.md#reproduce-retrieval-checks).
-Ignored local receipts are `build/memory_view_snapshot_20261120.log`,
-`build/memory_view_native_final.log`, `build/memory_view_focused.log`,
-`build/memory_view_resources.log`, `build/memory_view_documentation.log` and
-`build/memory_view_repo_guards.log`. The [retrieval qualification receipt](verification/memory-views-20261120.json)
-pins implementation `90b05f8`, commands, artifact hashes and remaining requirements.
-These are Linux fixture checks, not a production SLO, MCU qualification, storage power-loss test or retrieval-quality
-benchmark. No external provider, paid scorer or 9B substitution was used.
+`memory_promotion_tests` covers correction preservation beyond the 20-version
+window, moved markers, per-record revision conflicts, competing observations,
+independent partial commits, consumed rejections, malformed input/ledger,
+byte/key/receipt caps, cancellation, read-only policy, failed original retention,
+notes conversion and actual process death immediately before/after atomic
+replacement. It also checks source edit/deletion propagation through current
+FTS/fallback, structured/API/native queries, salience and all context modes,
+with retrievable originals. The temporary-daemon HTTP fixture checks that an
+incomplete response retains the commit report and independently accepted fact.
+These are synthetic host fixtures, not evidence of a production race.
 
-The [atomic-publication receipt](verification/memory-authority-20261120.json)
-pins `f355886` and its earlier 68-native/141-browser qualification. Its publication
-and process-crash checks remain in the current selection. Older artifact hashes
-do not qualify the new retrieval runtime.
+Ignored local receipts are `build/memory_promotion_snapshot_final.log`,
+`build/memory_promotion_focused.log`, `build/memory_promotion_resources.log`,
+`build/memory_promotion_documentation.log` and
+`build/memory_promotion_repo_guards.log`. The checked-in receipt preserves their
+hashes and the tested binary identities. No external provider, paid scorer,
+TypeSafe key use or 9B substitution is part of this milestone. Production remains
+stopped. Linux host/browser tests do not qualify MCU execution, Windows runtime,
+filesystem power loss, live-provider behavior, retrieval quality or a production SLO.
 
-The preceding [remote-workflow receipt](verification/remote-workflow-20261120.json)
-pins `05384a3`; its controller and real-process recovery cases remain in the
-current native selection. The [watch-state receipt](verification/run-watch-identity-20261120.json)
-pins `675cbab`. The earlier
-[consolidation receipt](verification/consolidation-20261120.json) retains the
-separate core-only Debug lane and repeated session-store checks at `a575cf4`.
-Those extra lanes were not repeated here; the core test remains in the current
-host lane. Older artifact hashes do not qualify new memory binaries.
-
-Earlier milestone counts and fault-injection narratives are retained in
-[the dated qualification archive](reports/qualification-through-20261118.md).
-They are not substitutes for checking the current revision. Linux host/browser
-checks do not establish a hosted CI matrix, MCU boot or live-provider behavior.
+Prior [retrieval](verification/memory-views-20261120.json) and
+[atomic-publication](verification/memory-authority-20261120.json) receipts pin
+`90b05f8` and `f355886`; their failure cases remain in the canonical lane.
+The [remote-workflow](verification/remote-workflow-20261120.json),
+[watch-state](verification/run-watch-identity-20261120.json) and earlier
+[consolidation](verification/consolidation-20261120.json) receipts identify their
+own qualified revisions. The separate core-only lane and repeated session-store
+qualification in the consolidation receipt were not repeated here; the core
+test remains in the current host lane. Older artifact hashes never qualify new
+binaries. Earlier narratives are retained in
+[the qualification archive](reports/qualification-through-20261118.md).
 
 ## Boundaries and next work
 

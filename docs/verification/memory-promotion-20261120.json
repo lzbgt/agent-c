@@ -1,0 +1,136 @@
+{
+  "checked_at": "2026-11-20T13:00:09.909926+00:00",
+  "source_revision": "9ec12c7c9aa0eeae8021b607de7151c0e423c37e",
+  "scope": "Durable marker promotion receipts and per-record revision-bound replacement in the existing atomic authority; source-dependent current eligibility and original evidence",
+  "source_qualification": "Final complete canonical run on the committed implementation. Source only; no production deployment. Initial complete lane and focused failure checks preceded the final run.",
+  "environment": {
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "node": "v26.11.1",
+    "go": "go version go1.27.2-X:nodwarf5 linux/amd64",
+    "jsoncpp": "1.9.8",
+    "sqlite3": "3.54.0",
+    "browser": "Google Chrome for Testing 148.0.7778.96",
+    "playwright": "Version 1.58.0"
+  },
+  "commands": [
+    "cmake --build build-snapshot --target memory_promotion_tests memory_view_tests host_toolset_tests agentd -j4",
+    "ctest --test-dir build-snapshot -R '^(memory_promotion_tests|memory_view_tests|host_toolset_tests|agentd_memory_consolidate_smoke|agentd_workflow_memory_consolidate_smoke)$' --output-on-failure",
+    "AGENT_E2E_BROWSER_EXECUTABLE=/home/bruce/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome AGENT_E2E_UI_PORT=4191 tools/verify_current_snapshot.sh",
+    "tools/verify_repo_guards.sh",
+    "git diff --check"
+  ],
+  "results": {
+    "native_cli_api_checks": 73,
+    "browser_checks": 141,
+    "go_packages": "all canonical packages passed; optional environment-gated integrations separate",
+    "openapi_types": "passed",
+    "ui_production_build": "passed",
+    "repository_guards": "passed",
+    "git_diff_check": "passed",
+    "external_provider_calls": 0,
+    "paid_scorer_calls": 0,
+    "retrieval_quality_evaluation": "not run; no TypeSafe credential discovery/use, authentication/model/pricing verification or cloud canary",
+    "changed_document_links_and_anchors": 137
+  },
+  "local_fixture_timings_seconds": {
+    "canonical_native": 115.45,
+    "memory_promotion_tests": 0.88,
+    "focused_subset": 2.25
+  },
+  "one_synthetic_unit_resource_run": {
+    "elapsed_seconds": 0.880688,
+    "max_rss_kib": 69508,
+    "measurement": "Linux child getrusage peak RSS, one synthetic fixture run including full 4096-receipt capacity and SIGKILL cases; not a production or model resource/SLO measurement"
+  },
+  "resource_measurement_reproduction": [
+    "python3",
+    "-c",
+    "import resource,subprocess,time; start=time.perf_counter(); subprocess.run([\"build-snapshot/memory_promotion_tests\"],check=True); print({\"elapsed_seconds\":time.perf_counter()-start,\"max_rss_kib\":resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss})"
+  ],
+  "coverage": [
+    "Later direct corrections remain after repeated scans, line movement and more than 20 superseding versions.",
+    "Replacement intents bind full normalized per-record revisions while unrelated keys can change.",
+    "Competing/unanchored/stale observations retain rejected receipts; independent accepted keys can commit with explicit incomplete status.",
+    "Byte/key/4096-receipt capacity limits, malformed markers/ledger, original retention failure, read-only policy, cancellation and source-revision conflicts fail visibly.",
+    "Native promotion rejects a mutated plan whose intent differs from captured source bytes.",
+    "Changed/deleted supporting markers invalidate FTS/fallback, structured/API/native query, salience and every context mode; unrelated source edits preserve stable intent.",
+    "Original source/revision/span bytes remain retrievable after edits/deletion; generated/code/history text is excluded; plain-to-machine conversion preserves notes.",
+    "Actual SIGKILL immediately before/after replacement leaves facts and receipts together; restart does not replay an old fact over a later correction.",
+    "Real temporary-daemon HTTP incomplete response preserves report, committed independent fact and rejected intent."
+  ],
+  "synthetic_regression_evidence": {
+    "description": "The original local fixture on the prior consolidation path failed because an old marker replaced a later correction. The final fixture suite is expanded; this is not evidence of a production race.",
+    "receipt": {
+      "path": "build/memory_promotion_reproduction.log",
+      "bytes": 393,
+      "sha256": "c9e1ef606436ca14b1f7636af49fd5246cb0c92c11bb9dee54069be0de8305a1"
+    }
+  },
+  "production_hold": "Read-only host inspection: daemon/gateway inactive and disabled; dedicated PostgreSQL exited with restart=no. Existing 4B profile untouched; no 9B substitution.",
+  "artifacts": {
+    "build-snapshot/agent": {
+      "bytes": 12096520,
+      "sha256": "c3f13ca82f010fe4d66c804b8f3bf564f00fc4e809184cab8f7174f9ff96ed77"
+    },
+    "build-snapshot/agentd": {
+      "bytes": 66276328,
+      "sha256": "437eca74c0c96a91dcfc3670bf29b60e3b11a6d1c705fc33ab9e4efa0bf803f7"
+    },
+    "build-snapshot/memory_promotion_tests": {
+      "bytes": 12009048,
+      "sha256": "31130a178948315c207a9bed047bded2ca9eb5f53a5fcd0c1c966ac827c1846f"
+    },
+    "build-snapshot/memory_view_tests": {
+      "bytes": 9896672,
+      "sha256": "072b2d9f8786dc8c47d2e62e6e90e466281d9e0d63c93de18d807eb1468332b7"
+    },
+    "build-snapshot/host_toolset_tests": {
+      "bytes": 9426912,
+      "sha256": "abff27487272a2b89d1c3b702d7eabee5459bf1b77af560f43d7fefd5ca4e2cd"
+    },
+    "ui/dist/index.html": {
+      "bytes": 1073,
+      "sha256": "04147feab70c10524ba7d393bad14a3bfacc1e00deb32db8c7d2d56d68022a01"
+    }
+  },
+  "local_receipts": [
+    {
+      "path": "build/memory_promotion_snapshot_final.log",
+      "bytes": 41288,
+      "sha256": "ebc1ff1967a8599176d7d61c60edbb0f72f0d2ddd26c5fffa56eac8896e76dfb"
+    },
+    {
+      "path": "build/memory_promotion_focused.log",
+      "bytes": 731,
+      "sha256": "ac991e63d0ebfee89a81f20806ab1af1e1f9550e32869d8588db8d281bab37a4"
+    },
+    {
+      "path": "build/memory_promotion_resources.log",
+      "bytes": 333,
+      "sha256": "95fdb868ea5341f2e726c77e0f9f893642a1c7cefa6ac9cd223f746b371b23ea"
+    },
+    {
+      "path": "build/memory_promotion_documentation.log",
+      "bytes": 58,
+      "sha256": "53ed90fa40c9b79f74ba3c73a38c6cf5957e6cdcf407674197f8b66abf1f7a11"
+    },
+    {
+      "path": "build/memory_promotion_repo_guards.log",
+      "bytes": 4090,
+      "sha256": "3cc98149919db3306230420f1b702378fa765b80c8e4d11410cd7e520d9a447b"
+    },
+    {
+      "path": "build/memory_promotion_production_hold.log",
+      "bytes": 107,
+      "sha256": "15536a6f77a628448222d102c3a1dc468a3064b966560634f30f89068022b206"
+    }
+  ],
+  "remaining_limits": [
+    "Linux synthetic host qualification, not production, MCU, Windows runtime, storage power-loss or retrieval-quality qualification.",
+    "Privileged out-of-protocol filesystem replacement is outside cooperating-writer guarantees; references identify content, not truth or indefinite retention.",
+    "Retained-source retirement/deletion policy, persistent cache erasure, generic recap/conclusion invalidation at every consumer, consumed-receipt compaction and bounded forgetting remain open.",
+    "Correction/invalidation never authorizes replaying an external effect. General executable requirement validators and effect-preserving handoffs remain subsequent work.",
+    "No paid scorer/model calls; owner-capped SAG2/TypeSafe canary and screening remain behind authority gates."
+  ]
+}
